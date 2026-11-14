@@ -86,7 +86,7 @@ Les champs texte s'appliquent avec `Entrée` ou quand ils perdent le focus ; `É
 | Nom de cette entité | Texte avec suggestions des noms de la map. |
 | Nom de cible, filtre | Texte avec complétion des noms, rouge si aucune entité ne porte ce nom, pipette d'entité et bouton **Marquer**. Les clés de filtre ont aussi une liste des filtres de la map. |
 | Angles | Champs tangage, lacet et roulis, cadran de lacet (glissez, `Maj` pour des pas de 15 degrés) et pipette de visée. |
-| Tangage (`light_spot`) | Un seul nombre de -90 (vers le bas) à 90 (vers le haut), et pipette de visée. |
+| Tangage (`light_spot`) | Un seul nombre de -90 (vers le bas) à 90 (vers le haut), et pipette de visée. Le modèle du spot dans les vues pointe toujours dans l'axe du cône de lumière, comme l'aide `lightprop` de Hammer : un **Tangage** non nul l'emporte sur l'inclinaison des angles, `angle` -1 et -2 le pointent droit vers le haut et vers le bas quelle que soit l'inclinaison, et l'aperçu comme le compilateur de Hammer Pro éclairent de la même façon. |
 | Origine, vecteur | Champs X, Y et Z. |
 | Axe | Deux points, X Y Z chacun. |
 | Classe de PNJ, classe ponctuelle | Texte et liste des classes. |

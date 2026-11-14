@@ -478,6 +478,9 @@ pub trait AssetsApi {
     fn set_texture_budget(&mut self, bytes: u64) {
         let _ = bytes;
     }
+    fn set_memory_tier(&mut self, tier: crate::runtime::MemoryTier) {
+        let _ = tier;
+    }
     fn texture_streaming(&self) -> crate::runtime::TextureStreaming {
         crate::runtime::TextureStreaming::default()
     }

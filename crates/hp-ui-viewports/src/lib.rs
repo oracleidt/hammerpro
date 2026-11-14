@@ -29,7 +29,7 @@ use egui::{
 };
 use glam::{DVec2, DVec3};
 use hp_app::dnd::DragPayload;
-use hp_app::settings::{CtrlWheel, Disp2dSetting, Disp2dViewSetting, RenderModeSetting};
+use hp_app::settings::{CtrlWheel, Disp2dSetting, Disp2dViewSetting, NavEffect, NavInput, RenderModeSetting};
 use hp_app::view::{Camera2d, QuadrantView, ViewInfo, ViewKind};
 use hp_app::widgets::fmt_coord;
 use hp_app::{Action, AppState, Severity, Tool, ToolFlow, ToolId, ViewInput, t, tf};
@@ -109,12 +109,21 @@ enum Gesture {
     Strafe {
         view: usize,
     },
+    Hold {
+        view: usize,
+        kind: ViewKind,
+        press: Pos2,
+        travel: f32,
+    },
 }
 
 impl Gesture {
     fn view(&self) -> usize {
         match *self {
-            Gesture::Look { view, .. } | Gesture::Pan { view, .. } | Gesture::Strafe { view } => view,
+            Gesture::Look { view, .. }
+            | Gesture::Pan { view, .. }
+            | Gesture::Strafe { view }
+            | Gesture::Hold { view, .. } => view,
         }
     }
 
@@ -338,7 +347,10 @@ impl Viewports {
     }
 
     pub fn is_navigating(&self) -> bool {
-        self.mouselook.is_some() || self.gesture.is_some() || self.velocity != DVec3::ZERO || self.player_view.is_some()
+        self.mouselook.is_some()
+            || self.gesture.is_some_and(|g| !matches!(g, Gesture::Hold { .. }))
+            || self.velocity != DVec3::ZERO
+            || self.player_view.is_some()
     }
 
     pub fn is_mouselook(&self) -> bool {
@@ -1034,7 +1046,7 @@ impl Viewports {
                 click,
             }) => {
                 let both = input.down[PRIMARY] && input.down[SECONDARY];
-                if scheme.hammer_gestures()
+                if scheme.binding(NavInput::LeftRight3d) == Some(NavEffect::Strafe)
                     && kind == ViewKind::Perspective
                     && button == SECONDARY
                     && both
@@ -1082,6 +1094,29 @@ impl Viewports {
                         Some(Gesture::Look { view, kind, button, press, travel, pending, looking, flew, click });
                 }
             }
+            Some(Gesture::Hold { view, kind, press, travel }) => {
+                if input.down[PRIMARY]
+                    && input.down[SECONDARY]
+                    && kind == ViewKind::Perspective
+                    && scheme.binding(NavInput::LeftRight3d) == Some(NavEffect::Strafe)
+                    && self.capture_view.is_none()
+                    && !self.swallow
+                {
+                    self.gesture = Some(Gesture::Strafe { view });
+                } else if !input.down[SECONDARY] {
+                    self.gesture = None;
+                    let is_click = travel < click_travel && !self.swallow;
+                    if !(is_click && tool_takes_right_click(tool.id(), kind, input.modifiers)) {
+                        if is_click {
+                            self.open_menu(state, slot_of(view), kind, press, cfg, ppp);
+                        }
+                        ended = Some(view);
+                    }
+                } else {
+                    let travel = travel + input.delta.length();
+                    self.gesture = Some(Gesture::Hold { view, kind, press, travel });
+                }
+            }
             Some(Gesture::Strafe { view }) => {
                 if !(input.down[PRIMARY] && input.down[SECONDARY]) {
                     self.gesture = None;
@@ -1125,7 +1160,8 @@ impl Viewports {
                     && !dnd_active
                     && let Some(s) = hovered.and_then(slot_of)
                 {
-                    let hammer_3d = scheme.hammer_gestures() && s.kind == ViewKind::Perspective;
+                    let in_3d = s.kind == ViewKind::Perspective;
+                    let bound = |i: NavInput, e: NavEffect| in_3d && scheme.binding(i) == Some(e);
                     let space = input.space_down && !text_focus;
                     let press = input.pointer.unwrap_or(s.rect.center());
                     let look_with = |button: usize, click: Click| Gesture::Look {
@@ -1139,7 +1175,7 @@ impl Viewports {
                         flew: false,
                         click,
                     };
-                    if hammer_3d
+                    if bound(NavInput::LeftRight3d, NavEffect::Strafe)
                         && input.down[PRIMARY]
                         && input.down[SECONDARY]
                         && (input.pressed[PRIMARY] || input.pressed[SECONDARY])
@@ -1157,23 +1193,35 @@ impl Viewports {
                         self.gesture =
                             Some(Gesture::Pan { view: s.index, kind: s.kind, button: PRIMARY, depth, travel: 0.0 });
                         self.menu = None;
-                    } else if (hammer_3d || (pad && s.kind == ViewKind::Perspective)) && space && input.pressed[PRIMARY]
+                    } else if (bound(NavInput::SpaceLeft3d, NavEffect::Look) || (pad && in_3d))
+                        && space
+                        && input.pressed[PRIMARY]
                     {
                         self.gesture = Some(look_with(PRIMARY, Click::Nothing));
-                    } else if hammer_3d && space && input.pressed[SECONDARY] {
+                    } else if bound(NavInput::SpaceRight3d, NavEffect::Pan3d) && space && input.pressed[SECONDARY] {
                         let depth = self.pan_depth(state, s, input.pointer, cfg, ppp);
                         self.gesture =
                             Some(Gesture::Pan { view: s.index, kind: s.kind, button: SECONDARY, depth, travel: 0.0 });
                         self.menu = None;
                     } else if input.pressed[SECONDARY] && tool.takes_right_drag(s.kind, input.modifiers) {
                         self.menu = None;
+                    } else if input.pressed[SECONDARY]
+                        && s.kind == ViewKind::Perspective
+                        && scheme.binding(NavInput::RightDrag3d) == Some(NavEffect::ToolOrMenu)
+                    {
+                        self.menu = None;
+                        if !tool_takes_right_click(tool.id(), s.kind, input.modifiers) {
+                            self.gesture = Some(Gesture::Hold { view: s.index, kind: s.kind, press, travel: 0.0 });
+                        }
                     } else if input.pressed[SECONDARY] {
                         self.gesture = Some(look_with(SECONDARY, Click::Menu));
                         self.menu = None;
                     } else if input.pressed[MIDDLE] && tool.takes_middle_drag(s.kind, input.modifiers) {
                         self.menu = None;
                     } else if input.pressed[MIDDLE] {
-                        if scheme.middle_looks() && s.kind == ViewKind::Perspective {
+                        if s.kind == ViewKind::Perspective
+                            && scheme.binding(NavInput::MiddleDrag3d) == Some(NavEffect::LookFly)
+                        {
                             self.gesture = Some(look_with(MIDDLE, Click::Tool));
                         } else {
                             let depth =
@@ -1354,7 +1402,7 @@ impl Viewports {
                     cam.center.y += (u - d) * step_y;
                 }
                 input::consume_arrows(ctx);
-            } else if state.settings.workflow.nav_scheme.hammer_gestures() {
+            } else if state.settings.workflow.nav_scheme.binding(NavInput::Arrows3d) == Some(NavEffect::ArrowLook) {
                 let [l, r, u, d] = input.arrows_down.map(|b| f64::from(u8::from(b)));
                 if l + r + u + d > 0.0 {
                     let resting = self.arrow_look_frame.wrapping_add(1) != state.frame.index;
@@ -1558,6 +1606,7 @@ impl Viewports {
         let bg = if view.is_2d() { cfg.background_2d } else { cfg.background_3d };
         let bg = Color32::from_rgb((bg[0] * 255.0) as u8, (bg[1] * 255.0) as u8, (bg[2] * 255.0) as u8);
         let mut drawn = false;
+        let mut preparing = false;
         if !view.is_2d() && state.runtime.fade.sample(state).is_some() {
             ctx.request_repaint();
         }
@@ -1613,7 +1662,11 @@ impl Viewports {
                 overlay: render_cache::overlay_hash(&self.overlay),
             };
             let has_image = gfx.renderer.view_texture(i as u32).is_some();
-            if self.render_cache.needs_render(i, &key, has_image) {
+            let pipelines_ready = gfx.renderer.pipelines_ready(params.msaa);
+            if !pipelines_ready {
+                preparing = true;
+                ctx.request_repaint_after(std::time::Duration::from_millis(100));
+            } else if self.render_cache.needs_render(i, &key, has_image) {
                 gfx.renderer.render_view(i as u32, &params, &self.overlay);
                 rendered = true;
                 self.render_cache.rendered(i, key);
@@ -1628,14 +1681,15 @@ impl Viewports {
                 self.render_cache.reused();
                 state.runtime.render.views_reused += 1;
             }
-            if let Some(tex) = gfx.view_egui_texture(i as u32) {
+            if let Some(tex) = gfx.view_egui_texture(i as u32).filter(|_| pipelines_ready) {
                 let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
                 painter.image(tex, slot.rect, uv, Color32::WHITE);
                 drawn = true;
             }
         }
         if !drawn {
-            paint::placeholder(&painter, slot.rect, bg, t!(slot.kind.label_key()), t!("viewport.starting"));
+            let note = if preparing { t!("viewport.preparing_shaders") } else { t!("viewport.starting") };
+            paint::placeholder(&painter, slot.rect, bg, t!(slot.kind.label_key()), note);
         }
         let render_ms = costs.elapsed().as_secs_f32() * 1000.0;
         let costs = std::time::Instant::now();

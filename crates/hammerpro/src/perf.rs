@@ -95,6 +95,9 @@ impl PerfMonitor {
         let p = &mut state.runtime.render.perf;
         p.adapter = info.name.clone();
         p.integrated = matches!(info.device_type, wgpu::DeviceType::IntegratedGpu | wgpu::DeviceType::Cpu);
+        p.graphics_api = format!("{:?}", info.backend);
+        p.dx12_shader_compiler =
+            (info.backend == wgpu::Backend::Dx12).then(hp_render::pipeline_cache::dx12_compiler).flatten();
     }
 
     pub(crate) fn note_repaints(&mut self, state: &mut AppState, ctx: &egui::Context, now: f64) -> bool {

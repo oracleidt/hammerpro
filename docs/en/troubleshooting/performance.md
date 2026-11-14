@@ -104,6 +104,10 @@ It climbs back one level once the graphics card stays under 7 ms for four second
 
 The environment variable `HP_ADAPTER` picks the graphics adapter at startup: `integrated`, `cpu` (the Windows software renderer, a good stand-in for a very weak card) or a part of an adapter name. `HP_PERF_BASELINE=all` switches off the default rendering speed-ups for comparisons. A comma-separated list can isolate them: `instances`, `shadowfit`, `exposure`, `clusters`, `prepass`, `lods`, `skymarch`, `clusterbounds`, `gpuclusters` (the lights are sorted into the view's cells by the processor instead of the graphics card; `clusters` and `clusterbounds` act on that processor path), `casters` (every geometry change draws the shadow maps again, even a helper that casts no shadow). `lods` controls CPU submission only; it preserves the selected Source level of detail. These switches are diagnostic controls and do not change the saved quality settings.
 
+### Integrated graphics and small cards
+
+On integrated graphics (which share the system memory) and on cards with less than 3 GB, **Settings > Render > Graphics memory** set to **Auto** picks the **Low** mode: a graphics memory budget well below what the card holds, textures up to 1024 pixels from the start, smaller shadow maps, no multisampling, fewer lightmap layers and thumbnails, and uploads to the card in small steps. It keeps a big map with many props and the baked preview from running out of graphics memory. Choose **Normal** to get the usual budget back on such a card, or **Low** on any card to leave room for the game. See [Out of memory](out-of-memory.md#low-graphics-memory-mode).
+
 ## Frame rate settings
 
 Page **Settings > Rendering**, group **Frame rate**:
@@ -174,6 +178,18 @@ The fastest object is one that is not drawn:
 - Turn whole [visgroups](../features/visgroups.md) off.
 - Use a [cordon](../features/cordons.md) to work on one area.
 - **View > Display options**: turn off models, helpers, particles, ropes, overlays or the 3D skybox when you do not need them.
+
+## Slow first start (shaders)
+
+Before the views can draw, the graphics card needs the render pipelines of the editor (about 80 per anti-aliasing setting, most built from the large world shader). Since 2.0.8:
+
+- **The window and the panels appear at once.** The pipelines are built on a background thread; until they are ready the 3D and 2D views show "Preparing shaders for this graphics card". Menus, panels, the texture browser and opening a map work meanwhile. Only the pipelines of the current anti-aliasing setting are built first, the others afterwards, so they are no longer built twice at the same time.
+- **DirectX 12 keeps its compiled shaders between starts** in `%LOCALAPPDATA%\HammerPro\shaders-dx12`. On DirectX 12 every shader is translated to HLSL and compiled by Microsoft's FXC compiler, which is slow: on an RTX 3060 Ti the first frame took 50 to 58 seconds with DirectX 12 (and about 97 seconds was reported on an Intel UHD Graphics laptop), against 0.4 second with Vulkan. The next starts reuse the cache. Vulkan already kept its own pipeline cache in `pipelines\`.
+- **DXC instead of FXC (experimental, off by default).** **Settings > Rendering > Performance > DirectX 12 shader compiler** (`render.dx12_compiler`, applied at the next start): `Fxc` (default) or `Dxc`. DXC needs `dxcompiler.dll` (version 1.8.2502 or newer, from Microsoft's [DirectX Shader Compiler releases](https://github.com/microsoft/DirectXShaderCompiler/releases) or the Windows SDK) next to `hammerpro.exe`; without it FXC is used. On the same machine the views were ready after 8.6 seconds instead of 42, but DXC was not reliable in every test, so it is never picked up on its own, even when the DLL is present. `WGPU_DX12_COMPILER=fxc` or `dxc` overrides the setting.
+- **Automatic graphics API.** **Settings > Rendering > Performance > Graphics API** (`render.graphics_backend`, applied at the next start): `Auto` (default) picks the best graphics card, then prefers Vulkan; DirectX 12 is only chosen when the card has no Vulkan driver (the DirectX 12 shader compiler does not change this choice). Before 2.0.8 an integrated Intel card could end up on DirectX 12 with FXC because of the rounded window corners. `Vulkan` or `DirectX 12` forces one (if no graphics card offers it, the automatic choice is used and the log says so). The command line `--backend vulkan` or `--backend dx12` overrides the setting for one session, and `WGPU_BACKEND` overrides both.
+- The log line `graphics adapter: ...` names the API and, on DirectX 12, the shader compiler; `startup: 3D and 2D views ready to draw after ... ms` tells when the views could draw and how long each set of pipelines took. MCP `get_performance` returns `graphics_api`, `graphics_api_setting`, `dx12_shader_compiler`, `startup_ms` and `pipelines` (sets with their build time, pipelines created and their total time, and on DirectX 12 the shaders compiled, their total time and the hits and misses of the shader cache).
+
+The shader cache only holds compiled shaders (a few megabytes): delete `shaders-dx12\` or `pipelines\` while Hammer Pro is closed to rebuild them. A driver update needs a new driver compile but keeps the shader cache.
 
 ## Loading time
 

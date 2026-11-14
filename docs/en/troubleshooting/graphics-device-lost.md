@@ -6,19 +6,32 @@ The graphics device is lost when the graphics driver resets the card (Windows do
 
 ## What Hammer Pro does
 
+Hammer Pro keeps running and starts the graphics again by itself:
+
+1. It saves every modified map (the tab you see and the others) next to the autosaves, in `%LOCALAPPDATA%\HammerPro\autosave\`, before anything else.
+2. It frees everything that lived on the lost device, creates a new graphics device and a new window surface, and sends the interface (fonts, icons, previews) to it again.
+3. The map, its textures and models, the thumbnails and the lighting preview load again on the new device, as when a map is opened. A notice says **The graphics card stopped answering** while it happens, then **The graphics work again**. It usually takes a second or two.
+
+Nothing is closed and no edit is lost: the undo history, the selection, the camera and every open tab stay as they were. A frame that cannot be drawn while the device is gone is skipped instead of stopping the program.
+
+If the device is lost more than 3 times in two minutes, or no new device can be created for 20 seconds, Hammer Pro falls back to the safe way:
+
 1. It writes a crash report with the reason and the last lines of the log to `%APPDATA%\HammerPro\crash\`.
-2. It saves every modified map (the tab you see and the others) next to the autosaves, in `%LOCALAPPDATA%\HammerPro\autosave\`.
+2. It saves every modified map.
 3. It shows **Graphics device lost** with the reason and asks **Restart Hammer Pro now?**
    - **Yes**: Hammer Pro starts again and opens all your tabs again, the modified maps from their saved changes. A message says that the maps were opened again.
    - **No**: Hammer Pro closes. At the next start, the crash window shows the report and offers **Open the saved changes**.
 
 Your work is never lost by a device loss: at worst you get the saved changes back in a new tab marked as modified, to save over the original map.
 
+The MCP tool `get_gpu_memory` reports the losses and recoveries of the session (`device`), and `simulate_gpu_device_loss` destroys the device on purpose to test the recovery.
+
 ## What Hammer Pro avoids
 
 - **Slow frames of other programs.** With Vulkan on Windows, a frame that the screen did not show within one second used to count as a lost device. Hammer Pro now waits longer instead (up to 30 seconds), so a game, a compile on the graphics card or a long frame of the editor no longer stops it.
 - **Out of memory.** Hammer Pro keeps its use of graphics memory under a budget and frees memory before the card is full. See [Out of memory](out-of-memory.md).
-- **Huge single uploads.** Baked and compiled lightmaps are sent to the card in pieces of 32 MB, so no single transfer keeps the card busy for long.
+- **Huge single uploads.** Baked and compiled lightmaps are sent to the card in pieces of 32 MB (4 MB in the Low graphics memory mode), and the baked preview sends its lightmaps and their geometry a few megabytes per frame, so no single transfer keeps the card busy for long.
+- **Small graphics cards.** On integrated graphics and cards under 3 GB, **Settings > Render > Graphics memory** set to **Auto** picks the **Low** mode, which plans a budget well below what the card holds. See [Out of memory](out-of-memory.md#low-graphics-memory-mode).
 
 ## When it happens again
 

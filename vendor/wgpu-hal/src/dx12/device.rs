@@ -411,14 +411,36 @@ impl super::Device {
             key.shader_model.to_str()
         );
 
-        let compiled_shader = self.compiler_container.compile(
-            self,
+        let disk_key = super::disk_cache::key(
             &key.source,
-            source_name,
             &key.entry_point,
-            stage_bit,
             &full_stage,
-        )?;
+            &self.compiler_container.cache_tag(
+                self.shared
+                    .private_caps
+                    .instance_flags
+                    .contains(wgt::InstanceFlags::DEBUG),
+            ),
+        );
+        let compiled_shader = match super::disk_cache::load(&disk_key) {
+            Some(bytes) => super::CompiledShader::Precompiled(bytes),
+            None => {
+                let started = Instant::now();
+                let compiled = self.compiler_container.compile(
+                    self,
+                    &key.source,
+                    source_name,
+                    &key.entry_point,
+                    stage_bit,
+                    &full_stage,
+                )?;
+                super::disk_cache::note_compile(
+                    u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX),
+                );
+                super::disk_cache::store(&disk_key, &super::disk_cache::bytes_of(&compiled));
+                compiled
+            }
+        };
 
         {
             let mut shader_cache = self.shader_cache.lock();

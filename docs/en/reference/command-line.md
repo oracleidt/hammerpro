@@ -32,6 +32,7 @@ hammerpro --import-models FILE_OR_DIR... --out DIR [options]
 | `--tool NAME` | Tool active at startup. Names (case ignored): `select`, `camera`, `entity`, `block`, `texture`, `decal`, `overlay`, `clip`, `vertex`, `path`, `polygon`, `curve`, `sprinkle`, `displacement`, `cordon`. An unknown name is ignored. | `select` |
 | `--script file.txt` | Automated run: plays the commands of a script file (mouse, keys, actions, screenshots, asserts). See [Script commands](script-commands.md). | off |
 | `--bench-open map.vmf` | Automated run: opens the map, waits until it is drawn and the game content has settled, prints the startup and open timings to stdout as `key=value` pairs and closes. | off |
+| `--backend vulkan` / `--backend dx12` / `--backend auto` | Graphics API for this session only, instead of the setting `render.graphics_backend` (**Settings > Rendering > Performance > Graphics API**). If no graphics card offers it, the automatic choice is used. `WGPU_BACKEND` still wins. See [Editor performance](../troubleshooting/performance.md#slow-first-start-shaders). | the saved setting (`Auto`) |
 | `--restore-session list.txt` | Opens the maps of a list written by Hammer Pro when it restarts after a graphics device loss (one tab per map, modified maps from their saved changes), then deletes the list. See [Graphics device lost](../troubleshooting/graphics-device-lost.md). | off |
 
 An unknown argument starting with `--` prints `unknown argument: ...` on stderr and is ignored.
@@ -97,6 +98,7 @@ Exit codes: `0` normal end, `2` the script file cannot be read or a line cannot 
 | Variable | What it does |
 |---|---|
 | `WGPU_BACKEND` | Forces the graphics API, for example `dx12`, `vulkan` or `gl`. Useful when the default one fails on your GPU. |
+| `WGPU_DX12_COMPILER` | DirectX 12 shader compiler: `dxc` (needs `dxcompiler.dll`) or `fxc`. Overrides the setting `render.dx12_compiler` (FXC by default; DXC only when turned on). |
 | `HAMMERPRO_INSTANCE` | For `--mcp`: the process id of the Hammer Pro window the bridge must use. |
 | `HAMMERPRO_MCP_DIR` | Moves the MCP instance records (tests and automated checks). |
 | `HP_UPDATE_API_URL` | Replaces the GitHub release address of the update check (tests). See [Updates](../features/updates.md). |

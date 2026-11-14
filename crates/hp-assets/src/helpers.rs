@@ -1,5 +1,5 @@
 mod fish;
-mod overlays;
+pub(crate) mod overlays;
 pub(crate) mod ropes;
 pub(crate) mod spotlights;
 mod suns;

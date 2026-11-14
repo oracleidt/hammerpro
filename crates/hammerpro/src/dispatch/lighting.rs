@@ -61,6 +61,7 @@ pub(crate) struct State {
     prepare_revision: u64,
     prepare_changed: f64,
     prepare_started: Option<f64>,
+    rebake_after_reset: bool,
 }
 
 impl State {
@@ -655,6 +656,20 @@ fn visible_region(state: &AppState, radius: f64) -> Option<Scope> {
     useful.then_some(Scope::Around { center: cam.pos, radius })
 }
 
+pub(crate) fn forget_for_new_device(app: &mut HammerProApp) {
+    let had = app
+        .pkg
+        .lighting
+        .preview
+        .as_ref()
+        .is_some_and(|p| p.has_bake || !p.uploads.is_empty() || p.running.as_ref().is_some_and(|r| !r.lit));
+    app.pkg.lighting.rebake_after_reset |= had;
+    forget(app);
+    app.pkg.lighting.preview = None;
+    app.pkg.lighting.cc_applied = None;
+    app.pkg.lighting.cc_job = None;
+}
+
 fn forget(app: &mut HammerProApp) {
     if let Some(gfx) = app.state.gfx.as_mut() {
         gfx.renderer.clear_lightmaps();
@@ -754,6 +769,13 @@ impl Package for Lighting {
     }
 
     fn tick(&self, app: &mut HammerProApp, ctx: &egui::Context) {
+        if app.pkg.lighting.rebake_after_reset && app.state.gfx.is_some() {
+            app.pkg.lighting.rebake_after_reset = false;
+            if display_of(app.state.settings.view.render_mode) == LightmapDisplay::Baked {
+                log::info!("lighting preview: baked again for the new graphics device");
+                Self::start_bake(app, ctx, false, true);
+            }
+        }
         let now = app.state.frame.time;
         let mode = app.state.settings.view.render_mode;
         let display = display_of(mode);
@@ -1296,6 +1318,8 @@ mod tests {
             partial: false,
             submitted: 0.0,
             held: false,
+            started: false,
+            blocks_added: 0,
         }
     }
 

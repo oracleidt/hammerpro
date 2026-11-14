@@ -39,6 +39,8 @@ Les fichiers d'instance sont cherchés depuis le dossier de la map (la clé `fil
 | **Instances : teintées** (défaut) | Le contenu, teinté, comme dans Hammer. |
 | **Instances : normales** | Le contenu dessiné comme le reste de la map. |
 
+Les overlays (`info_overlay`, `info_overlay_transition`) et les décalques (`infodecal`) d'un fichier d'instance sont aussi dessinés sur ses brushes, déplacés et tournés avec l'instance, dans tous les modes de rendu, comme Hammer++ ; les décalques se posent aussi sur les brushes de la carte derrière l'instance, comme après un collapse (ils suivent l'interrupteur **Afficher les overlays**). La carte parente dessinée autour d'une instance éditée montre aussi ses overlays et décalques. Collapse et le compilateur les gardent sur les bonnes faces (leurs `sides` sont renumérotés avec les brushes).
+
 Le contenu des instances sélectionnées est encadré (instances imbriquées comprises) et le nom de leur fichier est affiché dans toutes les vues. Une instance dont le fichier est introuvable ou illisible reçoit une croix rouge et une étiquette à son origine.
 
 ## Créer une instance depuis la sélection

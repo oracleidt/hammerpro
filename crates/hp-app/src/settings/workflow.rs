@@ -54,11 +54,11 @@ impl NavScheme {
     pub const ALL: [NavScheme; 3] = [NavScheme::HammerPro, NavScheme::Hammer, NavScheme::HammerPlusPlus];
 
     pub fn hammer_gestures(self) -> bool {
-        !matches!(self, NavScheme::HammerPro)
+        self.binding(super::NavInput::LeftRight3d).is_some()
     }
 
     pub fn middle_looks(self) -> bool {
-        matches!(self, NavScheme::HammerPlusPlus)
+        self.binding(super::NavInput::MiddleDrag3d) == Some(super::NavEffect::LookFly)
     }
 }
 

@@ -122,6 +122,37 @@ impl PerfPlan {
         *self == Self::FULL
     }
 
+    pub fn capped(self, cap: &PerfPlan) -> PerfPlan {
+        let reflections = match (self.reflections, cap.reflections) {
+            (Reflections::Simple, _) | (_, Reflections::Simple) => Reflections::Simple,
+            (Reflections::World, _) | (_, Reflections::World) => Reflections::World,
+            _ => Reflections::All,
+        };
+        let distance = match (self.model_distance > 0.0, cap.model_distance > 0.0) {
+            (true, true) => self.model_distance.min(cap.model_distance),
+            (true, false) => self.model_distance,
+            (false, true) => cap.model_distance,
+            (false, false) => 0.0,
+        };
+        PerfPlan {
+            scale: self.scale.min(cap.scale),
+            msaa: self.msaa && cap.msaa,
+            light_shadows: self.light_shadows.min(cap.light_shadows),
+            sun_shadow_size: self.sun_shadow_size.min(cap.sun_shadow_size),
+            local_shadow_size: self.local_shadow_size.min(cap.local_shadow_size),
+            bloom: self.bloom && cap.bloom,
+            texture_limit: self.texture_limit.min(cap.texture_limit),
+            reflections,
+            indirect: self.indirect && cap.indirect,
+            cubemaps: self.cubemaps && cap.cubemaps,
+            normal_maps: self.normal_maps && cap.normal_maps,
+            fog_volumes: self.fog_volumes && cap.fog_volumes,
+            sun_glow: self.sun_glow && cap.sun_glow,
+            sky_occlusion: self.sky_occlusion && cap.sky_occlusion,
+            model_distance: distance,
+        }
+    }
+
     pub fn model_distance_for(&self, user: f32) -> f32 {
         if self.model_distance <= 0.0 {
             user
@@ -295,6 +326,10 @@ pub struct PerfRuntime {
     pub sample: PerfSample,
     pub adapter: String,
     pub integrated: bool,
+    pub graphics_api: String,
+    pub dx12_shader_compiler: Option<String>,
+    pub startup_first_frame_ms: Option<u64>,
+    pub startup_views_ready_ms: Option<u64>,
     pub auto_level: PerfLevel,
     pub auto_locked: bool,
     pub auto_fps: f32,
@@ -304,6 +339,7 @@ pub struct PerfRuntime {
     frames: u32,
     slow_frames: u32,
     pub restore_request: bool,
+    pub memory_cap: Option<PerfPlan>,
 }
 
 impl PerfRuntime {
@@ -317,7 +353,11 @@ impl PerfRuntime {
     }
 
     pub fn plan(&self, mode: PerformanceMode) -> PerfPlan {
-        self.level(mode).plan()
+        let plan = self.level(mode).plan();
+        match &self.memory_cap {
+            Some(cap) => plan.capped(cap),
+            None => plan,
+        }
     }
 
     pub fn reduced_automatically(&self, mode: PerformanceMode) -> bool {

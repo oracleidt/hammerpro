@@ -23,19 +23,35 @@ Quitter la vue joueur libère le monde compilé, ses lightmaps et son ciel. Rela
 
 Avant tout cela, **Charger le détail des textures selon la distance** (`render.texture_streaming`, activé par défaut) garde les textures utilisées seulement loin de toutes les vues à une taille réduite qui rend pareil à cette distance, pour que les grandes maps demandent moins de mémoire graphique dès le départ. Les textures peuvent utiliser 60 % du budget ; si elles en demandent plus, les plus lointaines sont réduites d'un niveau de plus avant que les étapes ci-dessus ne baissent toutes les textures. Voir [Performances de l'éditeur](performance.md#détail-des-textures-selon-la-distance).
 
+<a id="mode-de-memoire-graphique-faible"></a>
+### Mode de mémoire graphique Faible
+
+**Paramètres > Rendu > Mémoire graphique** (`render.graphics_memory`) choisit quelle part de la carte graphique Hammer Pro prévoit d'utiliser, et avec quelle prudence :
+
+| Mode | Ce qu'il fait |
+|---|---|
+| **Auto** (par défaut) | Choisi d'après la carte graphique : **Faible** sur une puce graphique intégrée (qui partage la mémoire du système) et sur les cartes de moins de 3 Go, **Élevée** à partir de 12 Go, **Normale** sinon. |
+| **Faible** | Un budget de la moitié de ce que Windows donne au programme, 1 Go au plus (384 Mo au moins quand la carte les a). Les textures sont limitées à 1024 pixels dès le départ, pas seulement quand la mémoire est pleine, et une texture qui dépasserait le budget est chargée plus petite au lieu d'être ajoutée. Les ombres du soleil font au plus 1024 pixels, celles des lumières 256 pixels avec au plus 4 lumières ombrées, l'anticrénelage multiéchantillon est coupé, la carte d'occultation de la lumière du ciel aussi, l'eau ne reflète que le monde, et les reflets des cubemaps se partagent 40 Mo au lieu de 160 Mo. L'aperçu calculé garde ses lightmaps sous 12 % du budget (moins de couches de lightmaps, des lightmaps plus grossières sur les grandes maps) et les envoie avec leur géométrie par étapes de quelques mégaoctets. Les caches de vignettes gardent 600 textures et 150 modèles au lieu de 3000 et 750, et les envois vers la carte attendent les précédents tous les 4 Mo au lieu de 16 Mo. |
+| **Normale** | Le budget habituel : 90 % de ce que Windows donne, au plus 2 Go sur une puce graphique intégrée. |
+| **Élevée** | 95 % de ce que Windows donne, sans la limite de 2 Go des puces graphiques intégrées. |
+
+La ligne sous les réglages indique le mode utilisé. Un **Budget de mémoire graphique** en Mo remplace le budget du mode mais garde ses autres limites. Le mode de performance peut encore baisser la qualité ; le plus strict des deux s'applique.
+
+Pour les tests, la variable d'environnement `HAMMERPRO_VRAM_BUDGET_MB` impose un budget en Mo (sous 3 Go, **Auto** choisit aussi **Faible**, comme sur une petite carte) et `HAMMERPRO_SIMULATE_LOW_VRAM=1` (ou une taille en Mo) fait voir à **Auto** une petite puce graphique intégrée. `get_gpu_memory` (MCP) renvoie `graphics_memory`, `mode`, `hardware`, `lightmap_layers_max` et `textures_loaded_smaller`.
+
 ### Le budget
 
 **Paramètres > Rendu > Mémoire graphique** :
 
 | Paramètre | Ce qu'il fait |
 |---|---|
-| **Budget de mémoire graphique** | Quantité de mémoire graphique que Hammer Pro peut utiliser. **Automatique** (0, par défaut) utilise 90 % de ce que Windows donne au programme, ou 3 Go (1,5 Go sur une puce graphique intégrée) quand le pilote ne le dit pas ; sur une puce graphique intégrée, qui utilise la mémoire du système, jamais plus de 2 Go. Indiquez une valeur en Mo pour laisser de la place au jeu ou à un autre programme lancé en même temps. |
+| **Budget de mémoire graphique** | Quantité de mémoire graphique que Hammer Pro peut utiliser. **Automatique** (0, par défaut) utilise 90 % de ce que Windows donne au programme, ou 3 Go (1,5 Go sur une puce graphique intégrée) quand le pilote ne le dit pas ; sur une puce graphique intégrée, qui utilise la mémoire du système, jamais plus de 2 Go. Indiquez une valeur en Mo pour laisser de la place au jeu ou à un autre programme lancé en même temps. Dans le mode **Faible**, Automatique vaut la moitié de ce que Windows donne, 1 Go au plus (voir plus haut). |
 | **Garder les autres onglets sur la carte graphique** | Activé (par défaut) : le changement d'onglet est instantané tant qu'il y a de la place. Désactivé : seule la map affichée reste sur la carte graphique, les autres se rechargent quand vous les affichez. |
 | **Libérer la mémoire graphique maintenant** | Libère tout de suite les maps des autres onglets, les textures et modèles inutilisés, et les miniatures. |
 
 La ligne sous ces paramètres montre la mémoire utilisée et sa source (« mesurée par le pilote » ou « estimée »).
 
-Les mêmes paramètres sont enregistrés sous `vram_budget_mb` et `keep_background_maps_on_gpu` dans la table `[render]` de `settings.toml`. Par MCP : `set_setting` avec `render.vram_budget_mb`, `get_gpu_memory` pour les mesures, `free_gpu_memory` pour libérer de la mémoire tout de suite. Les scripts peuvent afficher les mesures avec la commande `vram`.
+Les mêmes paramètres sont enregistrés sous `vram_budget_mb` et `keep_background_maps_on_gpu` dans la table `[render]` de `settings.toml`. Par MCP : `set_setting` avec `render.graphics_memory` ou `render.vram_budget_mb`, `get_gpu_memory` pour les mesures, `free_gpu_memory` pour libérer de la mémoire tout de suite. Les scripts peuvent afficher les mesures avec la commande `vram`.
 
 ### Quand l'avertissement revient sans cesse
 

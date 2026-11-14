@@ -53,6 +53,7 @@ mod dispatch;
 mod export;
 mod files;
 mod gpu_guard;
+mod gpu_recovery;
 mod icon;
 mod keyboard;
 mod livelink;
@@ -94,6 +95,7 @@ pub struct Cli {
     pub bench_open: Option<PathBuf>,
     pub restore: Option<PathBuf>,
     pub no_save_settings: bool,
+    pub backend: Option<hp_app::settings::GraphicsBackend>,
 }
 
 impl Cli {
@@ -119,6 +121,10 @@ fn parse_cli() -> Cli {
             "--script" => cli.script = args.next().map(PathBuf::from),
             "--bench-open" => cli.bench_open = args.next().map(PathBuf::from),
             "--no-save-settings" => cli.no_save_settings = true,
+            "--backend" => match args.next().as_deref().map(hp_app::settings::GraphicsBackend::parse) {
+                Some(Some(b)) => cli.backend = Some(b),
+                _ => eprintln!("--backend takes auto, vulkan or dx12"),
+            },
             restart::RESTORE_ARG => cli.restore = args.next().map(PathBuf::from),
             "--frames" => cli.frames = args.next().and_then(|v| v.parse().ok()).unwrap_or(90),
             "--maximize-view" => cli.maximize_view = args.next().and_then(|v| v.parse().ok()),
@@ -140,13 +146,69 @@ fn parse_cli() -> Cli {
     cli
 }
 
-fn wgpu_options(transparent: bool) -> egui_wgpu::WgpuConfiguration {
+fn forced_backend(choice: hp_app::settings::GraphicsBackend) -> Option<wgpu::Backend> {
+    match choice {
+        hp_app::settings::GraphicsBackend::Auto => None,
+        hp_app::settings::GraphicsBackend::Vulkan => Some(wgpu::Backend::Vulkan),
+        hp_app::settings::GraphicsBackend::Dx12 => Some(wgpu::Backend::Dx12),
+    }
+}
+
+fn backend_has_adapter(backend: wgpu::Backend) -> bool {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::from(backend),
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
+    });
+    let future = instance.enumerate_adapters(wgpu::Backends::from(backend));
+    let mut future = std::pin::pin!(future);
+    let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+    match future.as_mut().poll(&mut cx) {
+        std::task::Poll::Ready(adapters) => !adapters.is_empty(),
+        std::task::Poll::Pending => true,
+    }
+}
+
+fn instance_backends(forced: Option<wgpu::Backend>) -> (wgpu::Backends, Option<wgpu::Backend>) {
+    if let Some(env) = wgpu::Backends::from_env() {
+        return (env, None);
+    }
+    match forced {
+        Some(b) if backend_has_adapter(b) => (wgpu::Backends::from(b), Some(b)),
+        Some(b) => {
+            log::warn!(
+                "graphics API {b:?} was asked for but no graphics adapter offers it, the automatic choice is used"
+            );
+            (wgpu::Backends::PRIMARY, None)
+        }
+        None => (wgpu::Backends::PRIMARY, None),
+    }
+}
+
+fn dx12_shader_compiler(choice: hp_app::settings::Dx12Compiler) -> wgpu::Dx12Compiler {
+    match choice {
+        hp_app::settings::Dx12Compiler::Fxc => wgpu::Dx12Compiler::Fxc,
+        hp_app::settings::Dx12Compiler::Dxc => wgpu::Dx12Compiler::default_dynamic_dxc(),
+    }
+}
+
+fn wgpu_options(
+    transparent: bool,
+    forced: Option<wgpu::Backend>,
+    compiler: hp_app::settings::Dx12Compiler,
+) -> egui_wgpu::WgpuConfiguration {
     let mut setup = egui_wgpu::WgpuSetupCreateNew::without_display_handle();
-    setup.instance_descriptor.backends = wgpu::Backends::from_env().unwrap_or(wgpu::Backends::PRIMARY);
+    if std::env::var_os("WGPU_DX12_COMPILER").is_none() {
+        setup.instance_descriptor.backend_options.dx12.shader_compiler = dx12_shader_compiler(compiler);
+    }
+    let (backends, forced) = instance_backends(forced);
+    setup.instance_descriptor.backends = backends;
     if transparent {
         setup.instance_descriptor.backend_options.dx12.presentation_system = wgpu::Dx12SwapchainKind::DxgiFromVisual;
-        setup.native_adapter_selector = Some(Arc::new(pick_adapter));
     }
+    setup.native_adapter_selector =
+        Some(Arc::new(move |adapters: &[wgpu::Adapter], surface: Option<&wgpu::Surface<'_>>| {
+            pick_adapter(adapters, surface, transparent, forced)
+        }));
     setup.device_descriptor = Arc::new(|adapter: &wgpu::Adapter| wgpu::DeviceDescriptor {
         label: Some("hammerpro device"),
         required_features: (adapter.features()
@@ -160,13 +222,24 @@ fn wgpu_options(transparent: bool) -> egui_wgpu::WgpuConfiguration {
     egui_wgpu::WgpuConfiguration { wgpu_setup: egui_wgpu::WgpuSetup::CreateNew(setup), ..Default::default() }
 }
 
-fn pick_adapter(adapters: &[wgpu::Adapter], surface: Option<&wgpu::Surface<'_>>) -> Result<wgpu::Adapter, String> {
+fn slow_dx12(backend: wgpu::Backend) -> bool {
+    backend == wgpu::Backend::Dx12
+}
+
+fn pick_adapter(
+    adapters: &[wgpu::Adapter],
+    surface: Option<&wgpu::Surface<'_>>,
+    want_transparent: bool,
+    forced: Option<wgpu::Backend>,
+) -> Result<wgpu::Adapter, String> {
+    let compiler = hp_render::pipeline_cache::dx12_compiler();
     let transparent = |a: &wgpu::Adapter| {
-        surface.is_some_and(|s| {
-            s.get_capabilities(a).alpha_modes.iter().any(|m| {
-                matches!(m, wgpu::CompositeAlphaMode::PreMultiplied | wgpu::CompositeAlphaMode::PostMultiplied)
+        want_transparent
+            && surface.is_some_and(|s| {
+                s.get_capabilities(a).alpha_modes.iter().any(|m| {
+                    matches!(m, wgpu::CompositeAlphaMode::PreMultiplied | wgpu::CompositeAlphaMode::PostMultiplied)
+                })
             })
-        })
     };
     let rank = |a: &wgpu::Adapter| {
         let info = a.get_info();
@@ -183,7 +256,8 @@ fn pick_adapter(adapters: &[wgpu::Adapter], surface: Option<&wgpu::Surface<'_>>)
             wgpu::Backend::Gl => 2,
             _ => 3,
         };
-        (!transparent(a), kind, api)
+        let other_api = forced.is_some_and(|f| f != info.backend);
+        (other_api, kind, slow_dx12(info.backend), !transparent(a), api)
     };
     let wanted = std::env::var("HP_ADAPTER").ok().map(|v| v.to_ascii_lowercase()).filter(|v| !v.is_empty());
     let named = |a: &wgpu::Adapter| {
@@ -202,13 +276,24 @@ fn pick_adapter(adapters: &[wgpu::Adapter], surface: Option<&wgpu::Surface<'_>>)
     let can = transparent(best);
     hp_app::chrome::set_transparency_available(can);
     let info = best.get_info();
+    let shader_compiler = match (info.backend, compiler.as_deref()) {
+        (wgpu::Backend::Dx12, Some(c)) => format!(", shader compiler: {c}"),
+        _ => String::new(),
+    };
     log::info!(
-        "graphics adapter: {} ({:?}, {:?}), transparent windows: {}",
+        "graphics adapter: {} ({:?}, {:?}), transparent windows: {}{}{}",
         info.name,
         info.backend,
         info.device_type,
-        if can { "yes" } else { "no (square window corners)" }
+        if can { "yes" } else { "no (square window corners)" },
+        shader_compiler,
+        if forced.is_some() { ", chosen in the settings or on the command line" } else { "" }
     );
+    if slow_dx12(info.backend) && compiler.as_deref() == Some("fxc") {
+        log::info!(
+            "graphics: DirectX 12 compiles shaders with FXC, the first start on this graphics card is slow (later starts reuse the shader cache)"
+        );
+    }
     Ok(best.clone())
 }
 
@@ -251,8 +336,14 @@ fn main() -> eframe::Result<()> {
         crash::install_hook();
     }
 
-    let native_frames = !cli.is_automated()
-        && hp_app::settings::Settings::load_or_default(&hp_app::settings::Settings::default_path()).ui.native_frames;
+    let saved = (!cli.is_automated())
+        .then(|| hp_app::settings::Settings::load_or_default(&hp_app::settings::Settings::default_path()));
+    let native_frames = saved.as_ref().is_some_and(|s| s.ui.native_frames);
+    let backend = cli.backend.or(saved.as_ref().map(|s| s.render.graphics_backend)).unwrap_or_default();
+    let dx12_compiler = saved.as_ref().map(|s| s.render.dx12_compiler).unwrap_or_default();
+    hp_render::pipeline_cache::set_dx12_shader_cache(Some(
+        hp_app::settings::Settings::cache_dir().join(hp_render::pipeline_cache::DX12_SHADER_DIR),
+    ));
     let margin = if native_frames { 0.0 } else { 2.0 * hp_app::chrome::MARGIN };
     let viewport = egui::ViewportBuilder::default()
         .with_title("Hammer Pro")
@@ -267,7 +358,7 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport,
         renderer: eframe::Renderer::Wgpu,
-        wgpu_options: wgpu_options(true),
+        wgpu_options: wgpu_options(true, forced_backend(backend), dx12_compiler),
         system_font_fallback: false,
         ..Default::default()
     };

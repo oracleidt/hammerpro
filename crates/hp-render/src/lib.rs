@@ -305,7 +305,9 @@ pub struct Renderer {
     retained: HashMap<u32, RetainedGpu>,
     retained_uploads: u64,
     staging: memory::StagingPacer,
-    prewarm: Option<std::thread::JoinHandle<Vec<(usize, PipelineSet)>>>,
+    prewarm: Option<Prewarm>,
+    pipeline_timings: Vec<PipelineTiming>,
+    pipeline_wait_ms: f64,
     shadow: Option<shadow::ShadowGpu>,
     control_shadow: Option<control_shadow::ControlShadow>,
     shadow_dummy_array: wgpu::TextureView,
@@ -387,6 +389,7 @@ pub struct Renderer {
     projectors: projector::Projectors,
     texture_limit: u32,
     upload_failed: bool,
+    memory_budget: memory::MemoryBudget,
 }
 
 fn classify(desc: Option<&MaterialDesc>) -> Option<(MeshPass, bool)> {
@@ -904,6 +907,33 @@ fn options_uniform(cam: &Camera, o: &ViewOptions, env: &Environment, sky_pass: b
     }
 }
 
+struct PrewarmedSet {
+    slot: usize,
+    samples: u32,
+    ms: f64,
+    set: PipelineSet,
+}
+
+struct Prewarm {
+    rx: std::sync::Mutex<std::sync::mpsc::Receiver<PrewarmedSet>>,
+    started: std::time::Instant,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PipelineTiming {
+    pub samples: u32,
+    pub ms: f64,
+    pub background: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PipelineStats {
+    pub sets: Vec<PipelineTiming>,
+    pub building: bool,
+    pub ready: [bool; 2],
+    pub waited_ms: f64,
+}
+
 impl Renderer {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let device = device.clone();
@@ -1052,6 +1082,8 @@ impl Renderer {
             retained_uploads: 0,
             staging: memory::StagingPacer::default(),
             prewarm: None,
+            pipeline_timings: Vec::new(),
+            pipeline_wait_ms: 0.0,
             shadow: None,
             control_shadow: None,
             shadow_dummy_array: shadow_dummy,
@@ -1133,6 +1165,7 @@ impl Renderer {
             projectors: projector::Projectors::new(&device, &queue),
             texture_limit: limits.max_texture_dimension_2d,
             upload_failed: false,
+            memory_budget: memory::MemoryBudget::default(),
             device,
             queue,
         };
@@ -1241,6 +1274,25 @@ impl Renderer {
     fn try_create_texture_with_mips(&mut self, up: &TextureUpload, generate: bool) -> Result<TexId, RenderError> {
         let mut p = textures::prepare_with_mips(up, self.supports_bc, self.max_tex_dim, generate)?;
         textures::limit_size(&mut p, self.texture_limit);
+        if self.memory_budget.active() {
+            let tracked = self.memory().total;
+            let mut squeezed = false;
+            while !self.memory_budget.fits(tracked, textures::prepared_bytes(&p))
+                && p.width.max(p.height) > memory::MIN_SQUEEZED_TEXTURE
+            {
+                let before = (p.width, p.height);
+                let half = before.0.max(before.1) / 2;
+                textures::limit_size(&mut p, half);
+                if (p.width, p.height) == before {
+                    break;
+                }
+                squeezed = true;
+            }
+            if squeezed {
+                self.memory_budget.squeezed += 1;
+                self.memory_budget.wants_room = true;
+            }
+        }
         let (entry, oom) =
             memory::guarded(&self.device, || textures::upload(&self.device, &self.queue, &p, "hp-render texture"));
         if oom {
@@ -1264,6 +1316,41 @@ impl Renderer {
 
     pub fn max_texture_size(&self) -> u32 {
         self.max_tex_dim
+    }
+
+    pub fn set_memory_budget(&mut self, budget: u64, untracked: u64) {
+        self.memory_budget.budget = budget;
+        self.memory_budget.untracked = untracked;
+    }
+
+    pub fn fits_in_memory_budget(&self, bytes: u64) -> bool {
+        !self.memory_budget.active() || self.memory_budget.fits(self.memory().total, bytes)
+    }
+
+    pub fn set_low_memory(&mut self, low: bool) {
+        self.memory_budget.low = low;
+        self.cubes.low_memory = low;
+        self.staging.set_slice(if low { memory::LOW_STAGING_SLICE } else { memory::STAGING_SLICE });
+    }
+
+    pub fn low_memory(&self) -> bool {
+        self.memory_budget.low
+    }
+
+    pub fn set_lightmap_layer_cap(&mut self, layers: u32) {
+        self.memory_budget.lightmap_layers = layers.max(1);
+    }
+
+    pub fn lightmap_layer_cap(&self) -> u32 {
+        self.memory_budget.lightmap_layers
+    }
+
+    pub fn memory_budget_squeezes(&self) -> (u64, u64) {
+        (self.memory_budget.squeezed, self.memory_budget.refused)
+    }
+
+    pub fn take_wants_room(&mut self) -> bool {
+        std::mem::take(&mut self.memory_budget.wants_room)
     }
 
     pub fn take_upload_failed(&mut self) -> bool {
@@ -2214,19 +2301,70 @@ impl Renderer {
         }
     }
 
-    fn ensure_pipelines(&mut self, samples: u32) -> usize {
-        let i = usize::from(samples > 1);
-        if self.pipelines[i].is_none()
-            && let Some(handle) = self.prewarm.take()
-        {
-            for (k, set) in handle.join().unwrap_or_default() {
-                if let Some(slot) = self.pipelines.get_mut(k).filter(|p| p.is_none()) {
-                    *slot = Some(set);
+    fn collect_prewarm(&mut self, wait_for: Option<usize>) {
+        while let Some(prewarm) = self.prewarm.as_ref() {
+            let waiting = wait_for.is_some_and(|i| self.pipelines[i].is_none());
+            let message = {
+                let rx = prewarm.rx.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                if waiting {
+                    rx.recv().map_err(|_| true)
+                } else {
+                    rx.try_recv().map_err(|e| matches!(e, std::sync::mpsc::TryRecvError::Disconnected))
                 }
+            };
+            match message {
+                Ok(built) => {
+                    let since_start = prewarm.started.elapsed().as_secs_f64() * 1000.0;
+                    log::info!(
+                        "hp-render: pipelines for {}x MSAA built on a background thread in {:.0} ms ({:.0} ms after the start of the build)",
+                        built.samples,
+                        built.ms,
+                        since_start
+                    );
+                    self.pipeline_timings.push(PipelineTiming {
+                        samples: built.samples,
+                        ms: built.ms,
+                        background: true,
+                    });
+                    if let Some(slot) = self.pipelines.get_mut(built.slot).filter(|p| p.is_none()) {
+                        *slot = Some(built.set);
+                    }
+                }
+                Err(true) => self.prewarm = None,
+                Err(false) => return,
             }
         }
+    }
+
+    pub fn pipelines_ready(&mut self, msaa: bool) -> bool {
+        self.collect_prewarm(None);
+        self.pipelines[usize::from(msaa)].is_some() || self.prewarm.is_none()
+    }
+
+    pub fn pipeline_stats(&self) -> PipelineStats {
+        PipelineStats {
+            sets: self.pipeline_timings.clone(),
+            building: self.prewarm.is_some(),
+            ready: [self.pipelines[0].is_some(), self.pipelines[1].is_some()],
+            waited_ms: self.pipeline_wait_ms,
+        }
+    }
+
+    fn ensure_pipelines(&mut self, samples: u32) -> usize {
+        let i = usize::from(samples > 1);
+        if self.pipelines[i].is_none() && self.prewarm.is_some() {
+            let started = std::time::Instant::now();
+            self.collect_prewarm(Some(i));
+            self.pipeline_wait_ms += started.elapsed().as_secs_f64() * 1000.0;
+        }
         if self.pipelines[i].is_none() {
+            let started = std::time::Instant::now();
             self.pipelines[i] = Some(PipelineSet::new(&self.device, &self.shared, samples));
+            self.pipeline_timings.push(PipelineTiming {
+                samples,
+                ms: started.elapsed().as_secs_f64() * 1000.0,
+                background: false,
+            });
         }
         pipeline_cache::save_if_dirty(&self.device);
         i
@@ -3503,19 +3641,26 @@ impl Renderer {
         pipeline_cache::install(&self.device, path)
     }
 
-    pub fn prewarm_pipelines(&mut self) {
+    pub fn prewarm_pipelines(&mut self, msaa_first: bool) {
         if self.prewarm.is_some() || self.pipelines.iter().any(Option::is_some) {
             return;
         }
         let device = self.device.clone();
         let shared = self.shared.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let order: [(usize, u32); 2] = if msaa_first { [(1, 4), (0, 1)] } else { [(0, 1), (1, 4)] };
         let spawned = std::thread::Builder::new().name("hp-render-pipelines".to_owned()).spawn(move || {
-            let (msaa, single) =
-                rayon::join(|| PipelineSet::new(&device, &shared, 4), || PipelineSet::new(&device, &shared, 1));
-            vec![(1, msaa), (0, single)]
+            for (slot, samples) in order {
+                let started = std::time::Instant::now();
+                let set = PipelineSet::new(&device, &shared, samples);
+                let ms = started.elapsed().as_secs_f64() * 1000.0;
+                if tx.send(PrewarmedSet { slot, samples, ms, set }).is_err() {
+                    return;
+                }
+            }
         });
         match spawned {
-            Ok(handle) => self.prewarm = Some(handle),
+            Ok(_) => self.prewarm = Some(Prewarm { rx: std::sync::Mutex::new(rx), started: std::time::Instant::now() }),
             Err(e) => log::warn!("hp-render: cannot start the pipeline thread: {e}"),
         }
     }

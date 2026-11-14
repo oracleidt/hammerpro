@@ -86,7 +86,7 @@ Text fields apply on `Enter` or when they lose the focus; `Escape` cancels the e
 | Name of this entity | Text with suggestions of the names of the map. |
 | Target name, filter | Text with name completion, red when no entity has the name, an entity eyedropper and a **Mark** button. Filter keys also get a drop-down of the filters of the map. |
 | Angles | Pitch, yaw and roll fields, a yaw dial (drag it, hold `Shift` for 15 degree steps) and an aim eyedropper. |
-| Pitch (`light_spot`) | One number from -90 (straight down) to 90 (straight up), and an aim eyedropper. |
+| Pitch (`light_spot`) | One number from -90 (straight down) to 90 (straight up), and an aim eyedropper. The spotlight model in the views always points along the light cone, like Hammer's `lightprop` helper: a nonzero **Pitch** wins over the pitch of the angles, `angle` -1 and -2 point it straight up and down whatever the pitch, and the preview and Hammer Pro's compiler light the same way. |
 | Origin, vector | X, Y and Z fields. |
 | Axis | Two points, X Y Z each. |
 | NPC class, point class | Text and a class picker. |

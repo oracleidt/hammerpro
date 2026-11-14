@@ -1,4 +1,4 @@
-use hp_app::runtime::{GpuRelease, GpuReleased, VramBreakdown, VramPressure, VramSource};
+use hp_app::runtime::{GpuHardware, GpuRelease, GpuReleased, MemoryTier, VramBreakdown, VramPressure, VramSource};
 use hp_app::{AppState, Severity, tf};
 use hp_render::memory::VramProbe;
 
@@ -10,11 +10,12 @@ const RAISE_BELOW: f64 = 0.5;
 const RAISE_AFTER: f64 = 20.0;
 const RELEASE_GAP: f64 = 5.0;
 const CRITICAL_GAP: f64 = 2.0;
-const AUTO_SHARE: f64 = 0.9;
 const MIN_TEXTURE_LIMIT: u32 = 256;
 const DISCRETE_FALLBACK: u64 = 3 << 30;
 const OTHER_FALLBACK: u64 = 3 << 29;
-const SHARED_CAP: u64 = 2 << 30;
+const LAYER_SIZE: u32 = 2048;
+pub(crate) const BUDGET_ENV: &str = "HAMMERPRO_VRAM_BUDGET_MB";
+pub(crate) const SIMULATE_ENV: &str = "HAMMERPRO_SIMULATE_LOW_VRAM";
 const WARN_GAP: f64 = 60.0;
 const QUIET_GAP: f64 = 30.0;
 
@@ -30,6 +31,10 @@ pub(crate) struct VramMonitor {
     warned: VramPressure,
     last_warning: f64,
     capped: bool,
+    tier: Option<MemoryTier>,
+    forced_budget: Option<u64>,
+    simulate: Option<String>,
+    squeezed_seen: u64,
 }
 
 impl Default for VramMonitor {
@@ -46,16 +51,17 @@ impl Default for VramMonitor {
             warned: VramPressure::Normal,
             last_warning: f64::NEG_INFINITY,
             capped: false,
+            tier: None,
+            forced_budget: None,
+            simulate: None,
+            squeezed_seen: 0,
         }
     }
 }
 
-pub(crate) fn auto_budget(driver_budget: Option<u64>, fallback: u64, shared: bool) -> u64 {
-    let budget = match driver_budget {
-        Some(b) if b > 0 => (b as f64 * AUTO_SHARE) as u64,
-        _ => fallback,
-    };
-    if shared { budget.min(SHARED_CAP) } else { budget }
+pub(crate) fn forced_budget(value: Option<&str>) -> Option<u64> {
+    let mb: u64 = value?.trim().parse().ok()?;
+    (mb > 0).then(|| mb.clamp(64, 1 << 20) << 20)
 }
 
 pub(crate) fn pressure(usage: u64, budget: u64, out_of_memory: bool) -> VramPressure {
@@ -131,7 +137,41 @@ impl VramMonitor {
             None => log::info!("graphics memory: the driver does not report a budget, {} MB is assumed", mb(fallback)),
         }
         let shared = matches!(info.device_type, wgpu::DeviceType::IntegratedGpu | wgpu::DeviceType::Cpu);
-        Self { probe, fallback, shared, ..Self::default() }
+        let forced_budget = forced_budget(std::env::var(BUDGET_ENV).ok().as_deref());
+        let simulate = std::env::var(SIMULATE_ENV).ok().filter(|v| !v.trim().is_empty() && v.trim() != "0");
+        if let Some(b) = forced_budget {
+            log::info!("graphics memory: the budget is forced to {} MB by {BUDGET_ENV}", mb(b));
+        }
+        if let Some(v) = &simulate {
+            log::info!("graphics memory: a small integrated graphics card is simulated by {SIMULATE_ENV}={v}");
+        }
+        Self { probe, fallback, shared, forced_budget, simulate, ..Self::default() }
+    }
+
+    fn apply_tier(&mut self, state: &mut AppState, tier: MemoryTier, hardware: GpuHardware, budget: u64) {
+        let changed = self.tier != Some(tier);
+        if changed {
+            self.tier = Some(tier);
+            log::info!(
+                "graphics memory: {} mode ({} setting, {} MB dedicated{}{}), budget {} MB",
+                tier.id(),
+                state.settings.render.graphics_memory.id(),
+                mb(hardware.dedicated),
+                if hardware.integrated { ", integrated graphics" } else { "" },
+                if hardware.simulated { ", simulated" } else { "" },
+                mb(budget)
+            );
+            state.runtime.render.perf.memory_cap = tier.plan_cap();
+            state.assets.set_memory_tier(tier);
+        }
+        let Some(gfx) = state.gfx.as_mut() else { return };
+        let device_layers = gfx.device.limits().max_texture_array_layers.clamp(1, 64);
+        let layers = tier.lightmap_layers(budget, LAYER_SIZE, device_layers);
+        if changed || gfx.renderer.low_memory() != tier.low() {
+            gfx.renderer.set_low_memory(tier.low());
+        }
+        gfx.renderer.set_lightmap_layer_cap(layers);
+        state.runtime.gpu.lightmap_layers = layers;
     }
 
     pub(crate) fn tick(&mut self, state: &mut AppState, now: f64) {
@@ -161,10 +201,39 @@ impl VramMonitor {
             Some(v) => (v.usage, VramSource::Driver),
             None => (estimate.total(), VramSource::Estimate),
         };
-        let fixed = state.settings.render.vram_budget();
-        let budget = fixed.unwrap_or_else(|| auto_budget(driver.map(|v| v.budget), self.fallback, self.shared));
+        let hardware = GpuHardware {
+            dedicated: driver.map_or(0, |v| v.dedicated),
+            driver_budget: driver.map_or(0, |v| v.budget),
+            integrated: self.shared,
+            simulated: false,
+        }
+        .with_simulation(self.simulate.as_deref())
+        .with_forced_budget(self.forced_budget);
+        let tier = MemoryTier::resolve(state.settings.render.graphics_memory, hardware);
+        let fixed = state.settings.render.vram_budget().or(self.forced_budget);
+        let budget = fixed.unwrap_or_else(|| tier.budget(driver.map(|v| v.budget), self.fallback, self.shared));
+        self.apply_tier(state, tier, hardware, budget);
+        let Some(gfx) = state.gfx.as_mut() else { return };
+        let untracked = match driver {
+            Some(v) => v.usage.saturating_sub(report.total),
+            None => 0,
+        };
+        gfx.renderer.set_memory_budget(budget, untracked);
+        let wants_room = gfx.renderer.take_wants_room();
+        let squeezed = gfx.renderer.memory_budget_squeezes().0;
+        if squeezed > self.squeezed_seen {
+            log::info!(
+                "graphics memory: {} textures were loaded smaller to stay under the {} MB budget",
+                squeezed - self.squeezed_seen,
+                mb(budget)
+            );
+            self.squeezed_seen = squeezed;
+        }
         let keep = state.settings.render.keep_background_maps_on_gpu;
         let level = pressure(usage, budget, new_oom || upload_failed);
+        let request = request.or_else(|| {
+            (wants_room && now - self.last_release >= RELEASE_GAP).then_some(level != VramPressure::Normal)
+        });
         let texture_limit = gfx.renderer.texture_limit();
         let plan_cap = state.runtime.render.perf.plan(state.settings.render.performance_mode).texture_limit;
         let max_texture = gfx.renderer.max_texture_size().min(plan_cap).max(MIN_TEXTURE_LIMIT);
@@ -218,6 +287,9 @@ impl VramMonitor {
         self.warn(state, level, now, usage, budget, &released);
         let texture_limit = state.gfx.as_ref().map_or(texture_limit, |g| g.renderer.texture_limit());
         let rt = &mut state.runtime.gpu;
+        rt.tier = tier;
+        rt.hardware = hardware;
+        rt.squeezed_textures = squeezed;
         rt.budget = budget;
         rt.budget_is_auto = fixed.is_none();
         rt.usage = usage;
@@ -304,11 +376,24 @@ mod tests {
 
     #[test]
     fn budget_comes_from_the_driver_when_it_reports_one() {
-        assert_eq!(auto_budget(Some(8 << 30), DISCRETE_FALLBACK, false), (8u64 << 30) * 9 / 10);
-        assert_eq!(auto_budget(None, DISCRETE_FALLBACK, false), DISCRETE_FALLBACK);
-        assert_eq!(auto_budget(Some(0), OTHER_FALLBACK, false), OTHER_FALLBACK);
-        assert_eq!(auto_budget(Some(16 << 30), OTHER_FALLBACK, true), SHARED_CAP, "integrated graphics share the RAM");
-        assert_eq!(auto_budget(Some(1 << 30), OTHER_FALLBACK, true), (1u64 << 30) * 9 / 10);
+        let normal = |b, f, s| MemoryTier::Normal.budget(b, f, s);
+        assert_eq!(normal(Some(8 << 30), DISCRETE_FALLBACK, false), ((8u64 << 30) as f64 * 0.9) as u64);
+        assert_eq!(normal(None, DISCRETE_FALLBACK, false), DISCRETE_FALLBACK);
+        assert_eq!(normal(Some(0), OTHER_FALLBACK, false), OTHER_FALLBACK);
+        assert_eq!(normal(Some(16 << 30), OTHER_FALLBACK, true), 2 << 30, "integrated graphics share the RAM");
+        assert_eq!(normal(Some(1 << 30), OTHER_FALLBACK, true), ((1u64 << 30) as f64 * 0.9) as u64);
+        assert_eq!(MemoryTier::Low.budget(Some(3553 << 20), OTHER_FALLBACK, true), 1 << 30);
+    }
+
+    #[test]
+    fn a_forced_budget_comes_from_the_environment() {
+        assert_eq!(forced_budget(None), None);
+        assert_eq!(forced_budget(Some("")), None);
+        assert_eq!(forced_budget(Some("0")), None);
+        assert_eq!(forced_budget(Some("512")), Some(512 << 20));
+        assert_eq!(forced_budget(Some(" 1024 ")), Some(1 << 30));
+        assert_eq!(forced_budget(Some("8")), Some(64 << 20));
+        assert_eq!(forced_budget(Some("abc")), None);
     }
 
     #[test]

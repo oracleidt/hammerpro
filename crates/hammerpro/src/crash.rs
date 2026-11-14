@@ -222,7 +222,7 @@ pub fn install_hook_in(dir: PathBuf) {
         let name = thread.name().unwrap_or("unnamed").to_owned();
         let message = panic_message(info);
         let location = info.location().map(|l| l.to_string()).unwrap_or_default();
-        if name == "main" {
+        if name == "main" && !egui_wgpu::recovery::in_guarded_paint() {
             let backtrace = std::backtrace::Backtrace::force_capture().to_string();
             let text = report_text(&message, &location, &name, &backtrace, &crate::logger::recent_lines_in_hook());
             match write_report(&dir, &text) {

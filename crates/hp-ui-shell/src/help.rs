@@ -1,5 +1,5 @@
 use egui::{RichText, Ui};
-use hp_app::settings::NavScheme;
+use hp_app::settings::{NavInput, NavScheme};
 use hp_app::{Action, AppState, t, tf};
 
 use crate::common::{CATEGORIES, EscapeGuard, accent_text, category_label, heading, search_field, window_layer};
@@ -18,22 +18,12 @@ pub fn scheme_label_key(scheme: NavScheme) -> &'static str {
 }
 
 pub fn scheme_controls(scheme: NavScheme) -> Vec<(&'static str, &'static str)> {
-    let mut out =
-        vec![("shell.help.ctl_rmb", "shell.help.ctl_rmb_desc"), ("shell.help.ctl_wasd", "shell.help.ctl_wasd_desc")];
-    if scheme.middle_looks() {
-        out.push(("shell.view.ctl_mmb", "shell.view.ctl_mmb_look"));
-    } else {
-        out.push(("shell.help.ctl_mmb", "shell.help.ctl_mmb_desc"));
+    let mut out: Vec<(&'static str, &'static str)> =
+        scheme.bindings().into_iter().map(|(input, effect)| (input.label_key(), effect.desc_key())).collect();
+    if scheme.right_free() {
+        let at = out.iter().position(|(k, _)| *k == NavInput::RightDrag3d.label_key()).map_or(out.len(), |i| i + 1);
+        out.insert(at, ("shell.nav.rmb_texture", "shell.nav.rmb_texture_desc"));
     }
-    if scheme.hammer_gestures() {
-        out.push(("shell.view.ctl_space_left", "shell.view.ctl_space_left_desc"));
-        out.push(("shell.view.ctl_space_right", "shell.view.ctl_space_right_desc"));
-        out.push(("shell.view.ctl_both", "shell.view.ctl_both_desc"));
-        out.push(("shell.view.ctl_arrows_3d", "shell.view.ctl_arrows_3d_desc"));
-    }
-    out.push(("shell.view.ctl_arrows_2d", "shell.view.ctl_arrows_2d_desc"));
-    out.push(("shell.view.ctl_digits", "shell.view.ctl_digits_desc"));
-    out.push(("shell.help.ctl_fly_click", "shell.help.ctl_fly_click_desc"));
     out
 }
 
@@ -321,13 +311,11 @@ pub(crate) const TR: hp_app::i18n::TrTable = &[
     ("shell.help.viewport_controls_of", "Viewport controls ({0})", "Contrôles des vues ({0})"),
     ("shell.about.build", "Build {0}", "Compilation {0}"),
     ("shell.help.ctl_rmb", "Right mouse drag", "Clic droit + glisser"),
-    ("shell.help.ctl_rmb_desc", "Look around (3D view)", "Regarder autour (vue 3D)"),
     ("shell.help.ctl_wasd", "W A S D (+ Q E)", "Z Q S D (+ A E), W A S D en QWERTY"),
     ("shell.help.ctl_wasd_desc", "Fly while holding the right mouse button", "Se déplacer en maintenant le clic droit"),
     ("shell.help.ctl_shift", "Shift", "Maj"),
     ("shell.help.ctl_shift_desc", "Move the camera faster", "Déplacer la caméra plus vite"),
     ("shell.help.ctl_mmb", "Middle mouse or Space + drag", "Clic molette ou Espace + glisser"),
-    ("shell.help.ctl_mmb_desc", "Pan the view", "Faire défiler la vue"),
     ("shell.help.ctl_wheel", "Mouse wheel", "Molette"),
     ("shell.help.ctl_wheel_desc", "Zoom (2D) or move forward (3D)", "Zoomer (2D) ou avancer (3D)"),
     ("shell.help.ctl_grid_keys", "[ and ], Ctrl + wheel (2D)", "[ et ], Ctrl + molette (2D)"),
@@ -380,6 +368,33 @@ pub(crate) const TR: hp_app::i18n::TrTable = &[
     ),
     ("shell.about.github", "Source code", "Code source"),
     ("shell.about.vdc", "Valve Developer Community", "Valve Developer Community"),
+    ("shell.nav.pan_2d", "Pan (2D views)", "Faire défiler (vues 2D)"),
+    (
+        "shell.nav.fly_middle",
+        "Fly while holding the middle mouse button",
+        "Se déplacer en maintenant le bouton du milieu",
+    ),
+    ("shell.nav.z", "Z (physical key)", "Z (touche physique, W en AZERTY)"),
+    (
+        "shell.nav.z_desc",
+        "Toggle mouselook in the 3D view: look with the mouse, fly with W A S D, Z or Escape leaves",
+        "Basculer la vue souris dans la vue 3D : regarder à la souris, se déplacer avec Z Q S D, Z ou Échap pour sortir",
+    ),
+    (
+        "shell.nav.rmb_free",
+        "Left free for the active tool (3D view): a right click opens the context menu, the camera does not move",
+        "Laissé libre pour l'outil actif (vue 3D) : un clic droit ouvre le menu contextuel, la caméra ne bouge pas",
+    ),
+    (
+        "shell.nav.rmb_texture",
+        "Right click / right drag (Face edit tool)",
+        "Clic droit / glisser clic droit (outil Édition de faces)",
+    ),
+    (
+        "shell.nav.rmb_texture_desc",
+        "Apply the current texture to the face under the cursor, or paint it onto every face swept (Alt: wrap, Ctrl: nodraw)",
+        "Appliquer la texture courante sur la face sous le curseur, ou la peindre sur chaque face survolée (Alt : enrouler, Ctrl : nodraw)",
+    ),
 ];
 
 #[cfg(test)]
@@ -392,7 +407,16 @@ mod tests {
         let pro = viewport_controls(NavScheme::HammerPro);
         let hammer = viewport_controls(NavScheme::Hammer);
         let pp = viewport_controls(NavScheme::HammerPlusPlus);
-        assert!(pro.contains(&("shell.help.ctl_mmb", "shell.help.ctl_mmb_desc")));
+        assert!(pro.contains(&("shell.help.ctl_mmb", "shell.nav.pan_2d")));
+        assert!(pro.contains(&("shell.help.ctl_rmb", "shell.view.ctl_mmb_look")));
+        assert!(pro.contains(&("shell.view.ctl_mmb", "shell.view.ctl_space_right_desc")));
+        assert!(hammer.contains(&("shell.help.ctl_wasd", "shell.help.ctl_wasd_desc")));
+        assert!(pp.contains(&("shell.help.ctl_rmb", "shell.nav.rmb_free")));
+        assert!(pp.contains(&("shell.help.ctl_wasd", "shell.nav.fly_middle")));
+        assert!(pp.contains(&("shell.nav.rmb_texture", "shell.nav.rmb_texture_desc")));
+        assert!(!pp.iter().any(|(_, d)| *d == "shell.help.ctl_wasd_desc"), "no right button flying in Hammer++");
+        assert!(!pp.contains(&("shell.help.ctl_rmb", "shell.view.ctl_mmb_look")));
+        assert!(pp.iter().any(|(k, _)| *k == "shell.view.ctl_space_left"));
         assert!(!pro.iter().any(|(k, _)| *k == "shell.view.ctl_space_left"));
         assert!(hammer.iter().any(|(k, _)| *k == "shell.view.ctl_space_left"));
         assert!(pp.contains(&("shell.view.ctl_mmb", "shell.view.ctl_mmb_look")));

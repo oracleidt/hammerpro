@@ -59,6 +59,7 @@ pub fn entity_render_object(id: hp_vmf::Id) -> u32 {
 }
 
 mod helpers;
+mod instance_decor;
 mod instances;
 mod render;
 
@@ -739,6 +740,13 @@ impl hp_app::AssetsApi for AssetManager {
 
     fn set_texture_budget(&mut self, bytes: u64) {
         self.residency.budget = bytes;
+    }
+
+    fn set_memory_tier(&mut self, tier: hp_app::runtime::MemoryTier) {
+        let thumbs = tier.thumbnails();
+        let frame = self.shared.current_frame();
+        self.thumbs.set_capacity(thumbs, frame);
+        self.set_model_thumb_capacity(thumbs / 4);
     }
 
     fn texture_streaming(&self) -> hp_app::runtime::TextureStreaming {

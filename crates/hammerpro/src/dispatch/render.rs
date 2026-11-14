@@ -20,6 +20,12 @@ pub(crate) struct State {
     bg: bgimages::BgImages,
 }
 
+impl State {
+    pub(crate) fn forget_gpu(&mut self) {
+        self.bg.forget_gpu();
+    }
+}
+
 const FAR_STEP: f32 = 1.5;
 const FAR_RANGE: (f32, f32) = (256.0, 1.0e6);
 const MAX_SLEEP: Duration = Duration::from_millis(100);

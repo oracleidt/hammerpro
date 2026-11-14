@@ -14,6 +14,7 @@ use hp_render::{MarkTri, MaterialId, MeshBatch, ModelInstance, ObjectFlags, Obje
 
 use crate::AssetManager;
 use crate::entities::{BOX_ALPHA, WORLD_COLOR, brush_entity_color, entity_desc, entity_object};
+use crate::instance_decor::{DecorPlacement, LocalDecor, PlacedDecor, local_decor, place_decor};
 use crate::meshes::box_mesh;
 use crate::models::entity_matrix;
 use crate::producer::{DerivedBuild, DerivedObject, DerivedProducer, ProducerChanges, ProducerCx};
@@ -28,6 +29,8 @@ fn content_flags(display: InstanceDisplay) -> ObjectFlags {
         _ => ObjectFlags::empty(),
     }
 }
+
+const DECOR_KEY_BASE: u64 = 0x4000;
 
 const MODEL_TINT: [f32; 4] = [0.62, 0.86, 1.0, 1.0];
 
@@ -164,6 +167,8 @@ struct Shown {
     models: Vec<ModelInstance>,
     lights: Vec<crate::lights::SceneLight>,
     waiting: Vec<String>,
+    decor_pending: bool,
+    decals: bool,
 }
 
 pub(crate) struct InstanceProducer {
@@ -177,6 +182,7 @@ pub(crate) struct InstanceProducer {
     lists_dirty: bool,
     walk: bool,
     cubes: Option<Arc<crate::cubemaps::CubeAssign>>,
+    decor: AHashMap<u64, Option<Arc<LocalDecor>>>,
 }
 
 impl InstanceProducer {
@@ -192,6 +198,7 @@ impl InstanceProducer {
             lists_dirty: false,
             walk: false,
             cubes: None,
+            decor: AHashMap::new(),
         }
     }
 
@@ -213,11 +220,9 @@ impl InstanceProducer {
         let files: Vec<Option<Arc<InstanceFile>>> = exp.pieces.iter().map(|p| self.cache.file(&p.path)).collect();
         let walk = walk_marks();
         let signature = signature(&exp, &files, scene, cx, walk);
-        if self
-            .shown
-            .get(&id)
-            .is_some_and(|s| s.signature == signature && s.waiting.is_empty() && s.loading == exp.is_pending())
-        {
+        if self.shown.get(&id).is_some_and(|s| {
+            s.signature == signature && s.waiting.is_empty() && !s.decor_pending && s.loading == exp.is_pending()
+        }) {
             return;
         }
         let mut groups: Vec<WireGroup> = Vec::new();
@@ -235,6 +240,28 @@ impl InstanceProducer {
             _ => [1.0; 4],
         };
         let kinds = |c: &str, k: &str| fgd.as_deref().and_then(|f| rt::key_fixup(f, c, k));
+        let mut decor_out = PlacedDecor::default();
+        let show_overlays = hp_app::runtime::helpers::scene_display().overlays;
+        if self.decor.len() > 256 {
+            self.decor.clear();
+        }
+        for (piece, file) in exp.pieces.iter().zip(&files) {
+            let Some(file) = file else { continue };
+            let decor = self
+                .decor
+                .entry(file.revision)
+                .or_insert_with(|| local_decor(&file.map, fgd.as_deref()).map(Arc::new))
+                .clone();
+            let Some(decor) = decor else { continue };
+            let at = DecorPlacement {
+                matrix: piece.fixup.matrix,
+                fixup: Some(&piece.fixup),
+                kinds: Some(&kinds),
+                overlays: show_overlays,
+                parent: Some(cx.doc),
+            };
+            place_decor(cx.assets, &file.map, &decor, &at, &mut decor_out);
+        }
         for piece in &exp.pieces {
             for e in piece.point_entities(Some(&kinds), true) {
                 let desc = entity_desc(&e, fgd.as_deref());
@@ -284,13 +311,26 @@ impl InstanceProducer {
             keys.push(key);
             out.upsert.push(DerivedObject { key, mesh, owner: Some(id), flags: content_flags(scene.display) });
         }
+        for (k, mesh) in decor_out.meshes.into_iter().enumerate() {
+            let key = u64::from(id) | ((DECOR_KEY_BASE + k as u64) << 32);
+            keys.push(key);
+            out.upsert.push(DerivedObject {
+                key,
+                mesh,
+                owner: Some(id),
+                flags: content_flags(scene.display) | ObjectFlags::NO_GAME_WIRE,
+            });
+        }
         for k in old.keys.iter().filter(|k| !keys.contains(k)) {
             out.remove.push(*k);
         }
         if old.models != models || old.lights != lights {
             self.lists_dirty = true;
         }
-        self.shown.insert(id, Shown { loading: exp.is_pending(), keys, signature, models, lights, waiting });
+        let (decor_pending, decals) = (decor_out.pending, decor_out.decals);
+        let shown =
+            Shown { loading: exp.is_pending(), keys, signature, models, lights, waiting, decor_pending, decals };
+        self.shown.insert(id, shown);
     }
 
     fn forget(&mut self, id: Id, out: &mut DerivedBuild) {
@@ -318,11 +358,13 @@ impl DerivedProducer for InstanceProducer {
         if changes.full {
             self.shown.clear();
             self.meshes.clear();
+            self.decor.clear();
             self.dirty.clear();
             self.lists_dirty = true;
         }
         if changes.entities {
             self.meshes.clear();
+            self.decor.clear();
             for s in self.shown.values_mut() {
                 s.signature = 0;
             }
@@ -350,6 +392,12 @@ impl DerivedProducer for InstanceProducer {
             if doc.visibility_changed || doc.visgroups_changed {
                 self.lists_dirty |= self.shown.values().any(|s| !s.lights.is_empty());
             }
+            if !doc.solids_changed.is_empty() || !doc.solids_removed.is_empty() {
+                for (id, s) in self.shown.iter_mut().filter(|(_, s)| s.decals) {
+                    s.signature = 0;
+                    self.dirty.insert(*id);
+                }
+            }
             for id in doc.entities_changed.iter().chain(&doc.entities_removed) {
                 if self.shown.contains_key(id) || cx.doc.scene().entity(*id).is_some_and(|n| is_instance(&n.entity)) {
                     self.dirty.insert(*id);
@@ -357,7 +405,7 @@ impl DerivedProducer for InstanceProducer {
             }
         }
         for (id, s) in &self.shown {
-            if s.waiting.iter().any(|p| !model_loading(cx.assets, p)) {
+            if s.decor_pending || s.waiting.iter().any(|p| !model_loading(cx.assets, p)) {
                 self.dirty.insert(*id);
             }
         }
@@ -395,6 +443,8 @@ struct ContextProducer {
     layout: Option<u64>,
     keys: Vec<u64>,
     walk: bool,
+    decor: AHashMap<u64, Option<Arc<LocalDecor>>>,
+    pending: bool,
 }
 
 fn context_signature(ctx: &rt::InstanceContext, generation: u64, doc_path: Option<&Path>) -> u64 {
@@ -404,6 +454,7 @@ fn context_signature(ctx: &rt::InstanceContext, generation: u64, doc_path: Optio
     ctx.entity.hash(&mut h);
     generation.hash(&mut h);
     doc_path.hash(&mut h);
+    hp_app::runtime::helpers::scene_display().overlays.hash(&mut h);
     h.finish()
 }
 
@@ -467,13 +518,19 @@ impl DerivedProducer for ContextProducer {
             self.signature = None;
             self.layout = None;
             self.meshes.clear();
+            self.decor.clear();
         }
         let walk = walk_marks();
         if changes.entities || self.walk != walk {
             self.meshes.clear();
+            self.decor.clear();
             self.signature = None;
             self.layout = None;
             self.walk = walk;
+        }
+        if self.pending {
+            self.layout = None;
+            return true;
         }
         let wanted = rt::context().filter(|_| rt::scene().show_context);
         let signature =
@@ -487,28 +544,55 @@ impl DerivedProducer for ContextProducer {
         let wanted = rt::context().filter(|_| rt::scene().show_context);
         let Some(ctx) = wanted else {
             out.remove.append(&mut self.keys);
+            self.pending = false;
             self.signature = None;
             self.layout = None;
             return out;
         };
         self.signature = Some(context_signature(&ctx, cache.generation(), cx.doc.path()));
         let layout = context_layout(cx, &cache, &ctx).unwrap_or_default();
-        let signature = layout_signature(&layout);
+        let signature = layout_signature(&layout) ^ u64::from(hp_app::runtime::helpers::scene_display().overlays);
         if self.layout == Some(signature) {
             return out;
         }
         self.layout = Some(signature);
         let mut groups: Vec<WireGroup> = Vec::new();
+        let mut decor_out = PlacedDecor::default();
+        let show_overlays = hp_app::runtime::helpers::scene_display().overlays;
+        let fgd = cx.assets.fgd.clone();
+        if self.decor.len() > 256 {
+            self.decor.clear();
+        }
         for (file, m) in &layout {
             let local = self.meshes.get(cx, file, self.walk);
             place_mesh(&mut groups, &local, m, &crate::cubemaps::CubeAssign::default());
+            let decor = self
+                .decor
+                .entry(file.revision)
+                .or_insert_with(|| local_decor(&file.map, fgd.as_deref()).map(Arc::new))
+                .clone();
+            if let Some(decor) = decor {
+                let at = DecorPlacement { matrix: *m, fixup: None, kinds: None, overlays: show_overlays, parent: None };
+                place_decor(cx.assets, &file.map, &decor, &at, &mut decor_out);
+            }
         }
+        self.pending = decor_out.pending;
         let mut keys = Vec::with_capacity(groups.len());
         for (k, group) in groups.into_iter().enumerate() {
             let Some(mesh) = group.into_mesh() else { continue };
             let key = k as u64;
             keys.push(key);
             out.upsert.push(DerivedObject { key, mesh, owner: None, flags: ObjectFlags::INSTANCE });
+        }
+        for (k, mesh) in decor_out.meshes.into_iter().enumerate() {
+            let key = DECOR_KEY_BASE << 32 | k as u64;
+            keys.push(key);
+            out.upsert.push(DerivedObject {
+                key,
+                mesh,
+                owner: None,
+                flags: ObjectFlags::INSTANCE | ObjectFlags::NO_GAME_WIRE,
+            });
         }
         for k in self.keys.iter().filter(|k| !keys.contains(k)) {
             out.remove.push(*k);
@@ -529,7 +613,7 @@ fn signature(
     let mut h = std::collections::hash_map::DefaultHasher::new();
     scene.display.hash(&mut h);
     walk.hash(&mut h);
-    (cx.opts.show_models, cx.opts.show_helpers).hash(&mut h);
+    (cx.opts.show_models, cx.opts.show_helpers, hp_app::runtime::helpers::scene_display().overlays).hash(&mut h);
     cx.assets.fgd.as_ref().map(|f| Arc::as_ptr(f) as usize).hash(&mut h);
     (Arc::as_ptr(&cx.assets.editor_cubes.assign()) as usize).hash(&mut h);
     for (p, f) in exp.pieces.iter().zip(files) {

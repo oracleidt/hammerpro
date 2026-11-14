@@ -14,7 +14,7 @@ domain! { "graphics memory";
         in background tabs), the texture size limit applied under pressure, what was freed so far, and \
         texture_streaming (render.texture_streaming): how many textures far from every view are held at a smaller \
         size, the graphics memory they use now against their full size, the texture budget (60% of the budget) \
-        and the reduction level used to stay under it (1 when the budget is not reached).",
+        and the reduction level used to stay under it (1 when the budget is not reached). graphics_memory is         render.graphics_memory (Auto, Low, Normal or High) and mode the one in force (low, normal, high; Auto picks         low on integrated graphics and cards under 3 GB, high from 12 GB): low uses half of what the system gives         (1 GB at most), textures up to 1024 pixels from the start, smaller shadow maps, no multisampling, fewer         lightmap layers (lightmap_layers_max) and thumbnails. hardware is the card seen (dedicated_mb, integrated,         simulated by HAMMERPRO_SIMULATE_LOW_VRAM), textures_loaded_smaller counts textures loaded at a smaller         size so they fit the budget (HAMMERPRO_VRAM_BUDGET_MB forces a budget for tests, below 3 GB with the low mode), and device the graphics         device losses and recoveries of the session.",
         {}, [];
     get_performance: Read, "Frame time and quality",
         "Frame time and quality of the 3D view: FPS, frame time, CPU time of the last 3D render (prepare, record, \
@@ -37,7 +37,7 @@ domain! { "graphics memory";
         holds the slowest frame since the previous get_performance call, average_frame_ms the average of the \
         frames_since_last_read frames drawn since that call. views_ms gives, for each of the four \
         views in the last frame, the CPU time spent building its overlay (layers, grid, tool), drawing it (or reusing \
-        its last image when nothing changed: rendered false) and painting its labels, with its overlay item count.",
+        its last image when nothing changed: rendered false) and painting its labels, with its overlay item count.         Startup and shaders: graphics_api (Vulkan or Dx12 in use), graphics_api_setting (render.graphics_backend:         Auto, Vulkan or Dx12, applied at the next start), dx12_shader_compiler (fxc or dxc on DirectX 12),         startup_ms (first_frame: the first frame of the window, views_ready: when the views could draw), and         pipelines: building_in_background, ready (msaa, no_msaa), sets (each set of render pipelines with its         sample count, build milliseconds and whether it was built on the background thread), main_thread_wait_ms,         created and create_ms_total (every render pipeline created so far), dx12_shaders (DirectX 12 only:         compiler, shaders compiled and their total milliseconds, disk_cache_hits and disk_cache_misses of the         shader cache kept between starts, disk_cache_dir).",
         {}, [];
     run_benchmark: Editor, "Benchmark the 3D view",
         "Turn the 3D camera through a full circle around its position over a number of frames (the camera is         put back afterwards) and measure the frame time of the real window: average FPS, frame time average,         95th and 99th percentile and worst, CPU render time (average, median and 99th percentile), GPU time per stage when the card supports timestamp         queries (total, median, 99th percentile, and per pass like get_performance gpu_ms.passes and water_reflection_passes), and the working set RAM at the start, end and peak. It starts at once; call wait_frames, then         get_performance: its benchmark field is running while it runs, then holds the result. vsync caps the         FPS at the refresh rate, so compare the CPU and GPU milliseconds as well.",
@@ -53,6 +53,9 @@ domain! { "graphics memory";
         and models no open map uses, and the thumbnail caches. With lower_textures, textures are also loaded \
         again at half their size limit (they come back to full size when memory is free for a while).",
         { "lower_textures": boolean("Also lower the texture size limit one step.") }, [];
+    simulate_gpu_device_loss: Editor, "Simulate a graphics device loss",
+        "Test tool: destroy the graphics device the way a driver reset or an out of memory error loses it, to         check the recovery. Modified maps are autosaved, a new device is created, and the map, textures,         thumbnails and lighting preview load again without closing Hammer Pro (get_gpu_memory device shows the         losses and recoveries). After more than 3 losses in two minutes Hammer Pro saves and offers a restart instead.",
+        {}, [];
 }
 
 fn mb(bytes: u64) -> u64 {
@@ -68,6 +71,22 @@ fn get_gpu_memory(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
         "budget_mb": mb(g.budget),
         "budget_is_automatic": g.budget_is_auto,
         "budget_setting_mb": state.settings.render.vram_budget_mb,
+        "graphics_memory": state.settings.render.graphics_memory.id(),
+        "mode": g.tier.id(),
+        "hardware": {
+            "dedicated_mb": mb(g.hardware.dedicated),
+            "integrated": g.hardware.integrated,
+            "simulated": g.hardware.simulated,
+        },
+        "lightmap_layers_max": g.lightmap_layers,
+        "textures_loaded_smaller": g.squeezed_textures,
+        "device": {
+            "losses": g.device_losses,
+            "recoveries": g.device_recoveries,
+            "recovering": g.recovering,
+            "last_loss": g.last_device_loss,
+            "interface_frames_skipped": egui_wgpu::recovery::staging_failures(),
+        },
         "source": g.source.id(),
         "driver_budget_mb": mb(g.driver_budget),
         "dedicated_mb": mb(g.dedicated),
@@ -154,6 +173,32 @@ fn bench_json(p: &hp_app::runtime::PerfRuntime) -> serde_json::Value {
     }
 }
 
+fn pipelines_json(state: &AppState) -> serde_json::Value {
+    let c = hp_render::pipeline_cache::compile_stats();
+    let renderer = state.gfx.as_ref().map(|g| g.renderer.pipeline_stats());
+    json!({
+        "building_in_background": renderer.as_ref().is_some_and(|r| r.building),
+        "ready": renderer.as_ref().map(|r| json!({ "msaa": r.ready[1], "no_msaa": r.ready[0] })),
+        "sets": renderer.as_ref().map(|r| r.sets.iter().map(|s| json!({
+            "samples": s.samples,
+            "ms": s.ms,
+            "background": s.background,
+        })).collect::<Vec<_>>()),
+        "main_thread_wait_ms": renderer.as_ref().map(|r| r.waited_ms),
+        "created": c.pipelines_created,
+        "create_ms_total": c.pipelines_ms,
+        "dx12_shaders": c.dx12.map(|d| json!({
+            "compiler": c.dx12_compiler,
+            "compiled": d.compiled,
+            "compile_ms_total": d.compile_ms,
+            "disk_cache_hits": d.disk_hits,
+            "disk_cache_misses": d.disk_misses,
+            "disk_cache_write_errors": d.write_errors,
+            "disk_cache_dir": c.dx12_cache_dir.as_ref().map(|p| p.display().to_string()),
+        })),
+    })
+}
+
 fn get_performance(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
     let r = &state.settings.render;
     let p = &state.runtime.render.perf;
@@ -191,6 +236,14 @@ fn get_performance(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
         "vram_usage_mb": state.runtime.gpu.usage >> 20,
         "adapter": p.adapter,
         "integrated_gpu": p.integrated,
+        "graphics_api": p.graphics_api,
+        "graphics_api_setting": r.graphics_backend.id(),
+        "dx12_shader_compiler": p.dx12_shader_compiler,
+        "startup_ms": {
+            "first_frame": p.startup_first_frame_ms,
+            "views_ready": p.startup_views_ready_ms,
+        },
+        "pipelines": pipelines_json(state),
         "performance_mode": r.performance_mode.id(),
         "quality_level": level.id(),
         "reduced_automatically": p.reduced_automatically(r.performance_mode),
@@ -278,6 +331,16 @@ fn restore_full_quality(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
     Ok(ToolResult::json(json!({ "requested": true })))
 }
 
+fn simulate_gpu_device_loss(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
+    state.runtime.gpu.simulate_loss_request = true;
+    let g = &state.runtime.gpu;
+    Ok(ToolResult::json(json!({
+        "requested": true,
+        "losses_so_far": g.device_losses,
+        "recoveries_so_far": g.device_recoveries,
+    })))
+}
+
 fn free_gpu_memory(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let lower = a.opt_bool("lower_textures")?.unwrap_or(false);
     state.runtime.gpu.release_request = Some(lower);
@@ -307,5 +370,17 @@ mod tests {
         ok(&mut s, "free_gpu_memory", json!({}));
         assert_eq!(s.runtime.gpu.release_request, Some(false));
         err(&mut s, "free_gpu_memory", json!({ "lower_textures": 3 }));
+        assert_eq!(m["graphics_memory"], "Auto");
+        assert_eq!(m["mode"], "normal");
+        assert_eq!(m["device"]["losses"], 0);
+        assert_eq!(m["device"]["recovering"], false);
+        s.runtime.gpu.tier = hp_app::runtime::MemoryTier::Low;
+        s.runtime.gpu.device_recoveries = 2;
+        let m = ok(&mut s, "get_gpu_memory", json!({}));
+        assert_eq!(m["mode"], "low");
+        assert_eq!(m["device"]["recoveries"], 2);
+        let r = ok(&mut s, "simulate_gpu_device_loss", json!({}));
+        assert_eq!(r["requested"], true);
+        assert!(s.runtime.gpu.simulate_loss_request);
     }
 }

@@ -23,6 +23,7 @@ mod lighting;
 mod livelink;
 mod mcp;
 mod mesh;
+mod nav;
 mod physics;
 mod placement;
 mod render;
@@ -65,12 +66,14 @@ pub use lighting::{BakePriority, LightingQuality, LightingSettings};
 pub use livelink::LiveLinkSettings;
 pub use mcp::McpSettings;
 pub use mesh::{MergePrompt, MeshSettings, VertexSettings};
+pub use nav::{NavEffect, NavInput};
 pub use physics::PhysicsSettings;
 pub use placement::{PlacementSettings, SprinkleMode, SprinkleSettings};
 pub use render::{
-    BALANCED_LIGHTS, CUBEMAPS_REVISION, DEFAULT_WALK_ANGLE, Disp2dSetting, Disp2dViewSetting, DispWalkMode, LitQuality,
-    MAX_ANIMATION_FPS, MAX_VRAM_BUDGET_MB, MIN_VRAM_BUDGET_MB, Models2dSetting, PerformanceMode, PropShadowSetting,
-    RenderSettings, ToneModeSetting, WaterDetailSetting,
+    BALANCED_LIGHTS, CUBEMAPS_REVISION, DEFAULT_WALK_ANGLE, Disp2dSetting, Disp2dViewSetting, DispWalkMode,
+    Dx12Compiler, GraphicsBackend, GraphicsMemory, LitQuality, MAX_ANIMATION_FPS, MAX_VRAM_BUDGET_MB,
+    MIN_VRAM_BUDGET_MB, Models2dSetting, PerformanceMode, PropShadowSetting, RenderSettings, ToneModeSetting,
+    WaterDetailSetting,
 };
 pub use scan::{ScanModeSetting, ScanSettings};
 pub use selection::{SelectElement, SelectionSettings};

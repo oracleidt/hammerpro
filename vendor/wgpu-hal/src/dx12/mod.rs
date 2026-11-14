@@ -6,10 +6,14 @@
 )]
 
 mod adapter;
+pub use disk_cache::{
+    active_shader_compiler, set_shader_disk_cache, shader_compile_stats, shader_disk_cache_dir, ShaderCompileStats,
+};
 mod command;
 mod conv;
 mod dcomp;
 mod descriptor;
+mod disk_cache;
 mod device;
 mod device_creation;
 mod instance;

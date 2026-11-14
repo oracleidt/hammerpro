@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 const MAX_PENDING: usize = 8;
 const LOGGED: u64 = 20;
@@ -10,11 +11,11 @@ struct Pending {
     count: u64,
     dropped: u64,
     lost: Option<String>,
-    lost_once: bool,
 }
 
-static PENDING: Mutex<Pending> =
-    Mutex::new(Pending { errors: Vec::new(), count: 0, dropped: 0, lost: None, lost_once: false });
+static PENDING: Mutex<Pending> = Mutex::new(Pending { errors: Vec::new(), count: 0, dropped: 0, lost: None });
+static GENERATION: AtomicU64 = AtomicU64::new(0);
+static SIMULATING: AtomicBool = AtomicBool::new(false);
 
 fn with_pending<T>(f: impl FnOnce(&mut Pending) -> T) -> T {
     let mut p = PENDING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -54,25 +55,51 @@ pub fn record_error(text: &str) {
 
 pub fn record_lost(reason: &str) {
     log::error!("the graphics device was lost: {reason}");
+    egui_wgpu::recovery::notify_device_lost();
     with_pending(|p| {
-        if !p.lost_once {
-            p.lost_once = true;
+        if p.lost.is_none() {
             p.lost = Some(reason.to_owned());
         }
     });
 }
 
-pub fn take() -> (Vec<String>, u64, Option<String>) {
-    with_pending(|p| (std::mem::take(&mut p.errors), std::mem::take(&mut p.dropped), p.lost.take()))
+pub fn take() -> (Vec<String>, u64) {
+    with_pending(|p| (std::mem::take(&mut p.errors), std::mem::take(&mut p.dropped)))
+}
+
+pub fn take_lost() -> Option<String> {
+    with_pending(|p| p.lost.take())
+}
+
+fn lost_callback(generation: u64, reason: wgpu::DeviceLostReason, message: &str) {
+    if GENERATION.load(Ordering::SeqCst) != generation {
+        return;
+    }
+    let simulated = SIMULATING.swap(false, Ordering::SeqCst);
+    if reason == wgpu::DeviceLostReason::Destroyed && !simulated {
+        return;
+    }
+    if simulated {
+        record_lost(&format!("simulated for a test: {message}"));
+    } else {
+        record_lost(&format!("{reason:?}: {message}"));
+    }
 }
 
 pub fn install(device: &wgpu::Device) {
+    let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    with_pending(|p| p.lost = None);
     device.on_uncaptured_error(Arc::new(|error: wgpu::Error| record_error(&error.to_string())));
-    device.set_device_lost_callback(|reason, message| {
-        if reason != wgpu::DeviceLostReason::Destroyed {
-            record_lost(&format!("{reason:?}: {message}"));
-        }
-    });
+    device.set_device_lost_callback(move |reason, message| lost_callback(generation, reason, &message));
+}
+
+pub fn simulate_loss(device: &wgpu::Device) {
+    log::warn!("graphics device loss simulated for a test");
+    SIMULATING.store(true, Ordering::SeqCst);
+    device.destroy();
+    if SIMULATING.swap(false, Ordering::SeqCst) {
+        record_lost("simulated for a test: the device was destroyed");
+    }
 }
 
 #[cfg(test)]
@@ -86,16 +113,23 @@ mod tests {
         record_error(&long);
         record_error(&long);
         record_error("Out of memory");
-        let (errors, dropped, lost) = take();
+        let (errors, dropped) = take();
         assert_eq!(errors.len(), 2, "{errors:?}");
         assert!(errors[0].starts_with("Validation Error Caused by: In a pass"));
         assert!(errors[0].ends_with("..."), "long errors are cut");
         assert_eq!(dropped, 1, "the repeated error is counted, not kept");
-        assert_eq!(lost, None);
+        let _ = take_lost();
         record_lost("Unknown: device removed");
         record_lost("Unknown: again");
-        let (_, _, lost) = take();
-        assert_eq!(lost.as_deref(), Some("Unknown: device removed"));
-        assert_eq!(take().2, None, "a loss is reported once");
+        assert!(egui_wgpu::recovery::device_lost_pending(), "the painter is told to recreate the device");
+        assert_eq!(take_lost().as_deref(), Some("Unknown: device removed"));
+        assert_eq!(take_lost(), None, "a loss is reported once");
+        let generation = GENERATION.load(Ordering::SeqCst);
+        lost_callback(generation + 7, wgpu::DeviceLostReason::Unknown, "an older device");
+        assert_eq!(take_lost(), None, "an old device does not count");
+        lost_callback(generation, wgpu::DeviceLostReason::Destroyed, "dropped");
+        assert_eq!(take_lost(), None, "a device dropped on purpose does not count");
+        lost_callback(generation, wgpu::DeviceLostReason::Unknown, "removed");
+        assert_eq!(take_lost().as_deref(), Some("Unknown: removed"));
     }
 }

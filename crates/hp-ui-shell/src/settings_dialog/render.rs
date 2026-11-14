@@ -1,8 +1,9 @@
 use hp_app::extend::{SettingsPage, page_order};
 use hp_app::i18n::TrTable;
 use hp_app::settings::{
-    Disp2dSetting, Disp2dViewSetting, DispWalkMode, LitQuality, Models2dSetting, PerformanceMode, PropShadowSetting,
-    RenderSettings, StaticPropShadows, ToneModeSetting, WaterDetailSetting,
+    Disp2dSetting, Disp2dViewSetting, DispWalkMode, Dx12Compiler, GraphicsBackend, GraphicsMemory, LitQuality,
+    Models2dSetting, PerformanceMode, PropShadowSetting, RenderSettings, StaticPropShadows, ToneModeSetting,
+    WaterDetailSetting,
 };
 use hp_app::{AppState, t, tf};
 
@@ -391,6 +392,20 @@ impl SettingsPage for RenderPage {
 
         heading(ui, t!("shell.render.vram"));
         super::form_grid(ui, "hp_shell_render_vram").show(ui, |ui| {
+            ui.label(t!("shell.render.gfx_memory")).on_hover_text(t!("shell.render.gfx_memory_tip"));
+            let before = r.graphics_memory;
+            egui::ComboBox::from_id_salt("hp_shell_render_gfx_memory")
+                .selected_text(gfx_memory_label(r.graphics_memory))
+                .show_ui(ui, |ui| {
+                    for m in GraphicsMemory::ALL {
+                        ui.selectable_value(&mut r.graphics_memory, m, gfx_memory_label(m))
+                            .on_hover_text(gfx_memory_tip(m));
+                    }
+                })
+                .response
+                .on_hover_text(t!("shell.render.gfx_memory_tip"));
+            changed |= before != r.graphics_memory;
+            ui.end_row();
             ui.label(t!("shell.render.vram_budget"));
             changed |= ui
                 .add(
@@ -426,6 +441,7 @@ impl SettingsPage for RenderPage {
                 t!("shell.render.vram_estimate")
             };
             ui.label(egui::RichText::new(tf!("shell.render.vram_now", g.usage >> 20, g.budget >> 20, source)).weak());
+            ui.label(egui::RichText::new(tf!("shell.render.gfx_memory_now", tier_label(g.tier))).weak());
         }
         if ui.button(t!("shell.render.vram_free")).on_hover_text(t!("shell.render.vram_free_tip")).clicked() {
             state.runtime.gpu.release_request = Some(false);
@@ -467,7 +483,40 @@ impl SettingsPage for RenderPage {
                 .on_hover_text(t!("shell.render.render_scale_tip"))
                 .changed();
             ui.end_row();
+            ui.label(t!("shell.render.graphics_api"));
+            let before = r.graphics_backend;
+            egui::ComboBox::from_id_salt("hp_shell_render_graphics_api")
+                .selected_text(graphics_api_label(r.graphics_backend))
+                .show_ui(ui, |ui| {
+                    for b in GraphicsBackend::ALL {
+                        ui.selectable_value(&mut r.graphics_backend, b, graphics_api_label(b))
+                            .on_hover_text(t!("shell.render.graphics_api_tip"));
+                    }
+                })
+                .response
+                .on_hover_text(t!("shell.render.graphics_api_tip"));
+            changed |= before != r.graphics_backend;
+            ui.end_row();
+            ui.label(t!("shell.render.dx12_compiler"));
+            let before = r.dx12_compiler;
+            egui::ComboBox::from_id_salt("hp_shell_render_dx12_compiler")
+                .selected_text(dx12_compiler_label(r.dx12_compiler))
+                .show_ui(ui, |ui| {
+                    for c in Dx12Compiler::ALL {
+                        ui.selectable_value(&mut r.dx12_compiler, c, dx12_compiler_label(c))
+                            .on_hover_text(t!("shell.render.dx12_compiler_tip"));
+                    }
+                })
+                .response
+                .on_hover_text(t!("shell.render.dx12_compiler_tip"));
+            changed |= before != r.dx12_compiler;
+            ui.end_row();
         });
+        let compiler = perf.dx12_shader_compiler.as_deref().map(|c| format!(" ({c})")).unwrap_or_default();
+        ui.label(
+            egui::RichText::new(tf!("shell.render.graphics_api_now", format!("{}{compiler}", perf.graphics_api)))
+                .weak(),
+        );
         changed |= check(ui, &mut r.perf_hud, t!("shell.render.perf_hud"), t!("shell.render.perf_hud_tip"));
         let level = perf.level(r.performance_mode);
         ui.label(egui::RichText::new(tf!("shell.render.perf_now", level.id().replace('_', " "), perf.adapter)).weak());
@@ -521,6 +570,47 @@ fn lit_quality_tip(q: LitQuality) -> &'static str {
         LitQuality::Auto => t!("shell.render.lit_quality_auto_tip"),
         LitQuality::High => t!("shell.render.lit_quality_high_tip"),
         LitQuality::Balanced => t!("shell.render.lit_quality_balanced_tip"),
+    }
+}
+
+fn gfx_memory_label(m: GraphicsMemory) -> &'static str {
+    match m {
+        GraphicsMemory::Auto => t!("shell.render.gfx_memory_auto"),
+        GraphicsMemory::Low => t!("shell.render.gfx_memory_low"),
+        GraphicsMemory::Normal => t!("shell.render.gfx_memory_normal"),
+        GraphicsMemory::High => t!("shell.render.gfx_memory_high"),
+    }
+}
+
+fn gfx_memory_tip(m: GraphicsMemory) -> &'static str {
+    match m {
+        GraphicsMemory::Auto => t!("shell.render.gfx_memory_auto_tip"),
+        GraphicsMemory::Low => t!("shell.render.gfx_memory_low_tip"),
+        GraphicsMemory::Normal => t!("shell.render.gfx_memory_normal_tip"),
+        GraphicsMemory::High => t!("shell.render.gfx_memory_high_tip"),
+    }
+}
+
+fn tier_label(tier: hp_app::runtime::MemoryTier) -> &'static str {
+    match tier {
+        hp_app::runtime::MemoryTier::Low => t!("shell.render.gfx_memory_low"),
+        hp_app::runtime::MemoryTier::Normal => t!("shell.render.gfx_memory_normal"),
+        hp_app::runtime::MemoryTier::High => t!("shell.render.gfx_memory_high"),
+    }
+}
+
+fn dx12_compiler_label(c: Dx12Compiler) -> &'static str {
+    match c {
+        Dx12Compiler::Fxc => t!("shell.render.dx12_compiler_fxc"),
+        Dx12Compiler::Dxc => t!("shell.render.dx12_compiler_dxc"),
+    }
+}
+
+fn graphics_api_label(b: GraphicsBackend) -> &'static str {
+    match b {
+        GraphicsBackend::Auto => t!("shell.render.graphics_api_auto"),
+        GraphicsBackend::Vulkan => "Vulkan",
+        GraphicsBackend::Dx12 => "DirectX 12",
     }
 }
 
@@ -1064,18 +1154,65 @@ pub(crate) const TR: TrTable = &[
         "Continuer d'animer les matériaux, les effets de particules et les lumières qui clignotent quand une autre fenêtre est active (utilise le processeur)",
     ),
     ("shell.render.vsync", "Vertical sync", "Synchronisation verticale"),
+    ("shell.render.graphics_api", "Graphics API", "API graphique"),
+    ("shell.render.graphics_api_auto", "Automatic", "Automatique"),
+    (
+        "shell.render.graphics_api_tip",
+        "Which graphics API draws the editor, applied at the next start. Automatic picks the best graphics card, then prefers Vulkan; DirectX 12 is only chosen when the card has no Vulkan driver. Pick the other one when the editor is slow to start or crashes on your graphics card. The command line --backend vulkan or --backend dx12 overrides it for one session.",
+        "Quelle API graphique dessine l'éditeur, appliquée au prochain démarrage. Automatique choisit la meilleure carte graphique, puis préfère Vulkan ; DirectX 12 n'est choisi que si la carte n'a pas de pilote Vulkan. Choisissez l'autre quand l'éditeur démarre lentement ou plante sur votre carte graphique. La ligne de commande --backend vulkan ou --backend dx12 la remplace pour une session.",
+    ),
+    ("shell.render.graphics_api_now", "In use: {0}", "Utilisée : {0}"),
+    ("shell.render.dx12_compiler", "DirectX 12 shader compiler", "Compilateur de shaders DirectX 12"),
+    ("shell.render.dx12_compiler_fxc", "FXC (built into Windows)", "FXC (inclus dans Windows)"),
+    ("shell.render.dx12_compiler_dxc", "DXC (experimental)", "DXC (expérimental)"),
+    (
+        "shell.render.dx12_compiler_tip",
+        "Only used with DirectX 12, applied at the next start. FXC (default) comes with Windows and is slow on the first start only: the compiled shaders are kept for the next starts. DXC compiles about 5 times faster but is experimental and needs dxcompiler.dll (1.8.2502 or newer) next to hammerpro.exe; without the DLL, FXC is used.",
+        "Utilisé seulement avec DirectX 12, appliqué au prochain démarrage. FXC (par défaut) est fourni avec Windows et n'est lent qu'au premier démarrage : les shaders compilés sont gardés pour les démarrages suivants. DXC compile environ 5 fois plus vite mais reste expérimental et demande dxcompiler.dll (1.8.2502 ou plus récent) à côté de hammerpro.exe ; sans la DLL, FXC est utilisé.",
+    ),
     (
         "shell.render.vsync_tip",
         "Waits for the screen refresh (applies immediately)",
         "Attend le rafraîchissement de l'écran (s'applique immédiatement)",
     ),
     ("shell.render.vram", "Graphics memory", "Mémoire graphique"),
+    ("shell.render.gfx_memory", "Graphics memory", "Mémoire graphique"),
+    (
+        "shell.render.gfx_memory_tip",
+        "How much of the graphics card Hammer Pro plans to use, and how carefully. A budget set below replaces the one of the mode.",
+        "Quelle part de la carte graphique Hammer Pro prévoit d'utiliser, et avec quelle prudence. Un budget réglé ci-dessous remplace celui du mode.",
+    ),
+    ("shell.render.gfx_memory_auto", "Auto", "Auto"),
+    ("shell.render.gfx_memory_low", "Low", "Faible"),
+    ("shell.render.gfx_memory_normal", "Normal", "Normale"),
+    ("shell.render.gfx_memory_high", "High", "Élevée"),
+    (
+        "shell.render.gfx_memory_auto_tip",
+        "Chosen from the graphics card: Low on integrated graphics and on cards with less than 3 GB, High from 12 GB, Normal otherwise.",
+        "Choisi d'après la carte graphique : Faible sur une puce graphique intégrée et sur les cartes de moins de 3 Go, Élevée à partir de 12 Go, Normale sinon.",
+    ),
+    (
+        "shell.render.gfx_memory_low_tip",
+        "For integrated graphics and small cards: a budget of half what Windows gives (1 GB at most), textures up to 1024 pixels from the start and smaller when the budget is reached, smaller shadow maps, no multisampling, fewer lightmap layers and thumbnails, uploads in small steps.",
+        "Pour les puces graphiques intégrées et les petites cartes : un budget de la moitié de ce que Windows donne (1 Go au plus), des textures jusqu'à 1024 pixels dès le départ et plus petites quand le budget est atteint, des cartes d'ombres plus petites, pas d'anticrénelage multiéchantillon, moins de couches de lightmaps et de vignettes, des envois par petites étapes.",
+    ),
+    (
+        "shell.render.gfx_memory_normal_tip",
+        "The usual budget: 90% of what Windows gives, at most 2 GB on integrated graphics.",
+        "Le budget habituel : 90 % de ce que Windows donne, au plus 2 Go sur une puce graphique intégrée.",
+    ),
+    (
+        "shell.render.gfx_memory_high_tip",
+        "For big cards: 95% of what Windows gives, without the 2 GB limit of integrated graphics.",
+        "Pour les grosses cartes : 95 % de ce que Windows donne, sans la limite de 2 Go des puces graphiques intégrées.",
+    ),
+    ("shell.render.gfx_memory_now", "Mode in use: {0}", "Mode utilisé : {0}"),
     ("shell.render.vram_budget", "Graphics memory budget", "Budget de mémoire graphique"),
     ("shell.render.vram_auto", "Automatic", "Automatique"),
     (
         "shell.render.vram_budget_tip",
-        "How much graphics card memory Hammer Pro may use. Automatic: 90% of what Windows gives the program (or 3 GB, 1.5 GB on integrated graphics, when the driver does not tell), at most 2 GB on integrated graphics, which use the system memory. Above 85% the maps open in other tabs are freed from the graphics card; above the budget textures are shown at a lower resolution until memory is free again.",
-        "Quantité de mémoire de la carte graphique que Hammer Pro peut utiliser. Automatique : 90 % de ce que Windows donne au programme (ou 3 Go, 1,5 Go sur une puce graphique intégrée, quand le pilote ne le dit pas), au plus 2 Go sur une puce graphique intégrée, qui utilise la mémoire du système. Au-delà de 85 %, les maps ouvertes dans les autres onglets sont retirées de la carte graphique ; au-delà du budget, les textures sont affichées en plus basse résolution jusqu'à ce que la mémoire se libère.",
+        "How much graphics card memory Hammer Pro may use. Automatic: the budget of the Graphics memory mode (Normal: 90% of what Windows gives the program, or 3 GB, 1.5 GB on integrated graphics, when the driver does not tell, at most 2 GB on integrated graphics, which use the system memory; Low: half, 1 GB at most). Above 85% the maps open in other tabs are freed from the graphics card; textures that would go over the budget are loaded smaller, and above the budget textures are shown at a lower resolution until memory is free again.",
+        "Quantité de mémoire de la carte graphique que Hammer Pro peut utiliser. Automatique : le budget du mode de mémoire graphique (Normale : 90 % de ce que Windows donne au programme, ou 3 Go, 1,5 Go sur une puce graphique intégrée, quand le pilote ne le dit pas, au plus 2 Go sur une puce graphique intégrée, qui utilise la mémoire du système ; Faible : la moitié, 1 Go au plus). Au-delà de 85 %, les maps ouvertes dans les autres onglets sont retirées de la carte graphique ; les textures qui dépasseraient le budget sont chargées plus petites, et au-delà du budget, les textures sont affichées en plus basse résolution jusqu'à ce que la mémoire se libère.",
     ),
     (
         "shell.render.vram_keep_tabs",

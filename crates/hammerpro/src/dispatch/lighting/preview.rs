@@ -11,6 +11,16 @@ use super::{Scope, bake, bsp, cache, child, style_maps};
 pub(super) const MIN_UPDATE_DELAY: f64 = 0.0;
 pub(super) const GEOMETRY_DELAY: f64 = 0.3;
 pub(super) const TEXELS_PER_MB: usize = 1 << 18;
+const BYTES_PER_TEXEL: usize = 4;
+
+pub(super) fn luxel_budget(millions: u32, tier: hp_app::runtime::MemoryTier, layers: u32, layer_size: u32) -> u64 {
+    let user = u64::from(millions) * 1_000_000;
+    match tier.luxel_capacity(layers, layer_size) {
+        Some(cap) if user == 0 => cap,
+        Some(cap) => user.min(cap),
+        None => user,
+    }
+}
 
 pub(super) fn upload_budget(state: &AppState) -> usize {
     state.settings.lighting.sanitized().upload_mb_per_frame as usize * TEXELS_PER_MB
@@ -51,6 +61,8 @@ pub(super) struct Upload {
     pub partial: bool,
     pub submitted: f64,
     pub held: bool,
+    pub started: bool,
+    pub blocks_added: usize,
 }
 
 pub(super) struct Preview {
@@ -186,12 +198,51 @@ pub(super) fn dragged_lights(state: &AppState) -> Option<(u64, Vec<hp_vmf::Entit
     Some((std::hash::Hasher::finish(&hash), moved))
 }
 
+#[cfg(test)]
 pub(super) fn show_geometry(
     r: &mut hp_render::Renderer,
     assets: &mut dyn hp_app::state::AssetsApi,
     b: &bake::Baked,
     shown: (u32, u32),
 ) -> bool {
+    let fits = begin_geometry(r, b, shown);
+    add_blocks(r, assets, b, 0, usize::MAX);
+    fits
+}
+
+pub(super) fn block_bytes(block: &bsp::Block) -> usize {
+    block.batches.iter().map(|(_, v, i)| v.len() * size_of::<hp_render::lightmap::LightmapVertex>() + i.len() * 4).sum()
+}
+
+pub(super) fn add_blocks(
+    r: &mut hp_render::Renderer,
+    assets: &mut dyn hp_app::state::AssetsApi,
+    b: &bake::Baked,
+    from: usize,
+    byte_budget: usize,
+) -> (usize, usize) {
+    let materials: Vec<hp_render::MaterialId> = b.materials.iter().map(|m| assets.render_material_id(m)).collect();
+    let mut next = from;
+    let mut bytes = 0usize;
+    while let Some(block) = b.blocks.get(next) {
+        if next > from && bytes >= byte_budget {
+            break;
+        }
+        let batches: Vec<LightmapBatch<'_>> = block
+            .batches
+            .iter()
+            .filter_map(|(m, v, i)| {
+                Some(LightmapBatch { material: *materials.get(*m as usize)?, vertices: v, indices: i })
+            })
+            .collect();
+        r.add_lightmap_block(next as u32, &batches);
+        bytes += block_bytes(block);
+        next += 1;
+    }
+    (next, bytes)
+}
+
+fn begin_geometry(r: &mut hp_render::Renderer, b: &bake::Baked, shown: (u32, u32)) -> bool {
     r.set_lightmap_ldr(!b.hdr);
     let old: Vec<u32> = (0..shown.0).collect();
     r.remove_lightmap_faces(&old);
@@ -208,21 +259,20 @@ pub(super) fn show_geometry(
         })
         .collect();
     r.add_lightmap_faces(&faces);
-    let materials: Vec<hp_render::MaterialId> = b.materials.iter().map(|m| assets.render_material_id(m)).collect();
-    for (id, block) in b.blocks.iter().enumerate() {
-        let batches: Vec<LightmapBatch<'_>> = block
-            .batches
-            .iter()
-            .filter_map(|(m, v, i)| {
-                Some(LightmapBatch { material: *materials.get(*m as usize)?, vertices: v, indices: i })
-            })
-            .collect();
-        r.add_lightmap_block(id as u32, &batches);
-    }
     fits
 }
 
+#[cfg(test)]
 pub(super) fn write_texels(r: &mut hp_render::Renderer, b: &bake::Baked, from: usize, budget: usize) -> usize {
+    write_texels_counted(r, b, from, budget).0
+}
+
+pub(super) fn write_texels_counted(
+    r: &mut hp_render::Renderer,
+    b: &bake::Baked,
+    from: usize,
+    budget: usize,
+) -> (usize, usize) {
     let mut written = from;
     let mut batch: Vec<(u32, LightmapRect, &[u32])> = Vec::new();
     let mut texels = 0usize;
@@ -249,7 +299,7 @@ pub(super) fn write_texels(r: &mut hp_render::Renderer, b: &bake::Baked, from: u
         texels += n;
     }
     r.write_lightmaps(&batch);
-    written
+    (written, texels)
 }
 
 impl Preview {
@@ -496,10 +546,19 @@ impl Preview {
         let t = std::time::Instant::now();
         let s = state.settings.lighting.sanitized();
         let options = state.doc.light_plus();
+        let (layer_size, max_layers) = state.gfx.as_ref().map_or((super::LAYER_SIZE, 16), |g| {
+            let limits = g.device.limits();
+            let device = limits.max_texture_array_layers.clamp(1, 64);
+            let cap = state.runtime.gpu.lightmap_layers;
+            (
+                super::LAYER_SIZE.min(limits.max_texture_dimension_2d).max(64),
+                if cap > 0 { device.min(cap) } else { device },
+            )
+        });
+        let budget = luxel_budget(s.max_luxels_millions, state.runtime.gpu.tier, max_layers, layer_size);
         let factor = match self.luxels {
-            Some((g, _, factor)) if g == geometry => factor,
+            Some((g, luxels, _)) if g == geometry => super::coarsen_factor(luxels, budget),
             _ => {
-                let budget = u64::from(s.max_luxels_millions) * 1_000_000;
                 let luxels = super::map_luxels(state);
                 let factor = super::coarsen_factor(luxels, budget);
                 self.luxels = Some((geometry, luxels, factor));
@@ -545,13 +604,6 @@ impl Preview {
                 })
                 .collect()
         };
-        let (layer_size, max_layers) = state.gfx.as_ref().map_or((super::LAYER_SIZE, 16), |g| {
-            let limits = g.device.limits();
-            (
-                super::LAYER_SIZE.min(limits.max_texture_dimension_2d).max(64),
-                limits.max_texture_array_layers.clamp(1, 64),
-            )
-        });
         let id = self.next_id;
         self.next_id += 1;
         let tuning = if quick { child::Tuning::of(&options).quick() } else { child::Tuning::of(&options) };
@@ -680,6 +732,8 @@ impl Preview {
                                 serial: 0,
                                 scope: self.last_scope.clone().unwrap_or(Scope::All),
                                 written: 0,
+                                started: false,
+                                blocks_added: 0,
                                 quick: false,
                                 geometry: self.shown_geometry.unwrap_or(0),
                                 baseline: None,
@@ -699,6 +753,8 @@ impl Preview {
                         serial: r.serial,
                         scope: r.scope.clone(),
                         written: 0,
+                        started: false,
+                        blocks_added: 0,
                         quick: r.quick,
                         geometry: r.geometry,
                         baseline: r.baseline.clone(),
@@ -819,6 +875,8 @@ impl Preview {
                     serial: r.serial,
                     scope: r.scope,
                     written: 0,
+                    started: false,
+                    blocks_added: 0,
                     quick: r.quick,
                     geometry: r.geometry,
                     baseline: r.baseline,
@@ -932,7 +990,8 @@ impl Preview {
     }
 
     pub(super) fn upload(&mut self, state: &mut AppState) {
-        loop {
+        let mut budget = upload_budget(state);
+        while budget > 0 {
             if self.hold && self.uploads.front().is_some_and(|u| u.held) {
                 return;
             }
@@ -949,19 +1008,19 @@ impl Preview {
                 }
                 continue;
             }
-            if !self.apply(state, &mut up) {
+            if !self.apply(state, &mut up, &mut budget) {
                 self.uploads.push_front(up);
                 return;
             }
         }
     }
 
-    fn apply(&mut self, state: &mut AppState, up: &mut Upload) -> bool {
-        let budget = upload_budget(state);
+    fn apply(&mut self, state: &mut AppState, up: &mut Upload, budget: &mut usize) -> bool {
         let AppState { gfx, assets, runtime, frame, .. } = state;
         let Some(gfx) = gfx.as_mut() else { return true };
         let r = &mut gfx.renderer;
-        if up.written == 0 {
+        if !up.started {
+            up.started = true;
             if up.baked.patch {
                 let ids: HashSet<u32> = up.baked.faces.iter().map(|f| f.id).collect();
                 self.animations.retain(|a| !ids.contains(&a.face_id()));
@@ -972,7 +1031,7 @@ impl Preview {
                     self.baseline = Some(baseline.clone());
                 }
                 self.shown_serial = None;
-                let fits = show_geometry(r, assets.as_mut(), &up.baked, (self.shown_faces, self.shown_blocks));
+                let fits = begin_geometry(r, &up.baked, (self.shown_faces, self.shown_blocks));
                 if !fits && !self.atlas_warned {
                     self.atlas_warned = true;
                     let b = &up.baked;
@@ -984,12 +1043,26 @@ impl Preview {
                 }
                 self.shown_faces = up.baked.faces.len() as u32;
                 self.shown_blocks = up.baked.blocks.len() as u32;
-                up.baked.blocks = Vec::new();
                 self.layout = Some(up.baked.layout);
                 self.shown_geometry = Some(up.geometry);
             }
         }
-        up.written = write_texels(r, &up.baked, up.written, budget);
+        if !up.baked.blocks.is_empty() {
+            let (next, bytes) =
+                add_blocks(r, assets.as_mut(), &up.baked, up.blocks_added, budget.saturating_mul(BYTES_PER_TEXEL));
+            up.blocks_added = next;
+            *budget = budget.saturating_sub(bytes / BYTES_PER_TEXEL);
+            if next < up.baked.blocks.len() {
+                return false;
+            }
+            up.baked.blocks = Vec::new();
+            if *budget == 0 {
+                return false;
+            }
+        }
+        let (written, texels) = write_texels_counted(r, &up.baked, up.written, *budget);
+        up.written = written;
+        *budget = budget.saturating_sub(texels);
         let b = &up.baked;
         let rt = &mut runtime.lighting;
         if up.written < b.faces.len() {
@@ -1216,5 +1289,29 @@ impl Preview {
             return;
         }
         self.bake(state, Scope::All, BakeKind::Update, true);
+    }
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+    use hp_app::runtime::MemoryTier;
+
+    #[test]
+    fn low_memory_caps_the_luxels_to_the_lightmap_layers_it_may_use() {
+        assert_eq!(luxel_budget(16, MemoryTier::Normal, 64, 2048), 16_000_000);
+        let low = luxel_budget(16, MemoryTier::Low, 7, 2048);
+        assert!(low < 16_000_000 && low > 757_601, "{low}");
+        assert_eq!(luxel_budget(16, MemoryTier::Low, 1, 2048), 629_145);
+        assert_eq!(luxel_budget(0, MemoryTier::Low, 1, 2048), 629_145);
+        assert_eq!(luxel_budget(1, MemoryTier::Low, 64, 2048), 1_000_000, "a smaller user budget wins");
+    }
+
+    #[test]
+    fn block_sizes_count_vertices_and_indices() {
+        let block =
+            bsp::Block { batches: vec![(0, vec![hp_render::lightmap::LightmapVertex::default(); 10], vec![0; 30])] };
+        assert_eq!(block_bytes(&block), 10 * size_of::<hp_render::lightmap::LightmapVertex>() + 120);
+        assert_eq!(block_bytes(&bsp::Block::default()), 0);
     }
 }

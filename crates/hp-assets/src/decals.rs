@@ -1,5 +1,5 @@
 use ahash::{AHashMap, AHashSet};
-use glam::{DVec2, DVec3};
+use glam::{DMat4, DVec2, DVec3};
 use hp_editor::{Document, Id};
 use hp_geom::Aabb;
 use hp_render::{MaterialId, MeshBatch, ObjectFlags, ObjectMesh, Vertex};
@@ -106,36 +106,75 @@ fn clip_polygon(mut poly: Vec<DVec3>, clipper: &[DVec3], normal: DVec3) -> Vec<D
 }
 
 pub(crate) fn project_decal(doc: &Document, origin: DVec3, tex_size: DVec2, scale: f64) -> Option<DecalMesh> {
+    project_decal_layers(&[(doc, DMat4::IDENTITY)], origin, tex_size, scale)
+}
+
+fn receives(node: &hp_editor::SolidNode, side_index: usize) -> bool {
+    node.solid.sides.get(side_index).is_some_and(|s| {
+        let m = s.material.trim();
+        !(m.len() >= 6 && m[..6].eq_ignore_ascii_case("tools/"))
+    })
+}
+
+fn layer_solids<'a>(doc: &'a Document, reach: &Aabb) -> Vec<(Id, &'a hp_editor::SolidNode)> {
+    doc.scene()
+        .solids()
+        .iter()
+        .filter(|(_, n)| !n.bounds.is_empty() && n.bounds.intersects(reach))
+        .map(|(id, n)| (*id, n))
+        .collect()
+}
+
+type Layer<'a> = (DMat4, DMat4, Vec<(Id, &'a hp_editor::SolidNode)>);
+
+fn local_reach(reach: &Aabb, inverse: &DMat4) -> Aabb {
+    let mut out = Aabb::empty();
+    for i in 0..8 {
+        let p = DVec3::new(
+            if i & 1 == 0 { reach.min.x } else { reach.max.x },
+            if i & 2 == 0 { reach.min.y } else { reach.max.y },
+            if i & 4 == 0 { reach.min.z } else { reach.max.z },
+        );
+        out.extend(inverse.transform_point3(p));
+    }
+    out
+}
+
+pub(crate) fn project_decal_layers(
+    layers: &[(&Document, DMat4)],
+    origin: DVec3,
+    tex_size: DVec2,
+    scale: f64,
+) -> Option<DecalMesh> {
     let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
     let size = tex_size.max(DVec2::ONE) * scale;
     let reach = decal_reach(origin, size);
     let max_dist = size.max_element() * 0.5;
-    let scene = doc.scene();
-    let solids: Vec<(Id, &hp_editor::SolidNode)> = scene
-        .solids()
+    let prepared: Vec<Layer<'_>> = layers
         .iter()
-        .filter(|(_, n)| !n.bounds.is_empty() && n.bounds.intersects(&reach))
-        .map(|(id, n)| (*id, n))
-        .collect();
-    let receives = |node: &hp_editor::SolidNode, side_index: usize| {
-        node.solid.sides.get(side_index).is_some_and(|s| {
-            let m = s.material.trim();
-            !(m.len() >= 6 && m[..6].eq_ignore_ascii_case("tools/"))
+        .filter_map(|(doc, m)| {
+            let inverse = m.inverse();
+            inverse.is_finite().then(|| (*m, inverse, layer_solids(doc, &local_reach(&reach, &inverse))))
         })
-    };
+        .collect();
     let mut best: Option<(f64, DVec3, f64)> = None;
-    for (_, node) in &solids {
-        for face in &node.geom.faces {
-            let (n, d) = (face.plane.normal, face.plane.dist);
-            let dist = n.dot(origin) - d;
-            if !(-INSIDE_EPS..=max_dist).contains(&dist) || !receives(node, face.side_index) {
-                continue;
-            }
-            if best.is_some_and(|(b, _, _)| b <= dist) {
-                continue;
-            }
-            if inside_polygon(origin - n * dist, &face.vertices, n) {
-                best = Some((dist, n, d));
+    for (m, inverse, solids) in &prepared {
+        let local_origin = inverse.transform_point3(origin);
+        for (_, node) in solids {
+            for face in &node.geom.faces {
+                let (n, d) = (face.plane.normal, face.plane.dist);
+                let dist = n.dot(local_origin) - d;
+                if !(-INSIDE_EPS..=max_dist).contains(&dist) || !receives(node, face.side_index) {
+                    continue;
+                }
+                if best.is_some_and(|(b, _, _)| b <= dist) {
+                    continue;
+                }
+                if inside_polygon(local_origin - n * dist, &face.vertices, n) {
+                    let normal = m.transform_vector3(n).normalize_or_zero();
+                    let on_plane = m.transform_point3(n * d);
+                    best = Some((dist, normal, normal.dot(on_plane)));
+                }
             }
         }
     }
@@ -143,41 +182,46 @@ pub(crate) fn project_decal(doc: &Document, origin: DVec3, tex_size: DVec2, scal
     let center = origin - normal * dist;
     let (s, t) = decal_basis(normal);
     let (hw, hh) = (size.x * 0.5, size.y * 0.5);
-    let quad =
-        vec![center - s * hw - t * hh, center + s * hw - t * hh, center + s * hw + t * hh, center - s * hw + t * hh];
+    let quad = [center - s * hw - t * hh, center + s * hw - t * hh, center + s * hw + t * hh, center - s * hw + t * hh];
     let mut out = DecalMesh { polygons: Vec::new(), normal, solids: Vec::new() };
-    for (id, node) in &solids {
-        let mut touched = false;
-        for face in &node.geom.faces {
-            let n = face.plane.normal;
-            if n.dot(normal) < 0.999 || (face.plane.dist - plane_dist).abs() > COPLANAR_DIST {
-                continue;
+    for (layer, (m, inverse, solids)) in prepared.iter().enumerate() {
+        let n_local = inverse.transform_vector3(normal).normalize_or_zero();
+        let d_local = n_local.dot(inverse.transform_point3(normal * plane_dist));
+        let quad_local: Vec<DVec3> = quad.iter().map(|p| inverse.transform_point3(*p)).collect();
+        for (id, node) in solids {
+            let mut touched = false;
+            for face in &node.geom.faces {
+                let n = face.plane.normal;
+                if n.dot(n_local) < 0.999 || (face.plane.dist - d_local).abs() > COPLANAR_DIST {
+                    continue;
+                }
+                if !receives(node, face.side_index) {
+                    continue;
+                }
+                let face_poly: Vec<DVec3> =
+                    face.vertices.iter().map(|v| *v - n_local * (n_local.dot(*v) - d_local)).collect();
+                let clipped = clip_polygon(quad_local.clone(), &face_poly, n_local);
+                if clipped.is_empty() {
+                    continue;
+                }
+                touched = true;
+                let poly = clipped
+                    .into_iter()
+                    .map(|p| {
+                        let p = m.transform_point3(p);
+                        let rel = p - center;
+                        let uv = [
+                            (rel.dot(s) / scale + tex_size.x * 0.5) as f32,
+                            (rel.dot(t) / scale + tex_size.y * 0.5) as f32,
+                        ];
+                        (p + normal * SURFACE_OFFSET, uv)
+                    })
+                    .collect();
+                out.polygons.push(poly);
             }
-            if !receives(node, face.side_index) {
-                continue;
+            if touched && layer == 0 {
+                out.solids.push(*id);
             }
-            let face_poly: Vec<DVec3> =
-                face.vertices.iter().map(|v| *v - normal * (normal.dot(*v) - plane_dist)).collect();
-            let clipped = clip_polygon(quad.clone(), &face_poly, normal);
-            if clipped.is_empty() {
-                continue;
-            }
-            touched = true;
-            let poly = clipped
-                .into_iter()
-                .map(|p| {
-                    let rel = p - center;
-                    let uv = [
-                        (rel.dot(s) / scale + tex_size.x * 0.5) as f32,
-                        (rel.dot(t) / scale + tex_size.y * 0.5) as f32,
-                    ];
-                    (p + normal * SURFACE_OFFSET, uv)
-                })
-                .collect();
-            out.polygons.push(poly);
-        }
-        if touched {
-            out.solids.push(*id);
         }
     }
     (!out.polygons.is_empty()).then_some(out)
@@ -189,13 +233,13 @@ struct DecalState {
     solids: Vec<Id>,
 }
 
-enum DecalSize {
+pub(crate) enum DecalSize {
     Loading,
     Missing,
     Ready(DVec2, f64),
 }
 
-fn decal_size(assets: &mut AssetManager, material: &str) -> DecalSize {
+pub(crate) fn decal_size(assets: &mut AssetManager, material: &str) -> DecalSize {
     match assets.material_info_impl(material) {
         None => DecalSize::Loading,
         Some(info) if info.missing || info.width == 0 || info.height == 0 => DecalSize::Missing,

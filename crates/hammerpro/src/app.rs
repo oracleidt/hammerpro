@@ -108,7 +108,7 @@ pub struct HammerProApp {
     keys: KeyRouter,
     reported_assets: Option<AssetStatus>,
     reported_fgd_classes: usize,
-    emergency_saved: bool,
+    pub(crate) emergency_saved: bool,
     emergency_saves: Vec<(TabId, PathBuf)>,
     low_memory_at: Option<Instant>,
     initial_open: Option<PathBuf>,
@@ -136,7 +136,9 @@ pub struct HammerProApp {
     pub(crate) tab_bar_action: Option<TabAction>,
     pub(crate) unsaved_asked: Option<(PendingOp, TabId)>,
     dropped_maps: Vec<PathBuf>,
-    vram: crate::vram::VramMonitor,
+    pub(crate) vram: crate::vram::VramMonitor,
+    pub(crate) gpu: crate::gpu_recovery::GpuRecovery,
+    automated: bool,
     perf: crate::perf::PerfMonitor,
     phases: crate::perf::PhaseClock,
     primitives: crate::primitive_stats::Monitor,
@@ -226,12 +228,21 @@ pub(crate) fn open_folder(path: &std::path::Path) {
     hp_app::os::open_folder(path, true);
 }
 
-fn install_pipeline_cache(rs: &egui_wgpu::RenderState, gfx: Option<&mut Gfx>) {
+fn make_assets(settings: &Settings, automated: bool) -> Box<dyn hp_app::AssetsApi> {
+    let mut assets = hp_assets::AssetManager::new(settings);
+    if !automated {
+        assets.set_thumbnail_cache(Some(Settings::cache_dir().join("thumbs")));
+        assets.set_live_reload(true);
+    }
+    Box::new(assets)
+}
+
+pub(crate) fn install_pipeline_cache(rs: &egui_wgpu::RenderState, gfx: Option<&mut Gfx>, msaa: bool) {
     let Some(gfx) = gfx else { return };
     if let Some(name) = hp_render::pipeline_cache::file_name(&rs.adapter.get_info()) {
         gfx.renderer.install_pipeline_cache(&Settings::cache_dir().join("pipelines").join(name));
     }
-    gfx.renderer.prewarm_pipelines();
+    gfx.renderer.prewarm_pipelines(msaa);
 }
 
 impl HammerProApp {
@@ -270,12 +281,9 @@ impl HammerProApp {
             }
         }
 
-        let mut assets = hp_assets::AssetManager::new(&settings);
-        if !automated {
-            assets.set_thumbnail_cache(Some(Settings::cache_dir().join("thumbs")));
-            assets.set_live_reload(true);
-        }
-        let mut state = AppState::new(settings, Box::new(assets));
+        let assets = make_assets(&settings, automated);
+        crate::gpu_recovery::install_shadow_filter(&cc.egui_ctx);
+        let mut state = AppState::new(settings, assets);
         if !automated {
             state.sidecar = Sidecar::open(Some(&Sidecar::default_dir()), None);
         }
@@ -284,7 +292,8 @@ impl HammerProApp {
         if let Some(rs) = cc.wgpu_render_state.as_ref() {
             crate::gpu_guard::install(&rs.device);
             state.gfx = Some(Gfx::new(rs));
-            install_pipeline_cache(rs, state.gfx.as_mut());
+            let msaa = state.settings.view.msaa;
+            install_pipeline_cache(rs, state.gfx.as_mut(), msaa);
             vram = crate::vram::VramMonitor::new(&rs.adapter.get_info());
             crate::perf::PerfMonitor::set_adapter(&mut state, &rs.adapter.get_info());
         }
@@ -407,6 +416,8 @@ impl HammerProApp {
             unsaved_asked: None,
             dropped_maps: Vec::new(),
             vram,
+            gpu: crate::gpu_recovery::GpuRecovery::new(cc.wgpu_render_state.clone()),
+            automated,
             perf: crate::perf::PerfMonitor::default(),
             phases: crate::perf::PhaseClock::default(),
             primitives: crate::primitive_stats::Monitor::default(),
@@ -550,15 +561,7 @@ impl HammerProApp {
             f.fps = 1.0 / self.avg_frame_time;
         }
 
-        if self.state.gfx.is_none()
-            && let Some(rs) = frame.wgpu_render_state()
-        {
-            crate::gpu_guard::install(&rs.device);
-            self.state.gfx = Some(Gfx::new(rs));
-            install_pipeline_cache(rs, self.state.gfx.as_mut());
-            self.vram = crate::vram::VramMonitor::new(&rs.adapter.get_info());
-            crate::perf::PerfMonitor::set_adapter(&mut self.state, &rs.adapter.get_info());
-        }
+        self.tick_gpu_recovery(frame);
 
         while let Ok((severity, text)) = self.log_rx.try_recv() {
             self.state.console.push(severity, text);
@@ -1200,20 +1203,20 @@ impl HammerProApp {
     }
 
     fn report_gpu_errors(&mut self) {
-        let (errors, more, lost) = crate::gpu_guard::take();
+        let (errors, more) = crate::gpu_guard::take();
         for e in errors {
             self.state.log(Severity::Error, tf!("app.gpu_error", e));
         }
         if more > 0 {
             self.state.log(Severity::Warning, tf!("app.gpu_errors_more", more));
         }
-        if let Some(reason) = lost {
-            self.state.log(Severity::Error, tf!("app.gpu_lost", reason));
-            self.gpu_lost_exit(&reason);
-        }
     }
 
-    fn gpu_lost_exit(&mut self, reason: &str) {
+    pub(crate) fn make_assets(&self) -> Box<dyn hp_app::AssetsApi> {
+        make_assets(&self.state.settings, self.automated)
+    }
+
+    pub(crate) fn gpu_lost_exit(&mut self, reason: &str) {
         if !self.persist_settings {
             eprintln!("the graphics device was lost ({reason}): the run ends");
             std::process::exit(4);
@@ -1300,7 +1303,7 @@ impl HammerProApp {
         out
     }
 
-    fn emergency_save(&mut self) {
+    pub(crate) fn emergency_save(&mut self) {
         if self.emergency_saved || !self.persist_settings || !self.any_map_dirty() {
             return;
         }
@@ -1548,7 +1551,7 @@ impl HammerProApp {
                 let g = &self.state.runtime.gpu;
                 let e = &g.estimate;
                 eprintln!(
-                    "script: vram usage_mb={} budget_mb={} source={} pressure={} estimate_mb={} geometry={} textures={} models={} lightmaps={} compiled={} other={} background={} background_maps={} texture_limit={} oom={} releases={}",
+                    "script: vram usage_mb={} budget_mb={} source={} pressure={} estimate_mb={} geometry={} textures={} models={} lightmaps={} compiled={} other={} background={} background_maps={} texture_limit={} oom={} releases={} peak_mb={} mode={} textures_smaller={} device_losses={} device_recoveries={}",
                     g.usage >> 20,
                     g.budget >> 20,
                     g.source.id(),
@@ -1564,7 +1567,12 @@ impl HammerProApp {
                     g.background_maps,
                     g.texture_limit,
                     g.out_of_memory_events,
-                    g.releases
+                    g.releases,
+                    g.peak_usage >> 20,
+                    g.tier.id(),
+                    g.squeezed_textures,
+                    g.device_losses,
+                    g.device_recoveries
                 );
             }
             Command::Stats => {
@@ -1893,8 +1901,18 @@ pub const TR: hp_app::i18n::TrTable = &[
     ),
     (
         "app.gpu_lost",
-        "The graphics device was lost ({0}), usually a reset of the graphics driver. Hammer Pro cannot draw any more and closes: your modified maps were saved, start it again to open them.",
-        "Le périphérique graphique a été perdu ({0}), en général une réinitialisation du pilote graphique. Hammer Pro ne peut plus dessiner et se ferme : vos maps modifiées ont été sauvegardées, relancez-le pour les ouvrir.",
+        "The graphics device was lost ({0}), usually because the graphics card ran out of memory or its driver was reset. Your modified maps were autosaved and Hammer Pro starts the graphics again.",
+        "Le périphérique graphique a été perdu ({0}), en général parce que la carte graphique manquait de mémoire ou que son pilote a été réinitialisé. Vos maps modifiées ont été sauvegardées automatiquement et Hammer Pro relance le graphisme.",
+    ),
+    (
+        "app.gpu_recovering",
+        "The graphics card stopped answering: Hammer Pro starts the graphics again, the map comes back in a moment.",
+        "La carte graphique ne répond plus : Hammer Pro relance le graphisme, la map revient dans un instant.",
+    ),
+    (
+        "app.gpu_recovered",
+        "The graphics work again: textures, models and lighting load again. If it happens often, set Settings > Render > Graphics memory to Low.",
+        "Le graphisme fonctionne de nouveau : textures, modèles et éclairage se rechargent. Si cela arrive souvent, réglez Paramètres > Rendu > Mémoire graphique sur Faible.",
     ),
     ("app.gpu_lost_title", "Graphics device lost", "Périphérique graphique perdu"),
     (

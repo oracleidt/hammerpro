@@ -31,18 +31,65 @@ pub(crate) fn guarded<T>(device: &wgpu::Device, f: impl FnOnce() -> T) -> (T, bo
 }
 
 pub(crate) const STAGING_SLICE: u64 = 16 << 20;
+pub(crate) const LOW_STAGING_SLICE: u64 = 4 << 20;
+pub(crate) const MIN_SQUEEZED_TEXTURE: u32 = 128;
 const STAGING_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 
-#[derive(Default)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct MemoryBudget {
+    pub budget: u64,
+    pub untracked: u64,
+    pub low: bool,
+    pub lightmap_layers: u32,
+    pub squeezed: u64,
+    pub refused: u64,
+    pub wants_room: bool,
+}
+
+impl Default for MemoryBudget {
+    fn default() -> Self {
+        Self {
+            budget: 0,
+            untracked: 0,
+            low: false,
+            lightmap_layers: u32::MAX,
+            squeezed: 0,
+            refused: 0,
+            wants_room: false,
+        }
+    }
+}
+
+impl MemoryBudget {
+    pub fn active(&self) -> bool {
+        self.budget > 0
+    }
+
+    pub fn fits(&self, tracked: u64, bytes: u64) -> bool {
+        !self.active() || tracked.saturating_add(self.untracked).saturating_add(bytes) <= self.budget
+    }
+}
+
 pub(crate) struct StagingPacer {
     pending: u64,
+    slice: u64,
     last: Option<wgpu::SubmissionIndex>,
 }
 
+impl Default for StagingPacer {
+    fn default() -> Self {
+        Self { pending: 0, slice: STAGING_SLICE, last: None }
+    }
+}
+
 impl StagingPacer {
+    pub fn set_slice(&mut self, bytes: u64) {
+        self.slice = bytes.max(1 << 20);
+    }
+
     pub fn wrote(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, bytes: u64) {
         self.pending = self.pending.saturating_add(bytes);
-        if self.pending < STAGING_SLICE {
+        if self.pending < self.slice {
             return;
         }
         self.pending = 0;
@@ -176,6 +223,16 @@ pub(crate) fn gpu_test_lock() -> std::sync::MutexGuard<'static, ()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn budgets_refuse_what_does_not_fit() {
+        let none = MemoryBudget::default();
+        assert!(!none.active() && none.fits(u64::MAX / 2, 1 << 40));
+        let b = MemoryBudget { budget: 1000, untracked: 200, ..MemoryBudget::default() };
+        assert!(b.fits(500, 300));
+        assert!(!b.fits(500, 301));
+        assert!(!b.fits(900, 0), "untracked memory counts");
+    }
 
     #[test]
     fn out_of_memory_texts_are_recognized() {

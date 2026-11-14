@@ -64,6 +64,29 @@ pub(crate) fn model_path<'a>(e: &'a Entity, class: Option<&ResolvedClass>) -> Op
     e.get("model").filter(|m| is_model_path(m)).map(std::borrow::Cow::Borrowed)
 }
 
+const PITCHED_LIGHTS: [&str; 3] = ["light_spot", "light_environment", "light_directional"];
+
+pub(crate) fn model_angles(e: &Entity, class: Option<&ResolvedClass>) -> DVec3 {
+    let angles = e.angles().filter(|a| a.is_finite()).unwrap_or(DVec3::ZERO);
+    let classname = e.classname.trim();
+    let light = class.is_some_and(|c| c.has_helper("lightprop"))
+        || PITCHED_LIGHTS.iter().any(|c| classname.eq_ignore_ascii_case(c));
+    if !light {
+        return angles;
+    }
+    let num = |k: &str| e.get(k).and_then(|v| v.trim().parse::<f64>().ok()).filter(|v| v.is_finite());
+    let angle = num("angle").unwrap_or(0.0);
+    let (up, yaw) = if angle == -1.0 {
+        (90.0, angles.y)
+    } else if angle == -2.0 {
+        (-90.0, angles.y)
+    } else {
+        let up = num("pitch").filter(|p| *p != 0.0).unwrap_or(angles.x);
+        (up, if angle != 0.0 { angle } else { angles.y })
+    };
+    DVec3::new(-up + 0.0, yaw, angles.z)
+}
+
 pub(crate) fn local_bounds(class: Option<&ResolvedClass>) -> (DVec3, DVec3) {
     let (min, max) = class.and_then(ResolvedClass::size).unwrap_or(hp_fgd::DEFAULT_POINT_BOUNDS);
     let (min, max) = (DVec3::from(min), DVec3::from(max));
@@ -124,7 +147,7 @@ pub(crate) fn brush_entity_color(e: &Entity, class: Option<&ResolvedClass>) -> [
 pub(crate) fn entity_desc(e: &Entity, fgd: Option<&ResolvedFgd>) -> EntityDesc {
     let class = class_of(fgd, e);
     let origin = e.origin().filter(|o| o.is_finite()).unwrap_or(DVec3::ZERO);
-    let angles = e.angles().filter(|a| a.is_finite()).unwrap_or(DVec3::ZERO);
+    let angles = model_angles(e, class);
     let bounds = local_bounds(class);
     let skin = e.get("skin").and_then(|s| s.trim().parse::<i64>().ok()).unwrap_or(0).clamp(0, i64::from(u32::MAX));
     let model = model_path(e, class).map(|p| (model_key(&p), skin as u32));
@@ -263,6 +286,52 @@ mod tests {
 
     fn fgd() -> ResolvedFgd {
         hp_fgd::Fgd::parse(FGD, None).resolve()
+    }
+
+    #[test]
+    fn spot_models_point_along_the_light_cone() {
+        let f = hp_fgd::Fgd::parse(
+            r#"@PointClass lightprop("models/editor/spot.mdl") lightcone() = light_spot : "" []
+            @PointClass iconsprite("editor/light_env.vmt") = light_environment : "" []
+            @PointClass iconsprite("editor/light_directional.vmt") = light_directional : "" []"#,
+            None,
+        )
+        .resolve();
+        let cases: &[&[(&str, &str)]] = &[
+            &[("angles", "0 90 0"), ("pitch", "-90")],
+            &[("angles", "0 90 0"), ("pitch", "-45")],
+            &[("angles", "0 0 0"), ("pitch", "30")],
+            &[("angles", "0 0 0"), ("pitch", "90")],
+            &[("angles", "-90 0 0")],
+            &[("angles", "45 135 0")],
+            &[("angles", "-20 45 0"), ("pitch", "0")],
+            &[("angles", "45 90 0"), ("pitch", "-45")],
+            &[("angles", "90 270 0"), ("pitch", "-90")],
+            &[("angles", "10 20 30"), ("pitch", "-60")],
+            &[("angles", "0 0 0"), ("angle", "120"), ("pitch", "-10")],
+            &[("angles", "0 45 0"), ("angle", "-1")],
+            &[("angles", "0 45 0"), ("angle", "-2"), ("pitch", "30")],
+            &[("angles", "0 45 0"), ("angle", "-2")],
+            &[("angles", "0 45 0"), ("angle", "-1"), ("pitch", "-90")],
+            &[("angles", "-30 45 0"), ("angle", "-1")],
+            &[("pitch", "-90")],
+            &[],
+        ];
+        for class in ["light_spot", "light_environment", "light_directional"] {
+            for kv in cases {
+                let mut props = vec![("origin", "0 0 0")];
+                props.extend_from_slice(kv);
+                let e = ent(class, &props);
+                let d = entity_desc(&e, Some(&f));
+                let forward = hp_geom::angle_matrix(d.angles).x_axis;
+                let cone = crate::lights::light_direction(&e);
+                assert!((forward - cone).length() < 1e-9, "{class} {kv:?}: model {forward} cone {cone}");
+                let helper = hp_app::runtime::helpers::geometry::light_direction(&e);
+                assert!((forward - helper).length() < 1e-9, "{class} {kv:?}: model {forward} helper {helper}");
+            }
+        }
+        let plain = ent("info_player_start", &[("angles", "-30 90 0"), ("pitch", "-90")]);
+        assert_eq!(entity_desc(&plain, Some(&fgd())).angles, DVec3::new(-30.0, 90.0, 0.0));
     }
 
     #[test]

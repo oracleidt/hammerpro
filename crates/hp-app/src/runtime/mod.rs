@@ -50,7 +50,10 @@ pub use content::{
 pub use cubemaps::CubemapRuntime;
 pub use discord::{DiscordRuntime, DiscordStatus};
 pub use entities::{AssetKind, AssetPick, EntitiesRuntime, KeyvalueClip};
-pub use gpu::{GpuRelease, GpuReleased, GpuRuntime, TextureStreaming, VramBreakdown, VramPressure, VramSource};
+pub use gpu::{
+    GpuHardware, GpuRelease, GpuReleased, GpuRuntime, MemoryTier, TextureStreaming, VramBreakdown, VramPressure,
+    VramSource,
+};
 pub use health::{HealthRuntime, LeakResult};
 pub use helpers::HelpersRuntime;
 pub use instances::InstancesRuntime;

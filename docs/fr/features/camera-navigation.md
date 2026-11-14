@@ -6,17 +6,17 @@ Comment se déplacer dans la map : la caméra volante de la vue 3D, le défileme
 
 ## Vue 3D : la caméra volante
 
-Ces contrôles marchent avec tous les outils et tous les schémas :
+Ces contrôles marchent avec tous les outils. Ce sont ceux des schémas **Hammer Pro** et **Hammer** ; avec **Hammer++ (bouton du milieu)**, le bouton du milieu prend la place du clic droit, qui reste libre pour les outils (voir [Schémas de contrôle](#schémas-de-contrôle)) :
 
 | Entrée | Effet |
 |---|---|
-| Maintenir le clic droit et bouger la souris | Regarder autour |
-| Clic droit maintenu : `W` `A` `S` `D` (`Z` `Q` `S` `D` en AZERTY) | Voler en avant, à gauche, en arrière, à droite |
+| Maintenir le clic droit et bouger la souris (Hammer++ : le bouton du milieu) | Regarder autour |
+| Ce bouton maintenu : `W` `A` `S` `D` (`Z` `Q` `S` `D` en AZERTY) | Voler en avant, à gauche, en arrière, à droite |
 | `E` ou `Espace` / `Q` (`A` en AZERTY) | Monter / descendre (sur l'axe Z du monde) |
 | `Maj` | Voler plus vite (multiplicateur de vitesse rapide) |
 | Molette en vol | Change la vitesse de la caméra (x1,25 par cran, de 50 à 20000 unités/s) ; une notification affiche la nouvelle vitesse |
 | Touche de vue souris (`W` en AZERTY, `Z` en QWERTY) | Vue souris permanente : regarder autour sans tenir de bouton. La même touche ou `Échap` en sort |
-| Glisser avec le bouton du milieu | Faire défiler (la scène sous le pointeur le suit) |
+| Glisser avec le bouton du milieu (Hammer Pro et Hammer) | Faire défiler (la scène sous le pointeur le suit) |
 | Molette | Avancer ou reculer, vers le curseur si **Zoomer vers le curseur** est activé. `Maj` : plus vite |
 | Clic droit sans bouger | Ouvre le menu contextuel de la vue |
 
@@ -60,9 +60,21 @@ En vue souris (`Z`), vous pouvez texturer la face sous le viseur sans quitter le
 |---|---|
 | **Hammer Pro** (par défaut) | Les contrôles ci-dessus |
 | **Hammer** | Dans la vue 3D : `Espace` + glisser clic gauche regarde autour, `Espace` + glisser clic droit fait défiler, clic gauche + clic droit + glisser avance (pointeur vers le haut) et décale sur le côté, les flèches font regarder autour (90° par seconde) quand rien n'est sélectionné |
-| **Hammer++ (bouton du milieu)** | Les contrôles Hammer, mais le bouton du milieu fait regarder autour (et voler) dans la vue 3D au lieu de faire défiler. Un clic du milieu sans bouger arrive toujours à l'outil |
+| **Hammer++ (bouton du milieu)** | Comme Hammer++ : le bouton du milieu fait regarder autour et voler avec `Z` `Q` `S` `D` dans la vue 3D (un clic du milieu sans bouger arrive toujours à l'outil, par exemple pour ouvrir une instance). Le clic droit ne bouge jamais la caméra : il reste libre pour l'outil actif, ainsi l'[outil Édition de faces](texture-tool.md) applique la texture courante d'un clic droit et la peint en glissant clic droit, et un clic droit ailleurs ouvre le menu contextuel. `Espace` + glisser clic gauche, `Espace` + glisser clic droit, clic gauche + clic droit + glisser et les flèches marchent comme dans le schéma Hammer |
 
-La page des paramètres liste sous la liste déroulante les contrôles du schéma choisi.
+Ce que fait chaque entrée de la souris dans la vue 3D :
+
+| Entrée dans la vue 3D | Hammer Pro | Hammer | Hammer++ (bouton du milieu) |
+|---|---|---|---|
+| Glisser clic droit | Regarder autour, voler avec `Z` `Q` `S` `D` | Regarder autour, voler avec `Z` `Q` `S` `D` | Rien : libre pour l'outil actif (Édition de faces : peindre la texture) |
+| Clic droit | Menu contextuel (Édition de faces : appliquer la texture) | Pareil | Pareil |
+| Glisser bouton du milieu | Faire défiler | Faire défiler | Regarder autour, voler avec `Z` `Q` `S` `D` |
+| `Espace` + glisser clic gauche | L'outil actif | Regarder autour | Regarder autour |
+| `Espace` + glisser clic droit | Regarder autour | Faire défiler | Faire défiler |
+| Clic gauche + clic droit + glisser | L'outil actif et regarder autour | Avancer et se décaler | Avancer et se décaler |
+| Touche de vue souris | Vue souris | Vue souris | Vue souris |
+
+La page des paramètres liste sous la liste déroulante les contrôles du schéma choisi, et la référence des raccourcis (`F1`) les liste sous **Contrôles des vues**. Les deux listes sont construites à partir des associations que les vues utilisent vraiment : elles correspondent toujours au schéma.
 
 ## Vues 2D
 
@@ -167,7 +179,9 @@ Les clés sont dans `settings.toml` sous `[view]` et `[workflow]`, voir la [Réf
 
 ## FAQ
 
-**ZQSD ne fait rien.** Les touches de vol ne marchent que clic droit maintenu (ou en vue souris), avec le pointeur sur la vue 3D.
+**ZQSD ne fait rien.** Les touches de vol ne marchent que bouton de vue maintenu (le clic droit, le bouton du milieu avec le schéma Hammer++) ou en vue souris, avec le pointeur sur la vue 3D.
+
+**Avec le schéma Hammer++, le clic droit faisait aussi tourner la caméra.** Corrigé en 2.0.8 : le clic droit est maintenant libre pour les outils comme dans Hammer++, le bouton du milieu fait regarder autour.
 
 **Mon clavier AZERTY vole dans le mauvais sens.** Choisissez **Touches de la caméra : Auto (clavier)**, qui se base sur la position des touches (ZQSD), ou forcez **AZERTY**.
 

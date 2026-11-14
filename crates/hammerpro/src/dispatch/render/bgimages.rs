@@ -203,6 +203,13 @@ pub(crate) struct BgImages {
     pub open: bool,
 }
 
+impl BgImages {
+    pub(crate) fn forget_gpu(&mut self) {
+        self.loaded.clear();
+        self.synced = None;
+    }
+}
+
 impl Default for BgImages {
     fn default() -> Self {
         let (tx, rx) = channel();

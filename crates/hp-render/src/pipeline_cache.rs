@@ -1,9 +1,10 @@
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 const MAGIC: &[u8; 8] = b"HPPCACHE";
 const HEADER: usize = 16;
+pub const DX12_SHADER_DIR: &str = "shaders-dx12";
 
 struct Slot {
     device: wgpu::Device,
@@ -14,6 +15,76 @@ struct Slot {
 
 static SLOT: RwLock<Option<Slot>> = RwLock::new(None);
 static DIRTY: AtomicBool = AtomicBool::new(false);
+static CREATED: AtomicU64 = AtomicU64::new(0);
+static CREATE_MICROS: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ShaderCompileStats {
+    pub compiled: u64,
+    pub compile_ms: u64,
+    pub disk_hits: u64,
+    pub disk_misses: u64,
+    pub write_errors: u64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CompileStats {
+    pub pipelines_created: u64,
+    pub pipelines_ms: u64,
+    pub dx12_compiler: Option<String>,
+    pub dx12_cache_dir: Option<PathBuf>,
+    pub dx12: Option<ShaderCompileStats>,
+}
+
+pub fn compile_stats() -> CompileStats {
+    let mut out = CompileStats {
+        pipelines_created: CREATED.load(Ordering::Relaxed),
+        pipelines_ms: CREATE_MICROS.load(Ordering::Relaxed) / 1000,
+        ..CompileStats::default()
+    };
+    #[cfg(windows)]
+    {
+        out.dx12_compiler = wgpu_hal::dx12::active_shader_compiler();
+        out.dx12_cache_dir = wgpu_hal::dx12::shader_disk_cache_dir();
+        if out.dx12_compiler.is_some() {
+            let s = wgpu_hal::dx12::shader_compile_stats();
+            out.dx12 = Some(ShaderCompileStats {
+                compiled: s.compiled,
+                compile_ms: s.compile_micros / 1000,
+                disk_hits: s.disk_hits,
+                disk_misses: s.disk_misses,
+                write_errors: s.write_errors,
+            });
+        }
+    }
+    out
+}
+
+pub fn dx12_compiler() -> Option<String> {
+    #[cfg(windows)]
+    {
+        wgpu_hal::dx12::active_shader_compiler()
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
+pub fn set_dx12_shader_cache(dir: Option<PathBuf>) {
+    #[cfg(windows)]
+    wgpu_hal::dx12::set_shader_disk_cache(dir);
+    #[cfg(not(windows))]
+    let _ = dir;
+}
+
+pub(crate) fn timed<R>(f: impl FnOnce() -> R) -> R {
+    let started = std::time::Instant::now();
+    let out = f();
+    CREATED.fetch_add(1, Ordering::Relaxed);
+    CREATE_MICROS.fetch_add(u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX), Ordering::Relaxed);
+    out
+}
 
 pub fn file_name(info: &wgpu::AdapterInfo) -> Option<String> {
     wgpu::util::pipeline_cache_key(info).map(|k| format!("{k}.bin"))
@@ -91,7 +162,7 @@ pub(crate) fn with<R>(device: &wgpu::Device, f: impl FnOnce(Option<&wgpu::Pipeli
     if cache.is_some() {
         DIRTY.store(true, Ordering::Relaxed);
     }
-    f(cache)
+    timed(|| f(cache))
 }
 
 pub(crate) fn save_if_dirty(device: &wgpu::Device) {

@@ -23,19 +23,34 @@ Leaving the player view frees the compiled world, its lightmaps and its sky. Bak
 
 Before any of this, **Load texture detail by distance** (`render.texture_streaming`, on by default) keeps textures used only far from every view at a smaller size that looks the same at that distance, so big maps need less graphics memory in the first place. Textures may use 60% of the budget; when they would use more, the farthest ones are reduced one more level before the steps above lower every texture. See [Editor performance](performance.md#texture-detail-by-distance).
 
+### Low graphics memory mode
+
+**Settings > Render > Graphics memory** (`render.graphics_memory`) chooses how much of the graphics card Hammer Pro plans to use, and how carefully:
+
+| Mode | What it does |
+|---|---|
+| **Auto** (default) | Chosen from the graphics card: **Low** on integrated graphics (which share the system memory) and on cards with less than 3 GB, **High** from 12 GB, **Normal** otherwise. |
+| **Low** | A budget of half what Windows gives the program, 1 GB at most (384 MB at least when the card has it). Textures are limited to 1024 pixels from the start, not only after the memory is full, and a texture that would go over the budget is loaded smaller instead of being added. Sun shadows are at most 1024 pixels, light shadows 256 pixels and at most 4 shadowed lights, multisampling is off, the sky light occlusion map is off, water reflects the world only, and the cubemap reflections share 40 MB instead of 160 MB. The baked preview keeps its lightmaps under 12% of the budget (fewer lightmap layers, coarser lightmaps on big maps) and sends them with their geometry in steps of a few megabytes. The thumbnail caches keep 600 textures and 150 models instead of 3000 and 750, and uploads to the card wait for the previous ones every 4 MB instead of 16 MB. |
+| **Normal** | The usual budget: 90% of what Windows gives, at most 2 GB on integrated graphics. |
+| **High** | 95% of what Windows gives, without the 2 GB limit of integrated graphics. |
+
+The line under the settings shows the mode in use. A **Graphics memory budget** in MB replaces the budget of the mode but keeps its other limits. The Performance mode can still lower the quality more; the stricter of both applies.
+
+For tests, the environment variable `HAMMERPRO_VRAM_BUDGET_MB` forces a budget in MB (below 3 GB, **Auto** also picks **Low**, as on a small card) and `HAMMERPRO_SIMULATE_LOW_VRAM=1` (or a size in MB) makes **Auto** see a small integrated graphics card. `get_gpu_memory` (MCP) reports `graphics_memory`, `mode`, `hardware`, `lightmap_layers_max` and `textures_loaded_smaller`.
+
 ### The budget
 
 **Settings > Render > Graphics memory**:
 
 | Setting | What it does |
 |---|---|
-| **Graphics memory budget** | How much graphics memory Hammer Pro may use. **Automatic** (0, the default) uses 90% of what Windows gives the program, or 3 GB (1.5 GB on integrated graphics) when the driver does not tell; on integrated graphics, which use the system memory, never more than 2 GB. Set a value in MB to leave room for the game or another program running at the same time. |
+| **Graphics memory budget** | How much graphics memory Hammer Pro may use. **Automatic** (0, the default) uses 90% of what Windows gives the program, or 3 GB (1.5 GB on integrated graphics) when the driver does not tell; on integrated graphics, which use the system memory, never more than 2 GB. Set a value in MB to leave room for the game or another program running at the same time. In the **Low** mode Automatic is half of what Windows gives, 1 GB at most (see above). |
 | **Keep other tabs on the graphics card** | On (default): switching tabs is instant while there is room. Off: only the map you see stays on the graphics card, the others load again when shown. |
 | **Free graphics memory now** | Frees the maps of the other tabs, unused textures and models, and the thumbnails at once. |
 
 The line under these settings shows the memory in use and its source ("measured by the driver" or "estimated").
 
-The same settings are stored as `vram_budget_mb` and `keep_background_maps_on_gpu` in the `[render]` table of `settings.toml`. Through MCP: `set_setting` with `render.vram_budget_mb`, `get_gpu_memory` for the measures, `free_gpu_memory` to free memory now. Scripts can print the measures with the `vram` command.
+The same settings are stored as `vram_budget_mb` and `keep_background_maps_on_gpu` in the `[render]` table of `settings.toml`. Through MCP: `set_setting` with `render.graphics_memory` or `render.vram_budget_mb`, `get_gpu_memory` for the measures, `free_gpu_memory` to free memory now. Scripts can print the measures with the `vram` command.
 
 ### When the warning keeps coming back
 

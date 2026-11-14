@@ -26,6 +26,7 @@ pub(crate) struct Thumbs {
     ready: usize,
     decoded: VecDeque<(String, ThumbPixels)>,
     budget: (u64, usize),
+    capacity: usize,
 }
 
 impl Thumbs {
@@ -51,6 +52,15 @@ impl Thumbs {
         self.ready
     }
 
+    pub(crate) fn capacity(&self) -> usize {
+        if self.capacity == 0 { THUMB_CAPACITY } else { self.capacity }
+    }
+
+    pub(crate) fn set_capacity(&mut self, capacity: usize, frame: u64) {
+        self.capacity = capacity.max(1);
+        self.evict(frame.saturating_add(1));
+    }
+
     fn insert_ready(&mut self, name: String, handle: egui::TextureHandle, size: [u32; 2], frame: u64) {
         let old = self.map.insert(name, ThumbEntry::Ready { handle, size, last_used: frame });
         if !matches!(old, Some(ThumbEntry::Ready { .. })) {
@@ -60,10 +70,11 @@ impl Thumbs {
     }
 
     fn evict(&mut self, frame: u64) {
-        if self.ready <= THUMB_CAPACITY {
+        let capacity = self.capacity();
+        if self.ready <= capacity {
             return;
         }
-        let target = THUMB_CAPACITY * 9 / 10;
+        let target = capacity * 9 / 10;
         let mut candidates: Vec<(u64, &String)> = self
             .map
             .iter()

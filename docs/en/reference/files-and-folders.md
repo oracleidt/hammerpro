@@ -27,6 +27,8 @@ Automated runs (`--script`, `--screenshot`, `--bench-open`) write none of the pe
 | `prefab_thumbs\` | Thumbnails of the prefab library. |
 | `pack\` | Cache of the files packed into compiled maps (converted images, extracted files). |
 | `compile_content\` | Generated game folder that makes your custom materials (custom texture folders, plain images) and the custom models the map uses visible to the compiler. |
+| `shaders-dx12\` | Shaders compiled for DirectX 12 (FXC or DXC), kept between sessions so later starts skip the slow compile. |
+| `pipelines\` | Vulkan pipeline cache of each graphics card and driver. |
 | `builds\` | Stage cache of the compiler: an identical geometry or lighting step is restored instead of run again. |
 | `content_index.bin` | The saved index of the game, custom and mounted folders, so launches only scan what changed (see [Content index and scan](../features/content-index.md)). |
 | `compile_history\<map key>.jsonl` | Timing history of the compiles of each map (History tab of the compile window). |

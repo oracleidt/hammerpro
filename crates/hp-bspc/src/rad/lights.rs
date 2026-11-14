@@ -224,11 +224,13 @@ pub(crate) fn light_for_string(s: &str, hdr: bool) -> Option<Vec3A> {
 }
 
 pub(crate) fn light_normal(angles: DVec3, angle: f64, pitch: f64) -> DVec3 {
-    let mut out = if angle == -1.0 {
-        DVec3::Z
-    } else if angle == -2.0 {
-        DVec3::NEG_Z
-    } else {
+    if angle == -1.0 {
+        return DVec3::Z;
+    }
+    if angle == -2.0 {
+        return DVec3::NEG_Z;
+    }
+    let mut out = {
         let yaw = if angle == 0.0 { angles.y } else { angle };
         let (s, c) = hp_light::lights::sin_cos_degrees(yaw);
         DVec3::new(c, s, 0.0)
@@ -732,6 +734,9 @@ mod tests {
         assert!((n - DVec3::Y).length() < 1e-9);
         let n = light_normal(DVec3::ZERO, -2.0, -90.0);
         assert!((n.z + 1.0).abs() < 1e-9);
+        assert_eq!(light_normal(DVec3::ZERO, -1.0, 0.0), DVec3::Z);
+        assert_eq!(light_normal(DVec3::ZERO, -2.0, 30.0), DVec3::NEG_Z);
+        assert_eq!(light_normal(DVec3::new(45.0, 0.0, 0.0), -1.0, -90.0), DVec3::Z);
     }
 
     #[test]

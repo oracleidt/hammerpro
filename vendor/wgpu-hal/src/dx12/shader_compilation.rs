@@ -100,6 +100,23 @@ impl CompilerContainer {
         }
     }
 
+    pub(super) fn cache_tag(&self, debug: bool) -> String {
+        let name = match self {
+            CompilerContainer::Fxc(..) => String::from("fxc"),
+            CompilerContainer::DynamicDxc(CompilerDynamicDxc {
+                max_shader_model, ..
+            }) => format!("dxc-{max_shader_model:?}"),
+            CompilerContainer::StaticDxc(CompilerStaticDxc {
+                max_shader_model, ..
+            }) => format!("static-dxc-{max_shader_model:?}"),
+        };
+        if debug {
+            name + "-debug"
+        } else {
+            name
+        }
+    }
+
     pub(super) fn compile(
         &self,
         device: &super::Device,

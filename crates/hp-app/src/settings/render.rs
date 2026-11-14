@@ -127,6 +127,76 @@ impl PerformanceMode {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum GraphicsMemory {
+    #[default]
+    Auto,
+    Low,
+    Normal,
+    High,
+}
+
+impl GraphicsMemory {
+    pub const ALL: [GraphicsMemory; 4] =
+        [GraphicsMemory::Auto, GraphicsMemory::Low, GraphicsMemory::Normal, GraphicsMemory::High];
+
+    pub const fn id(self) -> &'static str {
+        match self {
+            GraphicsMemory::Auto => "Auto",
+            GraphicsMemory::Low => "Low",
+            GraphicsMemory::Normal => "Normal",
+            GraphicsMemory::High => "High",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum GraphicsBackend {
+    #[default]
+    Auto,
+    Vulkan,
+    Dx12,
+}
+
+impl GraphicsBackend {
+    pub const ALL: [GraphicsBackend; 3] = [GraphicsBackend::Auto, GraphicsBackend::Vulkan, GraphicsBackend::Dx12];
+
+    pub const fn id(self) -> &'static str {
+        match self {
+            GraphicsBackend::Auto => "Auto",
+            GraphicsBackend::Vulkan => "Vulkan",
+            GraphicsBackend::Dx12 => "Dx12",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<GraphicsBackend> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "auto" | "" => Some(GraphicsBackend::Auto),
+            "vulkan" | "vk" => Some(GraphicsBackend::Vulkan),
+            "dx12" | "d3d12" | "directx12" | "directx" => Some(GraphicsBackend::Dx12),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Dx12Compiler {
+    #[default]
+    Fxc,
+    Dxc,
+}
+
+impl Dx12Compiler {
+    pub const ALL: [Dx12Compiler; 2] = [Dx12Compiler::Fxc, Dx12Compiler::Dxc];
+
+    pub const fn id(self) -> &'static str {
+        match self {
+            Dx12Compiler::Fxc => "Fxc",
+            Dx12Compiler::Dxc => "Dxc",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum LitQuality {
     High,
     Balanced,
@@ -244,6 +314,7 @@ pub struct RenderSettings {
     pub unfocused_fps: u32,
     pub vsync: bool,
     pub vram_budget_mb: u32,
+    pub graphics_memory: GraphicsMemory,
     pub keep_background_maps_on_gpu: bool,
     pub texture_streaming: bool,
     pub performance_mode: PerformanceMode,
@@ -251,6 +322,8 @@ pub struct RenderSettings {
     pub render_scale: f32,
     pub perf_hud: bool,
     pub primitive_stats: bool,
+    pub graphics_backend: GraphicsBackend,
+    pub dx12_compiler: Dx12Compiler,
 }
 
 impl Default for RenderSettings {
@@ -339,6 +412,7 @@ impl Default for RenderSettings {
             unfocused_fps: 30,
             vsync: true,
             vram_budget_mb: 0,
+            graphics_memory: GraphicsMemory::Auto,
             keep_background_maps_on_gpu: true,
             texture_streaming: true,
             performance_mode: PerformanceMode::Auto,
@@ -346,6 +420,8 @@ impl Default for RenderSettings {
             render_scale: 1.0,
             perf_hud: false,
             primitive_stats: false,
+            graphics_backend: GraphicsBackend::Auto,
+            dx12_compiler: Dx12Compiler::Fxc,
         }
     }
 }
@@ -424,6 +500,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn graphics_backend_parses_and_defaults_to_auto() {
+        assert_eq!(RenderSettings::default().graphics_backend, GraphicsBackend::Auto);
+        let old: RenderSettings = toml::from_str("vsync = true").expect("parse");
+        assert_eq!(old.graphics_backend, GraphicsBackend::Auto);
+        assert_eq!(old.dx12_compiler, Dx12Compiler::Fxc, "DXC is only used when turned on");
+        let dxc: RenderSettings = toml::from_str("dx12_compiler = \"Dxc\"").expect("parse");
+        assert_eq!(dxc.dx12_compiler, Dx12Compiler::Dxc);
+        assert_eq!(Dx12Compiler::ALL.map(Dx12Compiler::id), ["Fxc", "Dxc"]);
+        let set: RenderSettings = toml::from_str("graphics_backend = \"Dx12\"").expect("parse");
+        assert_eq!(set.graphics_backend, GraphicsBackend::Dx12);
+        assert_eq!(GraphicsBackend::parse("Vulkan"), Some(GraphicsBackend::Vulkan));
+        assert_eq!(GraphicsBackend::parse("dx12"), Some(GraphicsBackend::Dx12));
+        assert_eq!(GraphicsBackend::parse(" AUTO "), Some(GraphicsBackend::Auto));
+        assert_eq!(GraphicsBackend::parse("gl"), None);
+        for b in GraphicsBackend::ALL {
+            assert_eq!(GraphicsBackend::parse(b.id()), Some(b));
+        }
+    }
+
+    #[test]
     fn animations_pace_and_pause() {
         use std::time::Duration;
         let s = RenderSettings::default();
@@ -475,6 +571,20 @@ mod tests {
         let mut missing: RenderSettings = toml::from_str("grid_3d = true\n").expect("parse");
         missing.migrate();
         assert!(!missing.cubemaps);
+    }
+
+    #[test]
+    fn graphics_memory_defaults_to_auto_and_round_trips() {
+        let old: RenderSettings = toml::from_str(
+            "vram_budget_mb = 0
+",
+        )
+        .expect("parse");
+        assert_eq!(old.graphics_memory, GraphicsMemory::Auto, "older files get Auto");
+        for m in GraphicsMemory::ALL {
+            let r: RenderSettings = toml::from_str(&format!("graphics_memory = \"{}\"", m.id())).expect("parse");
+            assert_eq!(r.graphics_memory, m);
+        }
     }
 
     #[test]

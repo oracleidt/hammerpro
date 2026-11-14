@@ -107,6 +107,10 @@ pub(crate) fn prepare_with_mips<'a>(
     }
 }
 
+pub(crate) fn prepared_bytes(p: &Prepared<'_>) -> u64 {
+    p.levels.iter().map(|l| l.len() as u64).sum()
+}
+
 pub(crate) fn limit_size(p: &mut Prepared<'_>, limit: u32) {
     let (bw, bh) = p.format.block_dimensions();
     while (p.width > limit || p.height > limit) && p.levels.len() > 1 {

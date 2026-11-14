@@ -39,6 +39,8 @@ Instance files are looked for from the folder of the map (the `file` key is rela
 | **Instances: tinted** (default) | The content, tinted, like Hammer. |
 | **Instances: normal** | The content drawn like the rest of the map. |
 
+The overlays (`info_overlay`, `info_overlay_transition`) and decals (`infodecal`) of an instance file are drawn on its brushes too, moved and turned with the instance, in every render mode, like Hammer++; decals also land on the brushes of the map behind the instance, like after a collapse (they follow the **Overlays** display toggle). The parent map drawn around an edited instance shows its overlays and decals as well. Collapse and the compiler keep them attached to the right faces (their `sides` are renumbered with the brushes).
+
 The content of the selected instances is outlined (nested instances included) and their file is named in every view. An instance whose file cannot be found or read gets a red cross and a label at its origin.
 
 ## Create instance from selection

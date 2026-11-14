@@ -93,6 +93,35 @@ fn pick_material(state: &mut AppState, face: FaceRef) {
     }
 }
 
+struct RightPaint {
+    kind: ClickKind,
+    tag: String,
+    done: Vec<FaceRef>,
+}
+
+static PAINT_STROKES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn paint_face(state: &mut AppState, stroke: &mut RightPaint, face: FaceRef) {
+    if stroke.done.contains(&face) {
+        return;
+    }
+    stroke.done.push(face);
+    if stroke.kind == ClickKind::Wrap {
+        if state.doc.selection().faces.is_empty() {
+            if stroke.done.len() == 1 {
+                state.notify(Severity::Warning, t!("tex.tool.wrap_needs_source"));
+            }
+            return;
+        }
+        if state.doc.selection().faces.contains(&face) {
+            return;
+        }
+    }
+    state.doc.begin_merge(t!("tex.tool.paint_undo"), stroke.tag.clone());
+    click_face(state, face, stroke.kind);
+    state.doc.commit();
+}
+
 #[derive(Default)]
 struct SummaryCache {
     revision: u64,
@@ -116,6 +145,7 @@ pub struct TextureTool {
     saved_objects: Vec<ObjRef>,
     uv: crate::uv_editor::UvEditor,
     painting: bool,
+    right_paint: Option<RightPaint>,
     uv_place: UvPlace,
     uv_native: hp_app::native_window::NativeWindow,
     uv_builder: Option<egui::ViewportBuilder>,
@@ -147,6 +177,7 @@ impl Default for TextureTool {
             saved_objects: Vec::new(),
             uv: crate::uv_editor::UvEditor::default(),
             painting: false,
+            right_paint: None,
             uv_place: UvPlace::Panel,
             uv_native: hp_app::native_window::NativeWindow::default(),
             uv_builder: None,
@@ -678,6 +709,35 @@ impl hp_app::Tool for TextureTool {
                 return ToolFlow::Handled;
             }
         }
+        if r.drag_started_by(egui::PointerButton::Secondary) {
+            let serial = PAINT_STROKES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let mut stroke = RightPaint {
+                kind: click_kind(true, input.modifiers),
+                tag: format!("hp_texture_paint:{serial}"),
+                done: Vec::new(),
+            };
+            let origin = r.ctx.input(|i| i.pointer.press_origin());
+            if let Some(face) = origin.and_then(|p| pick_face(state, input.view, p)) {
+                paint_face(state, &mut stroke, face);
+            }
+            if let Some(face) = self.hover {
+                paint_face(state, &mut stroke, face);
+            }
+            self.right_paint = Some(stroke);
+            return ToolFlow::Handled;
+        }
+        if let Some(mut stroke) = self.right_paint.take() {
+            if r.dragged_by(egui::PointerButton::Secondary) {
+                if let Some(face) = self.hover {
+                    paint_face(state, &mut stroke, face);
+                }
+                self.right_paint = Some(stroke);
+                return ToolFlow::Handled;
+            }
+            if r.drag_stopped() {
+                return ToolFlow::Handled;
+            }
+        }
         let kind = if r.clicked() {
             Some(click_kind(false, input.modifiers))
         } else if r.secondary_clicked() {
@@ -793,7 +853,10 @@ impl hp_app::Tool for TextureTool {
         (!view.is_2d() && self.hover.is_some()).then_some(egui::CursorIcon::PointingHand)
     }
 
-    fn status_hint(&self, _state: &AppState) -> Option<String> {
+    fn status_hint(&self, state: &AppState) -> Option<String> {
+        if state.settings.workflow.nav_scheme.right_free() {
+            return Some(format!("{} {}", t!("tex.tool.hint"), t!("tex.tool.hint_paint")));
+        }
         Some(t!("tex.tool.hint").to_owned())
     }
 
@@ -1203,6 +1266,85 @@ mod tests {
         draw(&tool, &state);
         assert_eq!(tool.mask.builds(), 4);
         assert_eq!(fills, 4, "the viewports refill only on change");
+    }
+
+    #[test]
+    fn right_drag_paints_every_face_swept_in_one_undo_step() {
+        let mut state = hp_app::testing::test_state();
+        state.current_material = "TOOLS/TOOLSSKYBOX".to_owned();
+        let mut cam = hp_app::view::Camera3d { pos: DVec3::new(0.0, 0.0, 1000.0), ..Default::default() };
+        cam.look_at(DVec3::new(0.0, 1.0, 0.0));
+        cam.pitch_deg = -89.0;
+        let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
+        let view = ViewInfo {
+            index: 0,
+            kind: hp_app::ViewKind::Perspective,
+            rect,
+            cam3d: cam,
+            cam2d: hp_app::view::Camera2d::default(),
+            pixels_per_point: 1.0,
+            grid: 16.0,
+        };
+        let start = rect.center();
+        let floor = pick_face(&state, &view, start);
+        assert_eq!(floor, Some(FaceRef::new(2, 0)));
+        let target = (1..120)
+            .map(|i| start + egui::vec2(0.0, -2.5 * i as f32))
+            .find(|p| pick_face(&state, &view, *p).is_some_and(|f| f.solid == 3))
+            .expect("the wall top is visible");
+        let wall = pick_face(&state, &view, target).unwrap();
+        let material = |state: &AppState, f: FaceRef| state.doc.face_side(f).unwrap().material.clone();
+        let before = (material(&state, FaceRef::new(2, 0)), material(&state, wall));
+        let ctx = egui::Context::default();
+        let mut tool = TextureTool::new();
+        let mut time = 0.0;
+        let mut frame = |state: &mut AppState, tool: &mut TextureTool, pos: egui::Pos2, events: Vec<egui::Event>| {
+            time += 1.0 / 60.0;
+            let mut all = vec![egui::Event::PointerMoved(pos)];
+            all.extend(events);
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 900.0))),
+                time: Some(time),
+                events: all,
+                ..Default::default()
+            };
+            let _ = ctx.run_ui(input, |ui| {
+                let response = ui.interact(rect, egui::Id::unique("tex_paint_view"), egui::Sense::click_and_drag());
+                let input = ViewInput {
+                    view: &view,
+                    response: &response,
+                    pointer: Some(pos),
+                    modifiers: egui::Modifiers::NONE,
+                    navigating: false,
+                };
+                tool.view_input(state, &input);
+            });
+        };
+        let button = |pos: egui::Pos2, pressed: bool| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Secondary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame(&mut state, &mut tool, start, vec![]);
+        frame(&mut state, &mut tool, start, vec![button(start, true)]);
+        let steps = 12;
+        for i in 1..=steps {
+            let p = start + (target - start) * (i as f32 / steps as f32);
+            frame(&mut state, &mut tool, p, vec![]);
+        }
+        frame(&mut state, &mut tool, target, vec![button(target, false)]);
+        frame(&mut state, &mut tool, target, vec![]);
+        assert_eq!(material(&state, FaceRef::new(2, 0)), "TOOLS/TOOLSSKYBOX");
+        assert_eq!(material(&state, wall), "TOOLS/TOOLSSKYBOX");
+        assert!(state.doc.selection().faces.is_empty(), "painting does not select");
+        assert!(state.doc.undo());
+        assert_eq!((material(&state, FaceRef::new(2, 0)), material(&state, wall)), before, "one undo step");
+        frame(&mut state, &mut tool, start, vec![button(start, true)]);
+        frame(&mut state, &mut tool, start, vec![button(start, false)]);
+        frame(&mut state, &mut tool, start, vec![]);
+        assert_eq!(material(&state, FaceRef::new(2, 0)), "TOOLS/TOOLSSKYBOX", "a right click still applies");
+        assert_eq!(material(&state, wall), before.1);
     }
 
     #[test]

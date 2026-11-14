@@ -40,6 +40,7 @@ pub(crate) struct ModelThumbs {
     jobs: Vec<Job>,
     frame: u64,
     to_free: Vec<egui::TextureId>,
+    max: usize,
 }
 
 impl AssetManager {
@@ -137,6 +138,11 @@ impl AssetManager {
         self.evict_model_thumbs();
     }
 
+    pub(crate) fn set_model_thumb_capacity(&mut self, max: usize) {
+        self.model_thumbs.max = max.max(1);
+        self.evict_model_thumbs();
+    }
+
     pub(crate) fn model_thumbs_ready(&self) -> usize {
         self.model_thumbs.map.values().filter(|e| matches!(e, Entry::Ready { .. })).count()
     }
@@ -162,7 +168,8 @@ impl AssetManager {
     fn evict_model_thumbs(&mut self) {
         let t = &mut self.model_thumbs;
         let ready = t.map.values().filter(|e| matches!(e, Entry::Ready { .. })).count();
-        if ready <= MAX_THUMBS {
+        let max = if t.max == 0 { MAX_THUMBS } else { t.max };
+        if ready <= max {
             return;
         }
         let mut by_age: Vec<(u64, String)> = t
@@ -174,7 +181,7 @@ impl AssetManager {
             })
             .collect();
         by_age.sort_unstable();
-        for (_, k) in by_age.into_iter().take(ready - MAX_THUMBS) {
+        for (_, k) in by_age.into_iter().take(ready - max) {
             if let Some(Entry::Ready { texture, .. }) = t.map.remove(&k) {
                 t.to_free.push(texture);
             }

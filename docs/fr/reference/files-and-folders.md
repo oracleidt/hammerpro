@@ -27,6 +27,8 @@ Les exécutions automatisées (`--script`, `--screenshot`, `--bench-open`) n'éc
 | `prefab_thumbs\` | Miniatures de la bibliothèque de prefabs. |
 | `pack\` | Cache des fichiers intégrés aux maps compilées (images converties, fichiers extraits). |
 | `compile_content\` | Dossier de jeu généré qui rend vos matériaux personnalisés (dossiers de textures personnalisés, images simples) et les modèles personnalisés de la map visibles du compilateur. |
+| `shaders-dx12\` | Shaders compilés pour DirectX 12 (FXC ou DXC), gardés entre les sessions pour que les démarrages suivants sautent la compilation lente. |
+| `pipelines\` | Cache de pipelines Vulkan de chaque carte graphique et pilote. |
 | `builds\` | Cache d'étapes du compilateur : une étape de géométrie ou d'éclairage identique est restaurée au lieu d'être relancée. |
 | `content_index.bin` | L'index enregistré des dossiers du jeu, personnalisés et montés, pour que les lancements n'analysent que ce qui a changé (voir [Index et analyse du contenu](../features/content-index.md)). |
 | `compile_history\<clé de la map>.jsonl` | Historique des temps de compilation de chaque map (onglet Historique de la fenêtre de compilation). |

@@ -683,7 +683,26 @@ impl crate::app::HammerProApp {
             || (content_known && status != hp_app::state::AssetStatus::Ready)
             || since_start > Duration::from_secs(20);
         if let Some(first) = self.startup.after_frame(content_known, fgd_known) {
+            self.state.runtime.render.perf.startup_first_frame_ms = Some(crate::timing::ms(first));
             self.state.log(hp_app::Severity::Info, hp_app::tf!("app.started", crate::timing::ms(first)));
+        }
+        if self.state.runtime.render.perf.startup_views_ready_ms.is_none()
+            && let Some(gfx) = self.state.gfx.as_ref()
+        {
+            let stats = gfx.renderer.pipeline_stats();
+            if stats.ready.iter().any(|r| *r) {
+                let ready = crate::timing::ms(since_start);
+                self.state.runtime.render.perf.startup_views_ready_ms = Some(ready);
+                log::info!(
+                    "startup: 3D and 2D views ready to draw after {ready} ms (render pipelines: {})",
+                    stats
+                        .sets
+                        .iter()
+                        .map(|s| format!("{}x MSAA {:.0} ms", s.samples, s.ms))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
         }
         self.bench_tick(ctx);
     }

@@ -27,7 +27,10 @@ Picking works in the 3D view. The faces under the mouse are outlined; the select
 | Right click | Applies the current material to the face. |
 | `Ctrl+right click` | Applies `tools/toolsnodraw` to the clicked face, keeping the current material and face selection. |
 | `Alt+right click` | Wraps: copies the material of the first selected face onto the clicked face and continues its texture across the shared edge. Select the source face first. |
+| Hold the right button and sweep (Hammer++ camera scheme) | Paints: every face the mouse passes over gets the current material, like Hammer++. `Ctrl` paints `tools/toolsnodraw`, `Alt` wraps each face from the selected face. The whole stroke is one undo step and the face selection does not change. |
 | `Escape` | Clears the face selection. |
+
+The right drag paints only with the **Hammer++ (middle mouse)** camera scheme (**Settings > Viewports > Camera controls**), where the middle button moves the camera and the right button is left to the tools. With the **Hammer Pro** and **Hammer** schemes the right drag looks around and a right click applies, as before.
 
 The status bar reminds these keys. **Edit > Selection element > Previous face selection** (`Alt+Z`) and **Edit > Selection element > Next face selection** (`Alt+Y`), also the **◀ Previous selection** and **Next selection ▶** buttons at the top of the panel, go back and forth through your earlier face selections.
 

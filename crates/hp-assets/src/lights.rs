@@ -102,11 +102,13 @@ pub(crate) fn light_value(e: &Entity, ldr: &str, hdr_key: &str, scale_key: &str,
 pub(crate) fn light_direction(e: &Entity) -> DVec3 {
     let angles = e.angles().filter(|a| a.is_finite()).unwrap_or(DVec3::ZERO);
     let angle = key_f(e, "angle").unwrap_or(0.0);
-    let mut out = if angle == -1.0 {
-        DVec3::Z
-    } else if angle == -2.0 {
-        DVec3::NEG_Z
-    } else {
+    if angle == -1.0 {
+        return DVec3::Z;
+    }
+    if angle == -2.0 {
+        return DVec3::NEG_Z;
+    }
+    let mut out = {
         let yaw = if angle != 0.0 { angle } else { angles.y };
         let (sy, cy) = hp_light::lights::sin_cos_degrees(yaw);
         DVec3::new(cy, sy, 0.0)
@@ -875,8 +877,8 @@ mod tests {
         let p = ldr(parse_light(&point).0);
         assert_eq!((p.kind, p.falloff.map(|f| f.exponent)), (LightKind::Point, Some(0.0)));
         let down = ent("light_spot", &[("angle", "-2"), ("_light", "1 1 1")]);
-        assert_eq!(light_direction(&down), DVec3::ZERO, "VRAD overwrites the vertical with the pitch, 0 by default");
-        assert!(parse_light(&down).0.is_none(), "a spot that points nowhere lights nothing");
+        assert_eq!(light_direction(&down), DVec3::NEG_Z, "angle -2 is straight down, like the helper");
+        assert!(parse_light(&down).0.is_some());
         let down_pitched = ent("light_spot", &[("angle", "-2"), ("pitch", "-90"), ("_light", "1 1 1")]);
         assert!((light_direction(&down_pitched) - DVec3::NEG_Z).length() < 1e-9);
         let up = ent("light_spot", &[("angle", "-1"), ("pitch", "90"), ("_light", "1 1 1")]);
@@ -884,10 +886,12 @@ mod tests {
         let blind_sun =
             ent("light_environment", &[("angle", "-2"), ("_light", "255 255 255 200"), ("_ambient", "50 50 50 100")]);
         let blind = parse_light(&blind_sun).0.expect("the sky still lights");
-        assert_eq!(ldr(Some(blind)).intensity, 0.0);
+        assert!(ldr(Some(blind)).intensity > 0.0, "angle -2 shines straight down");
         assert!(blind.sun.is_some_and(|s| s.ambient[0] > 0.0));
         let up_tilted = ent("light_spot", &[("angle", "-1"), ("pitch", "-90")]);
-        assert!((light_direction(&up_tilted) - DVec3::NEG_Z).length() < 1e-9, "VRAD applies the pitch after angle -1");
+        assert!((light_direction(&up_tilted) - DVec3::Z).length() < 1e-9, "angle -1 is straight up whatever the pitch");
+        let down_tilted = ent("light_spot", &[("angle", "-2"), ("pitch", "30")]);
+        assert!((light_direction(&down_tilted) - DVec3::NEG_Z).length() < 1e-9, "angle -2 is straight down");
     }
 
     #[test]

@@ -32,6 +32,7 @@ hammerpro --import-models FICHIER_OU_DOSSIER... --out DOSSIER [options]
 | `--tool NOM` | Outil actif au démarrage. Noms (majuscules ignorées) : `select`, `camera`, `entity`, `block`, `texture`, `decal`, `overlay`, `clip`, `vertex`, `path`, `polygon`, `curve`, `sprinkle`, `displacement`, `cordon`. Un nom inconnu est ignoré. | `select` |
 | `--script fichier.txt` | Exécution automatisée : joue les commandes d'un fichier script (souris, touches, actions, captures, vérifications). Voir [Commandes de script](script-commands.md). | désactivé |
 | `--bench-open map.vmf` | Exécution automatisée : ouvre la map, attend qu'elle soit dessinée et que le contenu du jeu soit chargé, affiche sur stdout les temps de démarrage et d'ouverture sous forme de paires `clé=valeur` puis se ferme. | désactivé |
+| `--backend vulkan` / `--backend dx12` / `--backend auto` | API graphique pour cette session seulement, à la place du réglage `render.graphics_backend` (**Paramètres > Rendu > Performance > API graphique**). Si aucune carte graphique ne la propose, le choix automatique est utilisé. `WGPU_BACKEND` reste prioritaire. Voir [Performances de l'éditeur](../troubleshooting/performance.md#premier-démarrage-lent-shaders). | le réglage enregistré (`Auto`) |
 | `--restore-session liste.txt` | Ouvre les maps d'une liste écrite par Hammer Pro quand il redémarre après la perte du périphérique graphique (un onglet par map, les maps modifiées depuis leurs modifications sauvegardées), puis supprime la liste. Voir [Périphérique graphique perdu](../troubleshooting/graphics-device-lost.md). | désactivé |
 
 Un argument inconnu commençant par `--` affiche `unknown argument: ...` sur stderr et il est ignoré.
@@ -97,6 +98,7 @@ Codes de sortie : `0` fin normale, `2` le fichier script est illisible ou une li
 | Variable | Effet |
 |---|---|
 | `WGPU_BACKEND` | Force l'API graphique, par exemple `dx12`, `vulkan` ou `gl`. Pratique quand celle par défaut pose problème avec votre carte graphique. |
+| `WGPU_DX12_COMPILER` | Compilateur de shaders DirectX 12 : `dxc` (demande `dxcompiler.dll`) ou `fxc`. Remplace le réglage `render.dx12_compiler` (FXC par défaut ; DXC seulement s'il est activé). |
 | `HAMMERPRO_INSTANCE` | Pour `--mcp` : l'identifiant de processus de la fenêtre Hammer Pro que le pont doit utiliser. |
 | `HP_UPDATE_API_URL` | Remplace l'adresse GitHub des versions pour la recherche de mise à jour (tests). Voir [Mises à jour](../features/updates.md). |
 | `HP_UPDATE_CURRENT_VERSION` | Fait comme si une autre version était installée (tests de la mise à jour). |

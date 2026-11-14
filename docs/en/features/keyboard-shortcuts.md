@@ -106,6 +106,10 @@ Shortcuts of the map never run while you type in a text field, while a menu, pop
 
 A floating window (Transform, Paste special, the texture, entity and lab windows) owns `Tab` from the moment it opens or you click in it until you click in a view or close it: `Tab` and `Shift+Tab` then move between its fields and buttons, wrapping around, instead of cycling the 2D view or reaching the active tool. Code editors (VMT text, BSP entity text) and the property name completion keep `Tab` for themselves.
 
+## Mouse in the views
+
+The mouse controls of the views depend on **Settings > Viewports > Camera controls**, not on the shortcut set. The `F1` reference lists those of the chosen scheme under **Viewport controls**, built from the bindings the views use. In short: with **Hammer Pro** and **Hammer** the right drag looks around and flies with `W` `A` `S` `D`; with **Hammer++ (middle mouse)** the middle drag does that and the right button stays free for the tools (the Face edit tool applies the texture with a right click and paints it with a right drag). See [Camera and navigation](camera-navigation.md#control-schemes).
+
 ## Trackpad gestures
 
 With the trackpad gestures on (**Settings > Input**, see [Trackpad](trackpad.md)):

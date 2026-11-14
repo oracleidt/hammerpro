@@ -542,7 +542,7 @@ impl AssetManager {
             let state = self.shared.bounds.read().get(key.as_ref()).copied();
             match state {
                 Some(BoundsState::Ready { min, max }) => {
-                    let angles = e.angles().filter(|a| a.is_finite()).unwrap_or(glam::DVec3::ZERO);
+                    let angles = crate::entities::model_angles(e, class);
                     let m = entity_matrix(origin, angles, model_scale(e));
                     let (lo, hi) = (glam::Vec3::from(min).as_dvec3(), glam::Vec3::from(max).as_dvec3());
                     let b = transformed_bounds(lo, hi, &m);

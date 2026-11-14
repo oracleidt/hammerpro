@@ -9,6 +9,11 @@ pub const TR: TrTable = &[
     ),
     ("viewport.starting", "Starting renderer...", "Démarrage du rendu..."),
     (
+        "viewport.preparing_shaders",
+        "Preparing shaders for this graphics card (the next starts are faster)...",
+        "Préparation des shaders pour cette carte graphique (les prochains démarrages sont plus rapides)...",
+    ),
+    (
         "viewport.collision_legend",
         "Collision models only: green, what collides; orange box, a model without a collision model",
         "Modèles de collision seuls : en vert, ce qui collisionne ; boîte orange, un modèle sans modèle de collision",

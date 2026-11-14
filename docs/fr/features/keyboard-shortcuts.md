@@ -106,6 +106,10 @@ Les raccourcis de la map ne se déclenchent jamais pendant la saisie dans un cha
 
 Une fenêtre flottante (Transformer, Collage spécial, les fenêtres de textures, d'entités et du labo) prend `Tab` dès son ouverture ou dès que vous cliquez dedans, jusqu'à un clic dans une vue ou sa fermeture : `Tab` et `Maj+Tab` passent alors d'un champ ou d'un bouton à l'autre, en boucle, au lieu de changer la vue 2D ou d'aller à l'outil actif. Les éditeurs de code (texte VMT, texte des entités d'un BSP) et la complétion des noms de propriétés gardent `Tab` pour eux.
 
+## La souris dans les vues
+
+Les contrôles souris des vues dépendent de **Paramètres > Vues > Contrôles de la caméra**, pas du jeu de raccourcis. La référence `F1` liste ceux du schéma choisi sous **Contrôles des vues**, construits à partir des associations que les vues utilisent. En bref : avec **Hammer Pro** et **Hammer**, glisser clic droit fait regarder autour et voler avec `Z` `Q` `S` `D` ; avec **Hammer++ (bouton du milieu)**, c'est le bouton du milieu, et le clic droit reste libre pour les outils (l'outil Édition de faces applique la texture d'un clic droit et la peint en glissant clic droit). Voir [Caméra et navigation](camera-navigation.md#schémas-de-contrôle).
+
 ## Gestes du pavé tactile
 
 Quand les gestes du pavé tactile sont actifs (**Paramètres > Saisie**, voir [Pavé tactile](trackpad.md)) :

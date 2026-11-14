@@ -14,6 +14,7 @@ pub const MAX_RESOLUTION: u32 = 256;
 pub const DEFAULT_PROBE_SIZE: u32 = 128;
 const MIN_RESOLUTION: u32 = 16;
 pub const MEMORY_BUDGET: u64 = 160 << 20;
+pub const LOW_MEMORY_BUDGET: u64 = 40 << 20;
 pub(crate) const PROBE_VIEW: u32 = 0xffff_fc00;
 const SETTLE: Duration = Duration::from_millis(750);
 const FRAME_SHARE: f32 = 0.15;
@@ -144,6 +145,7 @@ pub(crate) struct Cubes {
     textures: HashMap<u32, u16>,
     faces_rendered: u64,
     next_face: Option<Instant>,
+    pub(crate) low_memory: bool,
 }
 
 const INFO_VECTORS: u64 = 5;
@@ -204,6 +206,7 @@ impl Cubes {
             textures: HashMap::new(),
             faces_rendered: 0,
             next_face: None,
+            low_memory: false,
         }
     }
 
@@ -300,7 +303,8 @@ impl Cubes {
         let asked = self.slots.iter().map(Slot::wanted_size).max().unwrap_or(0);
         let mut res = asked.clamp(MIN_RESOLUTION, MAX_RESOLUTION).next_power_of_two().min(MAX_RESOLUTION);
         let cubes = self.slots.len() as u64;
-        while res > MIN_RESOLUTION && array_bytes(cubes, res) > MEMORY_BUDGET {
+        let budget = if self.low_memory { LOW_MEMORY_BUDGET } else { MEMORY_BUDGET };
+        while res > MIN_RESOLUTION && array_bytes(cubes, res) > budget {
             res /= 2;
         }
         res

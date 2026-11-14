@@ -6,17 +6,17 @@ How to move around the map: the 3D fly camera, panning and zooming the 2D views,
 
 ## 3D view: the fly camera
 
-These controls work with every tool and every control scheme:
+These controls work with every tool. They are those of the **Hammer Pro** and **Hammer** schemes; with **Hammer++ (middle mouse)** the middle button takes the place of the right one, which stays free for the tools (see [Control schemes](#control-schemes)):
 
 | Input | Effect |
 |---|---|
-| Hold the right button and move the mouse | Look around |
-| While the right button is held: `W` `A` `S` `D` | Fly forward, left, back, right |
+| Hold the right button and move the mouse (Hammer++: the middle button) | Look around |
+| While that button is held: `W` `A` `S` `D` | Fly forward, left, back, right |
 | `E` or `Space` / `Q` | Fly up / down (along world Z) |
 | `Shift` | Fly faster (the fast speed multiplier) |
 | Mouse wheel while flying | Changes the camera speed (x1.25 per notch, 50 to 20000 units/s); a toast shows the new speed |
 | `Z` | Persistent mouselook: look around without holding a button. `Z` again or `Escape` leaves it |
-| Middle drag | Pan (the scene under the pointer follows it) |
+| Middle drag (Hammer Pro and Hammer) | Pan (the scene under the pointer follows it) |
 | Mouse wheel | Move forward or back, toward the cursor when **Zoom toward the cursor** is on. `Shift`: faster |
 | Right click without moving | Opens the viewport context menu |
 
@@ -60,9 +60,21 @@ In mouselook (`Z`) you can texture the face under the crosshair without leaving 
 |---|---|
 | **Hammer Pro** (default) | The controls above |
 | **Hammer** | In the 3D view: `Space` + left drag looks around, `Space` + right drag pans, left + right drag moves forward (pointer up) and strafes (sideways), the arrow keys look around (90° per second) when nothing is selected |
-| **Hammer++ (middle mouse)** | The Hammer controls, but the middle button looks around (and flies) in the 3D view instead of panning. A middle click without moving still reaches the tool |
+| **Hammer++ (middle mouse)** | Like Hammer++: the middle button looks around and flies with `W` `A` `S` `D` in the 3D view (a middle click without moving still reaches the tool, for example to open an instance). The right button never moves the camera: it stays free for the active tool, so the [Face edit tool](texture-tool.md) applies the current texture with a right click and paints it with a right drag, and a right click elsewhere opens the context menu. `Space` + left drag, `Space` + right drag, left + right drag and the arrow keys work as in the Hammer scheme |
 
-The settings page lists the controls of the chosen scheme under the combo box.
+What each mouse input does in the 3D view:
+
+| Input in the 3D view | Hammer Pro | Hammer | Hammer++ (middle mouse) |
+|---|---|---|---|
+| Right drag | Look around, fly with `W` `A` `S` `D` | Look around, fly with `W` `A` `S` `D` | Nothing: free for the active tool (Face edit: paint the texture) |
+| Right click | Context menu (Face edit: apply the texture) | Same | Same |
+| Middle drag | Pan | Pan | Look around, fly with `W` `A` `S` `D` |
+| `Space` + left drag | The active tool | Look around | Look around |
+| `Space` + right drag | Look around | Pan | Pan |
+| Left + right drag | The active tool and look around | Move forward and strafe | Move forward and strafe |
+| `Z` | Mouselook | Mouselook | Mouselook |
+
+The settings page lists the controls of the chosen scheme under the combo box, and the shortcut reference (`F1`) lists them under **Viewport controls**. Both lists are built from the bindings the views really use, so they always match the scheme.
 
 ## 2D views
 
@@ -167,7 +179,9 @@ The keys are in `settings.toml` under `[view]` and `[workflow]`, see the [Settin
 
 ## FAQ
 
-**WASD does nothing.** The fly keys only work while the right button is held (or in mouselook, `Z`), with the pointer over the 3D view.
+**WASD does nothing.** The fly keys only work while the look button is held (the right button, the middle one with the Hammer++ scheme) or in mouselook (`Z`), with the pointer over the 3D view.
+
+**With the Hammer++ scheme the right button also turned the camera.** Fixed in 2.0.8: the right button is now free for the tools like in Hammer++, the middle button looks around.
 
 **My AZERTY keyboard flies the wrong way.** Use **Camera keys: Auto (keyboard)**, which works by key position (ZQSD), or force **AZERTY**.
 

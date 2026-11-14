@@ -999,4 +999,10 @@ pub const TR: TrTable = &[
     ),
     ("tex.tool.edit_failed", "Face edit failed: {0}", "Échec de la modification des faces : {0}"),
     ("tex.err.open_folder", "Could not open {0}: {1}", "Impossible d'ouvrir {0} : {1}"),
+    ("tex.tool.paint_undo", "Paint material", "Peindre le matériau"),
+    (
+        "tex.tool.hint_paint",
+        "Right drag in the 3D view: paint onto every face swept (same modifiers).",
+        "Glisser clic droit dans la vue 3D : peindre chaque face survolée (mêmes modificateurs).",
+    ),
 ];

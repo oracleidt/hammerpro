@@ -637,6 +637,10 @@ impl Renderer {
         if draws.is_empty() || !lo.cmple(hi).all() {
             return;
         }
+        let staged = (verts.len() * size_of::<LightmapVertex>() + indices.len() * 4) as u64;
+        if !self.fits_in_memory_budget(staged) {
+            self.memory_budget.wants_room = true;
+        }
         let make = |label: &str, data: &[u8], usage: wgpu::BufferUsages| {
             let buf = self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(label),
@@ -659,6 +663,7 @@ impl Renderer {
             bytes,
         };
         self.lightmap.blocks.insert(id, block);
+        self.staging.wrote(&self.device, &self.queue, staged);
         self.cubes.epoch += 1;
         self.content_gen += 1;
     }
@@ -672,7 +677,14 @@ impl Renderer {
     pub fn ensure_lightmap_layers(&mut self, size: u32, layers: u32) -> bool {
         let limits = self.device.limits();
         let size = size.clamp(1, self.max_tex_dim);
-        if layers == 0 || layers > limits.max_texture_array_layers {
+        let cap = limits.max_texture_array_layers.min(self.memory_budget.lightmap_layers);
+        if layers == 0 || layers > cap {
+            if layers > 0 {
+                self.memory_budget.refused += 1;
+                log::warn!(
+                    "hp-render: {layers} lightmap layers of {size} do not fit the graphics memory budget ({cap} at most)"
+                );
+            }
             return false;
         }
         if let Some(a) = &self.lightmap.atlas
@@ -683,9 +695,20 @@ impl Renderer {
         }
         let keep = self.lightmap.atlas.as_ref().filter(|a| a.size == size).map(|a| (a.texture.clone(), a.layers));
         let layers = match &keep {
-            Some((_, old)) => layers.max(old * 2).min(limits.max_texture_array_layers),
+            Some((_, old)) => layers.max(old * 2).min(cap),
             None => layers,
         };
+        let layer_bytes = u64::from(size) * u64::from(size) * 4;
+        let old_bytes =
+            self.lightmap.atlas.as_ref().map_or(0, |a| u64::from(a.size) * u64::from(a.size) * 4 * u64::from(a.layers));
+        let growth = (layer_bytes * u64::from(layers)).saturating_sub(if keep.is_some() { 0 } else { old_bytes });
+        if !self.fits_in_memory_budget(growth) {
+            self.memory_budget.wants_room = true;
+            log::info!(
+                "hp-render: {layers} lightmap layers of {size} ({} MB) need room in the graphics memory budget: textures are lowered",
+                (layer_bytes * u64::from(layers)) >> 20
+            );
+        }
         let (texture, oom) = crate::memory::guarded(&self.device, || {
             self.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("hp-render lightmap atlas"),
@@ -776,7 +799,8 @@ impl Renderer {
                 ok.push((face, rect, texels, bytes, row));
             }
         }
-        let chunk_limit = UPLOAD_CHUNK.min(self.max_buffer);
+        let chunk = if self.memory_budget.low { crate::memory::LOW_STAGING_SLICE } else { UPLOAD_CHUNK };
+        let chunk_limit = chunk.min(self.max_buffer);
         let mut done = 0usize;
         while done < ok.len() {
             let mut end = done;
@@ -840,6 +864,7 @@ impl Renderer {
                 }
             }
             self.queue.submit([enc.finish()]);
+            self.staging.wrote(&self.device, &self.queue, total);
             done = end;
         }
         ok.truncate(done);

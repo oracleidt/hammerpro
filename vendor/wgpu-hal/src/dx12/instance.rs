@@ -48,9 +48,15 @@ impl crate::Instance for super::Instance {
 
         let compiler_container = match desc.backend_options.dx12.shader_compiler.clone() {
             wgt::Dx12Compiler::DynamicDxc { dxc_path } => {
-                CompilerContainer::new_dynamic_dxc(dxc_path.into()).map_err(|e| {
-                    crate::InstanceError::with_source(String::from("Failed to load dynamic DXC"), e)
-                })?
+                match CompilerContainer::new_dynamic_dxc(dxc_path.clone().into()) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        log::warn!("DXC at {dxc_path} could not be loaded ({e}), FXC is used");
+                        CompilerContainer::new_fxc().map_err(|e| {
+                            crate::InstanceError::with_source(String::from("Failed to load FXC"), e)
+                        })?
+                    }
+                }
             }
             wgt::Dx12Compiler::StaticDxc => CompilerContainer::new_static_dxc().map_err(|e| {
                 crate::InstanceError::with_source(String::from("Failed to load static DXC"), e)
@@ -89,6 +95,7 @@ impl crate::Instance for super::Instance {
             }
         };
 
+        super::disk_cache::set_active_compiler(&compiler_container.cache_tag(false));
         match compiler_container {
             CompilerContainer::DynamicDxc(..) => {
                 log::debug!("Using dynamic DXC for shader compilation")

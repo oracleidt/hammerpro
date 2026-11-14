@@ -10,17 +10,26 @@ struct Recorder {
     inputs: Vec<(usize, bool)>,
     clicks: Vec<usize>,
     middle_clicks: Vec<usize>,
+    texture: bool,
+    right_clicks: Vec<usize>,
+    right_drags: usize,
 }
 
 impl Tool for Recorder {
     fn id(&self) -> ToolId {
-        ToolId::Select
+        if self.texture { ToolId::Texture } else { ToolId::Select }
     }
 
     fn view_input(&mut self, _state: &mut AppState, input: &ViewInput<'_>) -> ToolFlow {
         self.inputs.push((input.view.index, input.navigating));
         if input.response.clicked() {
             self.clicks.push(input.view.index);
+        }
+        if input.response.secondary_clicked() {
+            self.right_clicks.push(input.view.index);
+        }
+        if input.response.dragged_by(PointerButton::Secondary) && !input.navigating {
+            self.right_drags += 1;
         }
         if input.response.middle_clicked() {
             self.middle_clicks.push(input.view.index);
@@ -242,6 +251,119 @@ fn hammerpp_middle_drag_looks_and_middle_click_reaches_the_tool() {
     h.move_to(q + vec2(30.0, 0.0));
     assert!(h.state.cameras.top.center.x < center.x);
     h.button(q + vec2(30.0, 0.0), PointerButton::Middle, false);
+}
+
+#[test]
+fn hammerpp_right_drag_in_3d_leaves_the_camera_alone() {
+    let mut h = Harness::new(NavScheme::HammerPlusPlus);
+    let p = h.rect(0).center();
+    h.move_to(p);
+    let cam = h.state.cameras.cam3d;
+    h.button(p, PointerButton::Secondary, true);
+    assert!(!h.vp.captures_keyboard(), "W A S D do not fly with the right button");
+    h.key(Key::W, Some(Key::W), true);
+    h.move_to(p + vec2(40.0, 10.0));
+    h.move_to(p + vec2(80.0, 20.0));
+    for _ in 0..10 {
+        h.frame(vec![]);
+    }
+    h.key(Key::W, Some(Key::W), false);
+    h.button(p + vec2(80.0, 20.0), PointerButton::Secondary, false);
+    for _ in 0..5 {
+        h.frame(vec![]);
+    }
+    assert_eq!(h.state.cameras.cam3d, cam, "no look, no pan, no fly");
+    assert!(!h.vp.is_context_menu_open(), "a drag is not a click");
+    h.button(p, PointerButton::Secondary, true);
+    h.button(p, PointerButton::Secondary, false);
+    h.frame(vec![]);
+    assert!(h.vp.is_context_menu_open(), "a right click still opens the menu");
+    assert_eq!(h.state.cameras.cam3d, cam);
+}
+
+#[test]
+fn hammerpp_right_button_reaches_the_texture_tool() {
+    let mut h = Harness::new(NavScheme::HammerPlusPlus);
+    h.tool.texture = true;
+    let p = h.rect(0).center();
+    h.move_to(p);
+    let cam = h.state.cameras.cam3d;
+    h.button(p, PointerButton::Secondary, true);
+    for i in 1..=6 {
+        h.move_to(p + vec2(12.0 * i as f32, 0.0));
+    }
+    h.button(p + vec2(72.0, 0.0), PointerButton::Secondary, false);
+    h.frame(vec![]);
+    assert_eq!(h.state.cameras.cam3d, cam);
+    assert!(h.tool.right_drags >= 4, "the tool paints during the drag: {}", h.tool.right_drags);
+    assert!(h.tool.right_clicks.is_empty());
+    h.button(p, PointerButton::Secondary, true);
+    h.button(p, PointerButton::Secondary, false);
+    h.frame(vec![]);
+    assert_eq!(h.tool.right_clicks, vec![0], "a right click applies");
+    assert!(!h.vp.is_context_menu_open());
+    h.modifiers = Modifiers::SHIFT;
+    h.button(p, PointerButton::Secondary, true);
+    h.button(p, PointerButton::Secondary, false);
+    h.frame(vec![]);
+    h.modifiers = Modifiers::NONE;
+    assert!(h.vp.is_context_menu_open(), "Shift + right click opens the menu");
+    assert_eq!(h.state.cameras.cam3d, cam);
+}
+
+#[test]
+fn hammerpp_keeps_the_space_and_both_button_gestures() {
+    let mut h = Harness::new(NavScheme::HammerPlusPlus);
+    let p = h.rect(0).center();
+    h.move_to(p);
+    h.key(Key::Space, None, true);
+    let cam = h.state.cameras.cam3d;
+    h.button(p, PointerButton::Secondary, true);
+    h.move_to(p + vec2(30.0, 0.0));
+    assert!((h.state.cameras.cam3d.pos - cam.pos).dot(cam.right()) < -1.0, "Space + right drag pans");
+    h.button(p + vec2(30.0, 0.0), PointerButton::Secondary, false);
+    h.key(Key::Space, None, false);
+    h.frame(vec![]);
+    assert!(!h.vp.is_context_menu_open());
+    let cam = h.state.cameras.cam3d;
+    h.button(p, PointerButton::Secondary, true);
+    h.button(p, PointerButton::Primary, true);
+    h.move_to(p + vec2(0.0, -20.0));
+    assert!((h.state.cameras.cam3d.pos - cam.pos).dot(cam.forward()) > 10.0, "left + right drag moves forward");
+    h.button(p + vec2(0.0, -20.0), PointerButton::Primary, false);
+    h.button(p + vec2(0.0, -20.0), PointerButton::Secondary, false);
+    h.frame(vec![]);
+    assert!(!h.vp.is_context_menu_open());
+    assert!(h.tool.clicks.is_empty());
+}
+
+#[test]
+fn right_and_middle_drag_follow_the_scheme_bindings() {
+    use hp_app::settings::{NavEffect, NavInput};
+    for scheme in NavScheme::ALL {
+        for (button, input) in
+            [(PointerButton::Secondary, NavInput::RightDrag3d), (PointerButton::Middle, NavInput::MiddleDrag3d)]
+        {
+            let mut h = Harness::new(scheme);
+            let p = h.rect(0).center();
+            h.move_to(p);
+            let cam = h.state.cameras.cam3d;
+            h.button(p, button, true);
+            let flies = h.vp.captures_keyboard();
+            h.move_to(p + vec2(50.0, 0.0));
+            let turned = camera::wrap_degrees(h.yaw() - cam.yaw_deg).abs() > 1.0;
+            let moved = (h.state.cameras.cam3d.pos - cam.pos).length() > 1e-6;
+            h.button(p + vec2(50.0, 0.0), button, false);
+            let effect = scheme.binding(input);
+            let seen = match (turned, moved, flies) {
+                (true, false, true) => Some(NavEffect::LookFly),
+                (false, true, false) => Some(NavEffect::Pan3d),
+                (false, false, false) => Some(NavEffect::ToolOrMenu),
+                _ => None,
+            };
+            assert_eq!(seen, effect, "{scheme:?} {input:?}");
+        }
+    }
 }
 
 #[test]

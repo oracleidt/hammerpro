@@ -27,7 +27,10 @@ La sélection se fait dans la vue 3D. La face sous la souris est soulignée ; le
 | Clic droit | Applique le matériau actuel à la face. |
 | `Ctrl+clic droit` | Applique `tools/toolsnodraw` à la face cliquée en conservant le matériau courant et la sélection. |
 | `Alt+clic droit` | Enroule : copie le matériau de la première face sélectionnée sur la face cliquée et prolonge sa texture par-dessus l'arête commune. Sélectionnez d'abord la face source. |
+| Maintenir le clic droit et balayer (schéma de caméra Hammer++) | Peint : chaque face survolée reçoit le matériau courant, comme dans Hammer++. `Ctrl` peint `tools/toolsnodraw`, `Alt` enroule chaque face depuis la face sélectionnée. Tout le trait est une seule étape d'annulation et la sélection de faces ne change pas. |
 | `Échap` | Vide la sélection de faces. |
+
+Le glisser clic droit ne peint qu'avec le schéma de caméra **Hammer++ (bouton du milieu)** (**Paramètres > Vues > Contrôles de la caméra**), où le bouton du milieu bouge la caméra et le clic droit est laissé aux outils. Avec les schémas **Hammer Pro** et **Hammer**, le glisser clic droit fait regarder autour et un clic droit applique, comme avant.
 
 La barre d'état rappelle ces touches. **Édition > Élément de sélection > Sélection de faces précédente** (`Alt+Z`) et **Édition > Élément de sélection > Sélection de faces suivante** (`Alt+Y`), ainsi que les boutons **◀ Sélection précédente** et **Sélection suivante ▶** en haut du panneau, naviguent dans vos sélections de faces précédentes.
 
