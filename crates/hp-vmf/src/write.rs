@@ -417,6 +417,7 @@ fn write_cameras(out: &mut Out, c: &Cameras) {
 }
 
 fn write_cordons(out: &mut Out, c: &Cordons) {
+    let active = c.active && c.cordons.iter().any(|cd| cd.active);
     let legacy = c.style == CordonStyle::Legacy && c.cordons.len() <= 1 && c.extra_boxes.is_empty();
     if legacy {
         let (mins, maxs) =
@@ -424,12 +425,12 @@ fn write_cordons(out: &mut Out, c: &Cordons) {
         open(out, 0, "cordon");
         kv_vec3(out, 1, "mins", mins, '(', ')');
         kv_vec3(out, 1, "maxs", maxs, '(', ')');
-        kv_bool(out, 1, "active", c.active);
+        kv_bool(out, 1, "active", active);
         close(out, 0);
         return;
     }
     open(out, 0, "cordons");
-    kv_bool(out, 1, "active", c.active);
+    kv_bool(out, 1, "active", active);
     for (index, cd) in c.cordons.iter().enumerate() {
         open(out, 1, "cordon");
         kv_text(out, 2, "name", &cd.name);
@@ -799,6 +800,28 @@ mod tests {
             assert_eq!(entity.origin(), Some(DVec3::new(880.0, 560.0, 77.5)));
             let point = Entity { solids: Vec::new(), ..entity };
             assert!(write_entity_fragment(&point).contains("\"origin\""), "point origins are still positions");
+        }
+    }
+
+    #[test]
+    fn cordons_are_never_saved_active_without_an_active_cordon() {
+        for style in [CordonStyle::Legacy, CordonStyle::Modern] {
+            let empty = Cordons { active: true, style, ..Default::default() };
+            let mut o = out();
+            write_cordons(&mut o, &empty);
+            let text = o.into_string();
+            assert!(text.contains("\"active\" \"0\""), "{text}");
+            assert!(!text.contains("\"active\" \"1\""), "{text}");
+            let off = crate::Cordon { name: "a".into(), active: false, mins: DVec3::ZERO, maxs: DVec3::ONE };
+            let disabled = Cordons { active: true, style, cordons: vec![off.clone()], ..Default::default() };
+            let mut o = out();
+            write_cordons(&mut o, &disabled);
+            assert!(!o.into_string().contains("\"active\" \"1\""));
+            let on = crate::Cordon { active: true, ..off };
+            let used = Cordons { active: true, style, cordons: vec![on], ..Default::default() };
+            let mut o = out();
+            write_cordons(&mut o, &used);
+            assert!(o.into_string().contains("\"active\" \"1\""));
         }
     }
 

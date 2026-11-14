@@ -5,7 +5,7 @@ exclude = ["vendor/*"]
 default-members = ["crates/hammerpro"]
 
 [workspace.package]
-version = "2.0.8"
+version = "2.0.9"
 edition = "2024"
 license = "MIT"
 authors = ["HammerPro contributors"]

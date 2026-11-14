@@ -10,7 +10,7 @@
 
 Hammer Pro ouvre et enregistre des fichiers `.vmf` standard : vous pouvez l'utiliser en parallèle de Hammer et de Hammer++. Il est écrit en Rust, dessine avec la carte graphique grâce à wgpu, reste fluide sur les très grandes maps et compile les maps avec son propre compilateur intégré : ni VBSP, ni VVIS, ni VRAD.
 
-Version **2.0.8**.
+Version **2.0.9**.
 
 Le russe est disponible pour l'interface et la [documentation](docs/ru/README.md). Les options VBSP, VVIS et VRAD du compilateur externe sélectionné sont accessibles dans la fenêtre de compilation. Les modèles physiques peuvent servir de décors statiques par défaut ; les ciels absents ont un remplacement signalé et les lightmaps noires un diagnostic distinct.
 
