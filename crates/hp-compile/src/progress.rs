@@ -93,14 +93,7 @@ impl OutputSplitter {
             self.reset_line();
             return;
         }
-        if let Some(fraction) = line
-            .trim()
-            .strip_prefix("Visibility ")
-            .and_then(|rest| rest.split_once("%: "))
-            .and_then(|(percent, _)| percent.parse::<f32>().ok())
-            .filter(|percent| (0.0..=100.0).contains(percent))
-            .map(|percent| percent / 100.0)
-        {
+        if let Some(fraction) = stage_percent(&line) {
             out(Piece::Progress { fraction, phase: Some(line.trim().to_owned()) });
             out(Piece::Line(line));
             self.reset_line();
@@ -112,6 +105,8 @@ impl OutputSplitter {
             "Loading materials for ",
             "Resolving ",
             "Loading brush geometry...",
+            "Processing world model...",
+            "Processing areas...",
         ]
         .iter()
         .any(|prefix| line.starts_with(prefix))
@@ -141,6 +136,19 @@ impl OutputSplitter {
         self.last_ticks = Some(ticks);
         out(Piece::Progress { fraction: f32::from(ticks) / f32::from(PACIFIER_TICKS), phase: self.phase.clone() });
     }
+}
+
+const PERCENT_STAGES: [&str; 2] = ["Visibility ", "Optimizing "];
+
+fn stage_percent(line: &str) -> Option<f32> {
+    let line = line.trim();
+    PERCENT_STAGES
+        .iter()
+        .find_map(|prefix| line.strip_prefix(prefix))
+        .and_then(|rest| rest.split_once("%: "))
+        .and_then(|(percent, _)| percent.parse::<f32>().ok())
+        .filter(|percent| (0.0..=100.0).contains(percent))
+        .map(|percent| percent / 100.0)
 }
 
 fn pacifier_suffix(line: &[u8]) -> Option<(u8, usize)> {
@@ -261,6 +269,30 @@ mod tests {
             let text = format!("{invalid}\n");
             assert_eq!(run_chunks(&[text.as_bytes()]), vec![Piece::Line(invalid.into())]);
         }
+    }
+
+    #[test]
+    fn optimization_stages_report_their_progress_and_phase() {
+        let line = "Optimizing 25%: Merging static props: 8 of 32 groups done (the last one built), 12 s elapsed, about 36 s left";
+        let text = format!(
+            "{line}
+"
+        );
+        assert_eq!(
+            run_chunks(&[text.as_bytes()]),
+            vec![Piece::Progress { fraction: 0.25, phase: Some(line.into()) }, Piece::Line(line.into())]
+        );
+        let stage = "Processing world model...";
+        assert_eq!(
+            run_chunks(&[b"Processing world model...
+"]),
+            vec![Piece::Progress { fraction: 0.0, phase: Some(stage.into()) }, Piece::Line(stage.into())]
+        );
+        assert_eq!(
+            run_chunks(&[b"Optimizing the map
+"]),
+            vec![Piece::Line("Optimizing the map".into())]
+        );
     }
 
     #[test]

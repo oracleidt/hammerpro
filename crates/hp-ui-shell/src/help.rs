@@ -37,6 +37,7 @@ fn viewport_controls(scheme: NavScheme) -> Vec<(&'static str, &'static str)> {
         ("shell.help.ctl_click", "shell.help.ctl_click_desc"),
         ("shell.help.ctl_ctrl_click", "shell.help.ctl_ctrl_click_desc"),
         ("shell.help.ctl_stretch", "shell.help.ctl_stretch_desc"),
+        ("shell.help.ctl_fly_alt", "shell.help.ctl_fly_alt_desc"),
     ]);
     out
 }
@@ -343,6 +344,12 @@ pub(crate) const TR: hp_app::i18n::TrTable = &[
         "shell.help.ctl_stretch_desc",
         "Stretch the selected brushes along that axis, the opposite face stays (Ctrl: from the center, Alt: no snap, Shift: clone)",
         "Étirer les brushes sélectionnés sur cet axe, la face opposée reste en place (Ctrl : depuis le centre, Alt : sans magnétisme, Maj : cloner)",
+    ),
+    ("shell.help.ctl_fly_alt", "Hold Alt while flying (Z)", "Maintenir Alt en vol (Z)"),
+    (
+        "shell.help.ctl_fly_alt_desc",
+        "Free the cursor to use the active tool with the mouse (drag the gizmo or handles), release to fly again",
+        "Libérer le curseur pour utiliser l'outil actif à la souris (glisser le gizmo ou les poignées), relâcher pour revoler",
     ),
     ("shell.help.ctl_fly_click", "Left click while flying (Z)", "Clic gauche en vol (Z)"),
     (

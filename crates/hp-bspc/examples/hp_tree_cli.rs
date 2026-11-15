@@ -24,9 +24,24 @@ mod bspc_optimize {
         pub(crate) model_compiler_args: String,
     }
 
+    pub(crate) const HINT_CANDIDATES: usize = 8;
+    pub(crate) const HINT_BUDGET_SECS: u64 = 180;
+
     impl OptimizeArgs {
         pub(crate) fn any(&self) -> bool {
             self.merge_props || self.hints || self.fade || self.occluders
+        }
+
+        pub(crate) fn flags(&self) -> Vec<&'static str> {
+            [
+                (self.hints, "-autohints"),
+                (self.occluders, "-autooccluders"),
+                (self.fade, "-autofade"),
+                (self.merge_props, "-mergestaticprops"),
+            ]
+            .into_iter()
+            .filter_map(|(on, f)| on.then_some(f))
+            .collect()
         }
     }
 
@@ -103,7 +118,7 @@ mod bspc_optimize {
         _out_dir: &Path,
         _stem: &str,
         _facts: &dyn Fn(&str) -> MaterialFacts,
-        log: &mut dyn FnMut(&str),
+        log: &(dyn Fn(&str) + Sync),
     ) -> MergeReport {
         log("Warning: -mergestaticprops is not supported by this tool (use hammerpro --bspc)");
         MergeReport::default()
@@ -118,7 +133,11 @@ mod bspc_optimize {
         pub(crate) note: Option<String>,
     }
 
-    pub(crate) fn auto_hints(_map: &mut Map, _fs: Option<&hp_fs::GameFs>, _full: bool) -> Result<HintReport, String> {
+    pub(crate) fn auto_hints(
+        _map: &mut Map,
+        _fs: Option<&hp_fs::GameFs>,
+        _log: &(dyn Fn(&str) + Sync),
+    ) -> Result<HintReport, String> {
         Err("-autohints is not supported by this tool (use hammerpro --bspc)".into())
     }
 }

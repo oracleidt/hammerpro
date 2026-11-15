@@ -53,6 +53,18 @@ pub fn click_kind(secondary: bool, m: egui::Modifiers) -> ClickKind {
     }
 }
 
+pub fn fly_click(state: &mut AppState, view: &ViewInfo, pos: egui::Pos2, kind: ClickKind) -> ToolFlow {
+    if view.is_2d() {
+        return ToolFlow::Ignored;
+    }
+    match pick_face(state, view, pos) {
+        Some(face) => click_face(state, face, kind),
+        None if kind == ClickKind::Select => state.doc.clear_face_selection(),
+        None => {}
+    }
+    ToolFlow::Handled
+}
+
 pub fn click_face(state: &mut AppState, face: FaceRef, kind: ClickKind) {
     match kind {
         ClickKind::Select => {
@@ -755,6 +767,29 @@ impl hp_app::Tool for TextureTool {
             }
         }
         ToolFlow::Handled
+    }
+
+    fn click_while_flying(
+        &mut self,
+        state: &mut AppState,
+        view: &ViewInfo,
+        pos: egui::Pos2,
+        modifiers: egui::Modifiers,
+    ) -> ToolFlow {
+        fly_click(state, view, pos, click_kind(false, modifiers))
+    }
+
+    fn secondary_click_while_flying(
+        &mut self,
+        state: &mut AppState,
+        view: &ViewInfo,
+        pos: egui::Pos2,
+        modifiers: egui::Modifiers,
+    ) -> ToolFlow {
+        if modifiers.shift && !modifiers.ctrl && !modifiers.command && !modifiers.alt {
+            return ToolFlow::Ignored;
+        }
+        fly_click(state, view, pos, click_kind(true, modifiers))
     }
 
     fn overlay(&self, state: &AppState, view: &ViewInfo, out: &mut Overlay) {

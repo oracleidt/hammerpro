@@ -310,6 +310,24 @@ pub fn build(
     extra_args: &str,
     log: &mut dyn FnMut(hp_compile::Severity, String),
 ) -> Result<PreparedProp, String> {
+    build_limited(fs, request, exe, extra_args, &BuildLimits::default(), log)
+}
+
+#[derive(Default)]
+pub struct BuildLimits<'a> {
+    pub timeout: Option<std::time::Duration>,
+    pub cancel: Option<&'a std::sync::atomic::AtomicBool>,
+    pub finish: Option<&'a std::sync::Mutex<()>>,
+}
+
+pub fn build_limited(
+    fs: &GameFs,
+    request: PropCreationRequest,
+    exe: &Path,
+    extra_args: &str,
+    limits: &BuildLimits<'_>,
+    log: &mut dyn FnMut(hp_compile::Severity, String),
+) -> Result<PreparedProp, String> {
     if hp_compile::sandbox::is_sandboxed() {
         return Err(t!("propper.combine_sandboxed").to_owned());
     }
@@ -319,10 +337,22 @@ pub fn build(
     plan.steps.push(Step::new(StepKind::Custom, exe, args));
     let dir = prepared.qc.parent().map(Path::to_path_buf).unwrap_or_default();
     let handle = hp_compile::start(plan, &dir);
+    let started = std::time::Instant::now();
+    let name = exe.file_name().map_or_else(|| exe.display().to_string(), |n| n.to_string_lossy().into_owned());
     let mut success = false;
     let mut errors = 0usize;
+    let mut stopped: Option<String> = None;
     loop {
-        match handle.events.recv() {
+        if stopped.is_none() {
+            if limits.cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
+                handle.cancel();
+                stopped = Some(format!("{name} stopped: the compile was cancelled"));
+            } else if let Some(limit) = limits.timeout.filter(|l| started.elapsed() > *l) {
+                handle.cancel();
+                stopped = Some(format!("{name} did not finish in {} s and was stopped", limit.as_secs()));
+            }
+        }
+        match handle.events.recv_timeout(std::time::Duration::from_millis(200)) {
             Ok(CompileEvent::StepStarted { command_line, .. }) => log(hp_compile::Severity::Info, command_line),
             Ok(CompileEvent::Log { line, severity, .. }) => {
                 if line.trim_start().to_ascii_uppercase().starts_with("ERROR") {
@@ -334,15 +364,23 @@ pub fn build(
                 success = ok;
                 break;
             }
-            Ok(_) => {}
-            Err(_) => break,
+            Ok(_) | Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
+            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
         }
     }
+    if let Some(reason) = stopped {
+        return Err(reason);
+    }
     if !success {
-        let name = exe.file_name().map_or_else(|| exe.display().to_string(), |n| n.to_string_lossy().into_owned());
         return Err(tf!("propper.combine_compile_failed", name, errors));
     }
-    prepared.finish_creation()?;
+    match limits.finish {
+        Some(lock) => {
+            let _guard = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            prepared.finish_creation()?;
+        }
+        None => prepared.finish_creation()?,
+    }
     Ok(prepared)
 }
 

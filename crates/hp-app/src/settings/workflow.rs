@@ -70,6 +70,18 @@ pub enum CtrlWheel {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum CrosshairInfo {
+    Off,
+    #[default]
+    Corner,
+    Crosshair,
+}
+
+impl CrosshairInfo {
+    pub const ALL: [CrosshairInfo; 3] = [CrosshairInfo::Off, CrosshairInfo::Corner, CrosshairInfo::Crosshair];
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DisplayUnits {
     #[default]
     Units,
@@ -129,6 +141,7 @@ pub struct WorkflowSettings {
     pub invert_mouse_x: bool,
     pub fly_response: f32,
     pub camera_smoothing: bool,
+    pub crosshair_info: CrosshairInfo,
     pub grid_step_factor: f64,
     pub ctrl_wheel: CtrlWheel,
     pub link_2d_zoom: bool,
@@ -159,6 +172,7 @@ impl Default for WorkflowSettings {
             invert_mouse_x: false,
             fly_response: FLY_RESPONSE_DEFAULT,
             camera_smoothing: true,
+            crosshair_info: CrosshairInfo::Corner,
             grid_step_factor: 2.0,
             ctrl_wheel: CtrlWheel::GridSize,
             link_2d_zoom: false,

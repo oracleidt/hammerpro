@@ -1520,3 +1520,56 @@ fn hints_name_keys_with_localized_labels() {
         }
     }
 }
+
+fn remote_retexture(state: &mut AppState, id: u32) {
+    let node = state.doc.scene().solid(id).expect("solid");
+    let mut solid = node.solid.clone();
+    let owner = node.owner;
+    for side in &mut solid.sides {
+        side.material = "DEV/DEV_MEASUREWALL01A".into();
+    }
+    let update = hp_editor::SharedUpdate { solids: vec![(id, Some((solid, owner)))], ..Default::default() };
+    state.doc.apply_shared_update(update).expect("remote update");
+}
+
+fn vertex_drag_with_remote_edit(live: bool, remote: u32) -> AppState {
+    let mut state = state_with(&[WALL]);
+    state.settings.mesh.live_preview = live;
+    let mut tool = VertexTool::new();
+    tool.activate(&mut state);
+    let front = view2d(ViewKind::Front, DVec2::new(264.0, 64.0), 2.0);
+    let a = front.world_to_screen(DVec3::new(0.0, 250.0, 136.0)).expect("screen");
+    let b = front.world_to_screen(DVec3::new(0.0, 280.0, 120.0)).expect("screen");
+    tool.handle(&mut state, &front, Gesture::DragStart { origin: a, pos: a }, Modifiers::NONE);
+    tool.handle(&mut state, &front, Gesture::Drag(b), Modifiers::NONE);
+    tool.handle(&mut state, &front, Gesture::DragEnd(b), Modifiers::NONE);
+    assert_eq!(tool.selected_vertex_count(&state), 4);
+    let grab = front.world_to_screen(DVec3::new(0.0, 256.0, 128.0)).expect("screen");
+    let mid = grab + vec2(0.0, -32.0);
+    let to = grab + vec2(0.0, -64.0);
+    tool.handle(&mut state, &front, Gesture::DragStart { origin: grab, pos: grab + vec2(0.0, -10.0) }, Modifiers::NONE);
+    tool.handle(&mut state, &front, Gesture::Drag(mid), Modifiers::NONE);
+    remote_retexture(&mut state, remote);
+    tool.handle(&mut state, &front, Gesture::Drag(to), Modifiers::NONE);
+    assert!(tool.is_busy(), "the remote edit did not cancel the drag");
+    tool.handle(&mut state, &front, Gesture::DragEnd(to), Modifiers::NONE);
+    assert_eq!(state.doc.scene().solid(WALL).expect("wall").bounds.max.z, 160.0);
+    assert_eq!(state.doc.selected_solid_ids(), vec![WALL]);
+    state
+}
+
+#[test]
+fn a_remote_edit_on_another_solid_keeps_the_vertex_drag() {
+    for live in [false, true] {
+        let state = vertex_drag_with_remote_edit(live, FLOOR);
+        let floor = state.doc.scene().solid(FLOOR).expect("floor");
+        assert!(floor.solid.sides.iter().all(|s| s.material == "DEV/DEV_MEASUREWALL01A"));
+        assert_eq!(state.doc.undo_label(), Some(UNDO_EDIT));
+    }
+}
+
+#[test]
+fn a_remote_edit_on_the_dragged_solid_lets_the_local_vertex_edit_win() {
+    let mut state = vertex_drag_with_remote_edit(false, WALL);
+    assert!(has_toast(&mut state), "the user is told the edit went on top");
+}

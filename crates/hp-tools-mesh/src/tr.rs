@@ -46,6 +46,11 @@ pub const TR: TrTable = &[
     ("mesh.err.not_flat", "{0} face(s) would not be flat any more", "{0} face(s) ne seraient plus planes"),
     ("vertex.cancelled", "Vertex edit cancelled: {0}.", "Modification des sommets annulée : {0}."),
     (
+        "vertex.remote_overlap",
+        "Another mapper edited a brush you were reshaping: your vertex edit was applied on top of theirs.",
+        "Un autre mappeur a modifié un bloc que vous remodeliez : votre modification de sommets a été appliquée par-dessus la sienne.",
+    ),
+    (
         "vertex.disp_lost",
         "{0} displacement(s) removed: their face changed shape.",
         "{0} displacement(s) supprimé(s) : leur face a changé de forme.",

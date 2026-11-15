@@ -68,6 +68,7 @@ pub struct FlyTextureRuntime {
     pub material: String,
     pub key: Option<(glam::DVec3, f64, f64, u64)>,
     pub last: Option<FlyTextureOp>,
+    pub free_cursor: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

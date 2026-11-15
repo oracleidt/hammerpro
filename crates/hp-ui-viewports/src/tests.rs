@@ -18,6 +18,7 @@ struct RecordingTool {
     cursors: Cell<usize>,
     right_drag: bool,
     fly_clicks: Vec<(usize, Pos2, Modifiers)>,
+    last_mods: Option<Modifiers>,
 }
 
 impl Tool for RecordingTool {
@@ -27,6 +28,7 @@ impl Tool for RecordingTool {
 
     fn view_input(&mut self, _state: &mut AppState, input: &ViewInput<'_>) -> ToolFlow {
         self.inputs.push((input.view.index, input.navigating, input.pointer.is_some()));
+        self.last_mods = Some(input.modifiers);
         if input.response.secondary_clicked() {
             self.secondary_clicks.push((input.view.index, input.modifiers));
         }
@@ -601,6 +603,51 @@ fn left_click_while_flying_reaches_the_tool_at_the_crosshair() {
     h.button(p, PointerButton::Primary, true);
     h.button(p, PointerButton::Primary, false);
     assert_eq!(h.tool.fly_clicks.len(), 2, "the displacement tool keeps its view input");
+}
+
+#[test]
+fn holding_alt_while_flying_frees_the_cursor_for_the_tool() {
+    let mut h = Harness::new();
+    let center = h.rect(0).center();
+    let p = center + vec2(40.0, 20.0);
+    h.move_to(p);
+    h.key(Key::Z, Some(Key::Z), true);
+    h.key(Key::Z, Some(Key::Z), false);
+    assert!(h.vp.is_mouselook() && !h.vp.is_cursor_free());
+    h.modifiers = Modifiers::ALT;
+    h.frame(vec![]);
+    assert!(h.vp.is_cursor_free(), "Alt frees the cursor");
+    assert!(h.state.runtime.lab.fly_texture.free_cursor);
+    let yaw = h.state.cameras.cam3d.yaw_deg;
+    let inputs = h.tool.inputs.len();
+    h.move_to(p + vec2(-30.0, 0.0));
+    assert_eq!(h.state.cameras.cam3d.yaw_deg, yaw, "the camera does not turn while the cursor is free");
+    assert!(h.tool.inputs.len() > inputs, "the tool gets the pointer");
+    let last = *h.tool.inputs.last().unwrap();
+    assert_eq!(last, (0, false, true), "not navigating, with a pointer");
+    assert_eq!(h.tool.last_mods.map(|m| m.alt), Some(false), "Alt is not passed to the tool");
+    h.button(p, PointerButton::Primary, true);
+    h.modifiers = Modifiers::NONE;
+    h.frame(vec![]);
+    assert!(h.vp.is_cursor_free(), "a drag started with Alt goes on until the button is released");
+    h.button(p, PointerButton::Primary, false);
+    h.frame(vec![]);
+    assert!(h.tool.fly_clicks.is_empty(), "no click at the crosshair while the cursor was free");
+    assert!(h.vp.is_mouselook() && !h.vp.is_cursor_free(), "back to flying");
+    let yaw = h.state.cameras.cam3d.yaw_deg;
+    h.move_to(p + vec2(-60.0, 0.0));
+    assert!(camera::wrap_degrees(h.state.cameras.cam3d.yaw_deg - yaw) > 0.0, "looks again once Alt is released");
+    assert!(fly_cursor_free(false, true, &[false; 3]));
+    assert!(!fly_cursor_free(false, false, &[true, false, false]));
+    assert!(fly_cursor_free(true, false, &[true, false, false]));
+    let r = egui::Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0));
+    use hp_app::settings::CrosshairInfo;
+    assert_eq!(fly_texture::crosshair_info_anchor(CrosshairInfo::Off, r), None);
+    let (corner, _) = fly_texture::crosshair_info_anchor(CrosshairInfo::Corner, r).unwrap();
+    assert!(corner.x < 100.0 && corner.y < 100.0, "the corner label stays away from the center");
+    let (under, _) = fly_texture::crosshair_info_anchor(CrosshairInfo::Crosshair, r).unwrap();
+    assert_eq!(under.x, r.center().x);
+    assert_eq!(hp_app::settings::WorkflowSettings::default().crosshair_info, CrosshairInfo::Corner);
 }
 
 #[test]

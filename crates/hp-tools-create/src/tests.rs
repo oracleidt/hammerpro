@@ -544,3 +544,30 @@ fn polygon_entity_decal_and_overlay_options_are_scriptable() {
         }
     }
 }
+
+#[test]
+fn a_remote_edit_keeps_the_block_being_drawn() {
+    use crate::common::Mouse;
+    let mut state = settle();
+    let view = info_2d(ViewKind::Top, 1.0);
+    let at = |x: f64, y: f64| view.world_to_screen(DVec3::new(x, y, 0.0)).expect("screen");
+    let mut block = BlockTool::new();
+    let origin = at(-64.0, -64.0);
+    block.handle_mouse(&mut state, &view, &Mouse::drag_start(origin, origin));
+    block.handle_mouse(&mut state, &view, &Mouse::drag(origin, at(0.0, 0.0)));
+    let node = state.doc.scene().solid(2).expect("solid");
+    let mut solid = node.solid.clone();
+    let owner = node.owner;
+    for side in &mut solid.sides {
+        side.material = "DEV/DEV_MEASUREWALL01A".into();
+    }
+    let update = hp_editor::SharedUpdate { solids: vec![(2, Some((solid, owner)))], ..Default::default() };
+    state.doc.apply_shared_update(update).expect("remote update");
+    block.handle_mouse(&mut state, &view, &Mouse::drag(origin, at(64.0, 64.0)));
+    block.handle_mouse(&mut state, &view, &Mouse::drag_end(origin, at(64.0, 64.0)));
+    let b = block.pending_box().expect("the block survives the remote edit");
+    assert!((b.max.x - 64.0).abs() < 1e-6 && (b.min.x + 64.0).abs() < 1e-6, "{b:?}");
+    let count = state.doc.scene().solids().len();
+    assert!(block.confirm(&mut state));
+    assert_eq!(state.doc.scene().solids().len(), count + 1);
+}

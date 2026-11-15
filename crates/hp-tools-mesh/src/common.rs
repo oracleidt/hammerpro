@@ -54,6 +54,14 @@ pub(crate) struct DocKey {
 }
 
 impl DocKey {
+    pub(crate) fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    pub(crate) fn same_selection(&self, other: &DocKey) -> bool {
+        self.hash == other.hash
+    }
+
     pub(crate) fn of(doc: &hp_editor::Document) -> Self {
         use std::hash::{Hash, Hasher};
         let mut h = std::hash::DefaultHasher::new();

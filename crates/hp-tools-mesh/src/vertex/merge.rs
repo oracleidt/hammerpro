@@ -174,7 +174,12 @@ impl VertexTool {
             state.settings.vertex.merge_prompt = MergePrompt::Always;
             state.settings_dirty = true;
         }
-        if state.doc.revision() != p.revision {
+        let unrelated = state.doc.revision() == p.revision
+            || state
+                .doc
+                .foreign_changes_since(p.revision)
+                .is_some_and(|touched| p.edits.iter().all(|e| !touched.touches_solid(e.id)));
+        if !unrelated {
             state.notify(Severity::Warning, t!("vertex.merge_stale"));
             return true;
         }

@@ -198,7 +198,7 @@ pub const FLAGS: &[FlagInfo] = &[
         StepKind::Bsp,
         "-autohints",
         false,
-        "Hammer Pro option: the compile measures the hint brushes the optimizer suggests and adds only the ones that lower the visibility totals (the VMF is not changed). Slower: one extra compile per candidate. Needs the visibility.",
+        "Hammer Pro option: the compile measures the hint brushes the optimizer suggests and adds only the ones that lower the visibility totals (the VMF is not changed). Slower: one extra compile with fast visibility per candidate, at most 3 minutes. Needs the visibility.",
     ),
     info(
         StepKind::Bsp,

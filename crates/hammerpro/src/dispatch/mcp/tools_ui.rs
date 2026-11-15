@@ -103,7 +103,14 @@ const SPECS: &[ToolSpec] = &[
         description: "Click like the user: press and release a mouse button. Position: window x, y, or a view with \
             fx, fy, x, y or a world point (e.g. view \"top\", world [0, 0, 0]). In the 3D view the Selection and \
             Camera tools select the clicked object (mods [\"ctrl\"]: add or remove it); while flying in mouselook \
-            (ui_key \"Z\") a left click selects at the crosshair, a right click applies the current material to the \n            targeted face (Shift: its whole brush) and a middle click picks its material; the keys of fly_apply_texture \n            (T), fly_apply_texture_brush (F), fly_pick_texture (V) and fly_align_texture (N) do the same from the keyboard.",
+            (ui_key \"Z\") a left click acts at the crosshair with the active tool (Selection and Camera: select the object, \
+            Face edit: select the face, Shift its brush), a right click applies the current material to the targeted \
+            face (Shift: its whole brush; Face edit tool: Ctrl applies nodraw) and a middle click picks its material; the \
+            keys of fly_apply_texture (T), fly_apply_texture_brush (F), fly_pick_texture (V) and fly_align_texture (N) do \
+            the same from the keyboard. Holding Alt in mouselook frees the cursor (mods [\"alt\"] on ui_drag or ui_click): \
+            the camera stops turning and the click or drag reaches the tool at its position, like outside mouselook \
+            (drag the gizmo or handles of the selection). The setting workflow.crosshair_info (Off, Corner, Crosshair) \
+            places the label naming the targeted face.",
         kind: ToolKind::Editor,
         schema: || pointer_schema(json!({ "button": one_of("Default left.", BUTTONS) })),
     },

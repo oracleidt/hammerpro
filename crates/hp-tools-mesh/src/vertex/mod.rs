@@ -213,6 +213,12 @@ impl VertexTool {
         if self.hover.is_some_and(|h| h.generation != generation) {
             self.hover = None;
         }
+        let busy = self.drag.is_some() || self.scale.is_some() || self.xform.is_some();
+        let cache = self.cache.get_mut();
+        cache.busy = busy;
+        if !busy {
+            cache.overlap = false;
+        }
     }
 
     pub(crate) fn handle(&mut self, state: &mut AppState, view: &ViewInfo, g: Gesture, mods: Modifiers) -> ToolFlow {
@@ -567,7 +573,11 @@ impl VertexTool {
             return;
         }
         let (edits, reselect) = drag.edits();
+        let overlap = std::mem::take(&mut self.cache.get_mut().overlap);
         self.apply_move(state, &edits, reselect, UNDO_EDIT, None);
+        if overlap {
+            state.notify(Severity::Info, tf!("vertex.remote_overlap"));
+        }
     }
 
     fn report_lost_disps(&mut self, state: &mut AppState, solids: &[model::DragSolid]) {

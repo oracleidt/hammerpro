@@ -271,6 +271,7 @@ pub(crate) fn evaluate_hints(
     start: Instant,
     budget: u64,
     base_secs: f64,
+    progress: &mut dyn FnMut(usize, usize),
 ) -> (Vec<HintCandidate>, Option<String>) {
     let Some(portals) = base.portals.as_ref() else { return (Vec::new(), None) };
     let visible = hints::visible_counts(&base.vis);
@@ -286,6 +287,7 @@ pub(crate) fn evaluate_hints(
             note = Some(format!("time budget reached: {i} of {evals} hint candidates measured"));
             break;
         }
+        progress(i, evals);
         let mut map = source.clone();
         simulate(&mut map, &[], std::slice::from_ref(c), &[]);
         if let Ok((a, false, _)) = compile(&map, fs, full) {
@@ -295,6 +297,7 @@ pub(crate) fn evaluate_hints(
     list.sort_by(|a, b| b.gain.unwrap_or(i64::MIN).cmp(&a.gain.unwrap_or(i64::MIN)));
     let good: Vec<HintCandidate> = list.iter().filter(|c| c.gain.is_some_and(|g| g > 0)).cloned().collect();
     if good.len() > 1 && start.elapsed().as_secs_f64() + base_secs <= budget as f64 {
+        progress(evals, evals);
         let mut map = source.clone();
         simulate(&mut map, &[], &good, &[]);
         if let Ok((a, false, _)) = compile(&map, fs, full) {
@@ -361,6 +364,7 @@ pub(crate) fn run(p: Prepared, o: Options, cancel: &AtomicBool) -> Analysis {
             start,
             o.budget_secs,
             base_secs,
+            &mut |_, _| {},
         );
         a.hints = list;
         a.hints_note = note;

@@ -1229,3 +1229,77 @@ fn arrows_move_picked_vertices_and_edges_and_keep_them_picked() {
     assert_eq!(fresh.len(), 1, "the picked edge follows the move");
     assert!(approx(fresh[0].a.z, top[0].z + 16.0));
 }
+
+fn remote_retexture(state: &mut AppState, id: hp_editor::Id) {
+    let node = state.doc.scene().solid(id).expect("solid");
+    let mut solid = node.solid.clone();
+    let owner = node.owner;
+    for side in &mut solid.sides {
+        side.material = "DEV/DEV_MEASUREWALL01A".into();
+    }
+    let update = hp_editor::SharedUpdate { solids: vec![(id, Some((solid, owner)))], ..Default::default() };
+    state.doc.apply_shared_update(update).expect("remote update");
+}
+
+#[test]
+fn a_remote_edit_on_another_solid_keeps_the_scale_drag() {
+    let mut state = state();
+    let mut tool = SelectTool::new();
+    let v = view2d(ViewKind::Top);
+    state.doc.set_selection(&[WALL]);
+    let rect = Rect::from_two_pos(scr(&v, DVec3::new(-256.0, 256.0, 0.0)), scr(&v, DVec3::new(256.0, 272.0, 0.0)));
+    let h = handle_pos(rect, Handle::new(1, 0));
+    let mods = Modifiers::NONE;
+    tool.handle_event(&mut state, &v, PointerEvent::DragStart { origin: h, pos: h }, mods);
+    tool.handle_event(&mut state, &v, PointerEvent::Drag(h + vec2(16.0, 0.0)), mods);
+    remote_retexture(&mut state, 2);
+    tool.handle_event(&mut state, &v, PointerEvent::Drag(h + vec2(24.0, 0.0)), mods);
+    remote_retexture(&mut state, 2);
+    tool.handle_event(&mut state, &v, PointerEvent::Drag(h + vec2(32.0, 0.0)), mods);
+    tool.handle_event(&mut state, &v, PointerEvent::DragEnd(h + vec2(32.0, 0.0)), mods);
+    let b = bounds(&state, WALL);
+    assert!(approx(b.max.x, 320.0) && approx(b.min.x, -256.0), "{b:?}");
+    assert_eq!(state.doc.undo_label(), Some("Scale"));
+    assert_eq!(state.doc.selected_objects(), vec![WALL]);
+    let floor = state.doc.scene().solid(2).expect("floor");
+    assert!(floor.solid.sides.iter().all(|s| s.material == "DEV/DEV_MEASUREWALL01A"));
+}
+
+#[test]
+fn a_remote_edit_on_the_dragged_solid_still_commits_the_local_move() {
+    let mut state = state();
+    let mut tool = SelectTool::new();
+    let v = view2d(ViewKind::Top);
+    state.doc.set_selection(&[WALL]);
+    let before = bounds(&state, WALL);
+    let from = scr(&v, before.center());
+    let mods = Modifiers::NONE;
+    tool.handle_event(&mut state, &v, PointerEvent::DragStart { origin: from, pos: from }, mods);
+    tool.handle_event(&mut state, &v, PointerEvent::Drag(from + vec2(16.0, 0.0)), mods);
+    remote_retexture(&mut state, 3);
+    tool.handle_event(&mut state, &v, PointerEvent::Drag(from + vec2(32.0, 0.0)), mods);
+    tool.handle_event(&mut state, &v, PointerEvent::DragEnd(from + vec2(32.0, 0.0)), mods);
+    let after = bounds(&state, WALL);
+    assert!(approx(after.min.x - before.min.x, 64.0), "{before:?} {after:?}");
+    let wall = state.doc.scene().solid(3).expect("wall");
+    assert!(wall.solid.sides.iter().all(|s| s.material == "DEV/DEV_MEASUREWALL01A"));
+}
+
+#[test]
+fn a_local_undo_during_a_drag_still_cancels_it() {
+    let mut state = state();
+    let mut tool = SelectTool::new();
+    let v = view2d(ViewKind::Top);
+    state.doc.set_selection(&[WALL]);
+    state.doc.translate(&[FLOOR], DVec3::new(0.0, 0.0, 16.0)).expect("move floor");
+    let before = bounds(&state, WALL);
+    let from = scr(&v, before.center());
+    let mods = Modifiers::NONE;
+    tool.handle_event(&mut state, &v, PointerEvent::DragStart { origin: from, pos: from }, mods);
+    tool.handle_event(&mut state, &v, PointerEvent::Drag(from + vec2(16.0, 0.0)), mods);
+    assert!(state.doc.undo());
+    tool.handle_event(&mut state, &v, PointerEvent::Drag(from + vec2(32.0, 0.0)), mods);
+    tool.handle_event(&mut state, &v, PointerEvent::DragEnd(from + vec2(32.0, 0.0)), mods);
+    let after = bounds(&state, WALL);
+    assert!(approx(after.min.x, before.min.x), "{before:?} {after:?}");
+}

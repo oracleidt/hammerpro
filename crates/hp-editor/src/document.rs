@@ -73,6 +73,7 @@ pub struct Document {
     pub(crate) face_history: crate::selection::FaceHistory,
     pub(crate) objects_selected_at: u64,
     pub(crate) faces_selected_at: u64,
+    pub(crate) shared_marks: crate::shared_points::SharedMarks,
 }
 
 #[derive(Clone, Debug)]
@@ -137,6 +138,7 @@ impl Document {
             face_history: crate::selection::FaceHistory::default(),
             objects_selected_at: 0,
             faces_selected_at: 0,
+            shared_marks: crate::shared_points::SharedMarks::default(),
         }
     }
 

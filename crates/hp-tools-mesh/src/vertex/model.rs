@@ -287,12 +287,30 @@ pub(crate) struct VertexCache {
     pub pending_edges: Option<Vec<(Id, DVec3)>>,
     pub splits: Vec<PendingSplit>,
     pub frozen: bool,
+    pub busy: bool,
+    pub overlap: bool,
 }
 
 impl VertexCache {
     pub fn refresh(&mut self, doc: &Document) {
-        if self.frozen || self.key == Some(DocKey::of(doc)) {
+        if self.frozen {
             return;
+        }
+        let now = DocKey::of(doc);
+        if self.key == Some(now) {
+            return;
+        }
+        if let Some(key) = self.key
+            && key.same_selection(&now)
+            && let Some(touched) = doc.foreign_changes_since(key.revision())
+        {
+            let hit = self.solids.iter().any(|s| touched.touches_solid(s.id));
+            let alive = self.solids.iter().all(|s| doc.scene().solid(s.id).is_some());
+            if !hit || (self.busy && alive) {
+                self.overlap |= hit;
+                self.key = Some(now);
+                return;
+            }
         }
         self.rebuild(doc);
     }
@@ -335,6 +353,7 @@ impl VertexCache {
         }
         self.key = Some(DocKey::of(doc));
         self.generation = self.generation.wrapping_add(1);
+        self.overlap = false;
     }
 
     pub fn selected_positions(&self) -> Vec<(Id, DVec3)> {

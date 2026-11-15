@@ -36,11 +36,25 @@ In mouselook (`Z`) you can texture the face under the crosshair without leaving 
 | `V` (`fly_pick_texture`) or middle click | Pick the material of the targeted face as the current material |
 | `N` (`fly_align_texture`) | Align the texture of the targeted face to the view (the camera right and up directions) |
 
-- The targeted face (the first solid face along the view direction, up to 16384 units) is not highlighted: the crosshair and its label name it. A crosshair is drawn at the center of the view with the solid, side and material of the target, and a hint line at the bottom of the view lists the keys and the current material.
+- The targeted face (the first solid face along the view direction, up to 16384 units) is not highlighted: a crosshair is drawn at the center of the view and a label names the solid, side and material of the target. Where that label goes is the setting **Show what is under the crosshair** (**Settings > Viewports**, `[workflow] crosshair_info`): **Corner** (default) shows it in small text in the top left corner of the 3D view so the center stays clear, **Under the crosshair** shows it right under the crosshair (the behaviour of 2.1.1 and earlier), **Off** hides it. A hint line at the bottom of the view lists the keys and the current material.
 - Every edit is one undo step. The keys are actions, so they can be changed in **Settings > Keyboard** (`[keybindings]`) like any other; they only work in mouselook.
-- The left click keeps selecting the object at the crosshair.
+- The left click keeps selecting the object at the crosshair (see below).
+- Through MCP: `set_setting` `workflow.crosshair_info` with `Off`, `Corner` or `Crosshair`.
 - Through MCP: `ui_key` with `z` enters mouselook, then `t`, `f`, `v` or `n` act on the face at the center of the view (`set_camera` aims, `list_keybindings` gives the keys).
 - When the active tool uses the right click in the 3D view (the texture tool applies the current material), `Shift+right click` opens the context menu.
+
+### Using tools while in mouselook
+
+You do not have to leave mouselook to work on the brush you look at:
+
+| Input | Effect |
+|---|---|
+| Left click | The active tool acts at the crosshair: the Selection and Camera tools select the object (`Ctrl+click` adds or removes it); the [Face edit tool](texture-tool.md) selects the face and picks its material (`Ctrl+click` adds or removes the face, `Shift+click` selects the whole brush) |
+| Right click with the Face edit tool | Applies the current material to the targeted face like a right click of the tool (`Ctrl`: nodraw; `Shift`: the whole brush) |
+| Hold `Alt` | Frees the cursor: the camera stops turning, the crosshair hides and the mouse works like outside mouselook, so you can drag the gizmo, the handles or the face arrows of the selection, draw with the active tool or click anywhere in the view. Release `Alt` to fly again (a drag started with `Alt` held goes on until you release the button) |
+
+- While the cursor is free, `Alt` is not passed to the tool (an `Alt` click is a plain click).
+- Through MCP: `ui_key` `z` enters mouselook, `ui_click` at the center of the 3D view clicks at the crosshair; `ui_drag` with `mods` `["alt"]` drags with the cursor free.
 
 ### Keyboard layout (camera keys)
 

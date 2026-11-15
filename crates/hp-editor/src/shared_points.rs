@@ -6,10 +6,15 @@ use crate::curve_meta::editor_curve_tag;
 use crate::history::Snapshot;
 use crate::ids::{IdSet, id_set};
 use crate::scene::{EntityNode, GroupNode, Owner, SolidNode};
+use crate::selection::ObjRef;
 use crate::{Document, EditError, EditResult, Id};
 
 pub const SHARED_UPDATE_LABEL: &str = "Team Mapping update";
 const SHARED_TAG: &str = "team_mapping_remote";
+const MAX_SHARED_MARKS: usize = 4096;
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct SharedMarks(std::collections::VecDeque<(u64, u64, SharedTouched)>);
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SharedTouched {
@@ -44,6 +49,34 @@ impl SharedTouched {
         keys
     }
 
+    pub fn touches_solid(&self, id: Id) -> bool {
+        self.solids.contains(&id)
+    }
+
+    fn absorb(&mut self, other: &SharedTouched) {
+        for id in &other.solids {
+            if !self.solids.contains(id) {
+                self.solids.push(*id);
+            }
+        }
+        for id in &other.entities {
+            if !self.entities.contains(id) {
+                self.entities.push(*id);
+            }
+        }
+        self.world |= other.world;
+        self.metadata |= other.metadata;
+    }
+
+    fn of_update(update: &SharedUpdate) -> Self {
+        Self {
+            solids: update.solids.iter().map(|(id, _)| *id).collect(),
+            entities: update.entities.iter().map(|(id, _)| *id).collect(),
+            world: update.world.is_some(),
+            metadata: update.metadata.is_some(),
+        }
+    }
+
     fn collect(&mut self, snapshot: &Snapshot, solids: &mut IdSet, entities: &mut IdSet) {
         solids.extend(snapshot.solids.keys().copied());
         solids.extend(snapshot.solid_patches.keys().copied());
@@ -76,6 +109,36 @@ impl SharedUpdate {
 }
 
 impl Document {
+    pub fn foreign_changes_since(&self, revision: u64) -> Option<SharedTouched> {
+        let mut at = revision;
+        let mut touched = SharedTouched::default();
+        for (before, after, keys) in &self.shared_marks.0 {
+            if *before == at {
+                at = *after;
+                touched.absorb(keys);
+            }
+        }
+        (at == self.revision()).then_some(touched)
+    }
+
+    pub fn foreign_touches(&self, touched: &SharedTouched, objs: &[ObjRef]) -> bool {
+        if touched.solids.is_empty() && touched.entities.is_empty() {
+            return false;
+        }
+        objs.iter().any(|obj| match *obj {
+            ObjRef::Solid(id) => touched.solids.contains(&id) || !self.scene.solids.contains_key(&id),
+            ObjRef::Entity(id) => {
+                touched.entities.contains(&id)
+                    || !self.scene.entities.contains_key(&id)
+                    || self
+                        .scene
+                        .entity_solids
+                        .get(&id)
+                        .is_some_and(|set| set.iter().any(|s| touched.solids.contains(s)))
+            }
+        })
+    }
+
     pub fn shared_touched_since(&self, serial: u64) -> Option<SharedTouched> {
         if self.in_transaction() {
             return None;
@@ -207,6 +270,21 @@ impl Document {
         if update.is_empty() {
             return Ok(());
         }
+        let before = self.revision();
+        let keys = SharedTouched::of_update(&update);
+        let result = self.write_shared_update(update);
+        if result.is_ok() && self.revision() != before {
+            let after = self.revision();
+            let marks = &mut self.shared_marks.0;
+            marks.push_back((before, after, keys));
+            while marks.len() > MAX_SHARED_MARKS {
+                marks.pop_front();
+            }
+        }
+        result
+    }
+
+    fn write_shared_update(&mut self, update: SharedUpdate) -> EditResult<()> {
         if let Some(keys) = self.shared_transaction_keys() {
             let world = update.world.is_some() && keys.world;
             let metadata = update.metadata.is_some() && keys.metadata;

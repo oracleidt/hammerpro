@@ -1,7 +1,8 @@
 use egui::{RichText, Ui};
 use hp_app::i18n::TrTable;
 use hp_app::settings::{
-    CtrlWheel, DisplayUnits, FLY_RESPONSE_MAX, GRID_STEP_MAX, GRID_STEP_MIN, NavScheme, ViewSettings, WorkflowSettings,
+    CrosshairInfo, CtrlWheel, DisplayUnits, FLY_RESPONSE_MAX, GRID_STEP_MAX, GRID_STEP_MIN, NavScheme, ViewSettings,
+    WorkflowSettings,
 };
 use hp_app::{AppState, t, tf};
 
@@ -57,6 +58,17 @@ fn workflow_section(ui: &mut Ui, w: &mut WorkflowSettings) -> bool {
                     egui::Slider::new(&mut w.fly_response, 0.0..=FLY_RESPONSE_MAX).fixed_decimals(2).suffix(" s"),
                 )
                 .changed();
+            ui.end_row();
+            ui.label(t!("shell.view.crosshair_info")).on_hover_text(t!("shell.view.crosshair_info_tip"));
+            egui::ComboBox::from_id_salt("hp_shell_view_crosshair_info")
+                .selected_text(t!(crosshair_info_label_key(w.crosshair_info)))
+                .width(180.0)
+                .show_ui(ui, |ui| {
+                    for c in CrosshairInfo::ALL {
+                        changed |=
+                            ui.selectable_value(&mut w.crosshair_info, c, t!(crosshair_info_label_key(c))).changed();
+                    }
+                });
             ui.end_row();
             ui.label(t!("shell.view.ctrl_wheel"));
             egui::ComboBox::from_id_salt("hp_shell_view_ctrl_wheel")
@@ -263,6 +275,7 @@ pub(super) fn reset(state: &mut AppState) {
     w.fly_response = d.fly_response;
     w.camera_smoothing = d.camera_smoothing;
     w.ctrl_wheel = d.ctrl_wheel;
+    w.crosshair_info = d.crosshair_info;
     w.link_2d_zoom = d.link_2d_zoom;
     w.drag_autopan = d.drag_autopan;
     w.grid_step_factor = d.grid_step_factor;
@@ -270,7 +283,24 @@ pub(super) fn reset(state: &mut AppState) {
     w.show_status_grid = d.show_status_grid;
 }
 
+fn crosshair_info_label_key(c: CrosshairInfo) -> &'static str {
+    match c {
+        CrosshairInfo::Off => "shell.view.crosshair_info_off",
+        CrosshairInfo::Corner => "shell.view.crosshair_info_corner",
+        CrosshairInfo::Crosshair => "shell.view.crosshair_info_center",
+    }
+}
+
 pub(crate) const TR: TrTable = &[
+    ("shell.view.crosshair_info", "Show what is under the crosshair", "Afficher ce qui est sous le viseur"),
+    (
+        "shell.view.crosshair_info_tip",
+        "While flying (Z), the solid, side and material under the crosshair: hidden, in a corner of the 3D view, or right under the crosshair",
+        "En vol (Z), le solide, la face et le matériau sous le viseur : masqués, dans un coin de la vue 3D, ou juste sous le viseur",
+    ),
+    ("shell.view.crosshair_info_off", "Off", "Désactivé"),
+    ("shell.view.crosshair_info_corner", "Corner", "Dans un coin"),
+    ("shell.view.crosshair_info_center", "Under the crosshair", "Sous le viseur"),
     ("shell.view.camera", "Camera", "Caméra"),
     ("shell.view.fov", "Field of view", "Champ de vision"),
     ("shell.view.camera_speed", "Camera speed", "Vitesse de la caméra"),

@@ -20,7 +20,10 @@ pub(crate) const OCCLUDER_MAX: usize = 16;
 pub(crate) const OCCLUDER_MIN_PROPS: usize = 3;
 pub(crate) const OCCLUDER_RANGE: f64 = 2048.0;
 pub(crate) const HINT_CANDIDATES: usize = 8;
-pub(crate) const HINT_BUDGET_SECS: u64 = 600;
+pub(crate) const HINT_BUDGET_SECS: u64 = 180;
+pub(crate) const MERGE_MODEL_TIMEOUT_SECS: u64 = 180;
+pub(crate) const MERGE_MAX_WORKERS: usize = 4;
+pub(crate) const PROGRESS_TICK_SECS: u64 = 5;
 const OCCLUDER: &str = "TOOLS/TOOLSOCCLUDER";
 const NODRAW: &str = "TOOLS/TOOLSNODRAW";
 
@@ -37,6 +40,18 @@ pub(crate) struct OptimizeArgs {
 impl OptimizeArgs {
     pub(crate) fn any(&self) -> bool {
         self.merge_props || self.hints || self.fade || self.occluders
+    }
+
+    pub(crate) fn flags(&self) -> Vec<&'static str> {
+        [
+            (self.hints, "-autohints"),
+            (self.occluders, "-autooccluders"),
+            (self.fade, "-autofade"),
+            (self.merge_props, "-mergestaticprops"),
+        ]
+        .into_iter()
+        .filter_map(|(on, f)| on.then_some(f))
+        .collect()
     }
 }
 
@@ -512,6 +527,96 @@ pub(crate) struct MergeReport {
     pub(crate) failed: Vec<String>,
 }
 
+pub(crate) fn progress_line(
+    label: &str,
+    done: usize,
+    total: usize,
+    step: &str,
+    elapsed: std::time::Duration,
+) -> String {
+    use hp_bspc::rad::progress::duration_text;
+    let done = done.min(total);
+    let pct = (done * 100).checked_div(total).unwrap_or(100);
+    let left = if done == total {
+        "done".to_owned()
+    } else if done == 0 {
+        "estimating the time left".to_owned()
+    } else {
+        let rest = elapsed.as_secs_f64() * (total - done) as f64 / done as f64;
+        format!("about {} left", duration_text(std::time::Duration::from_secs_f64(rest.ceil())))
+    };
+    format!("Optimizing {pct}%: {label}: {step}, {} elapsed, {left}", duration_text(elapsed))
+}
+
+pub(crate) struct Stage<'a> {
+    label: &'static str,
+    start: std::time::Instant,
+    state: std::sync::Mutex<(usize, usize, String)>,
+    last: std::sync::Mutex<std::time::Instant>,
+    log: &'a (dyn Fn(&str) + Sync),
+}
+
+impl<'a> Stage<'a> {
+    pub(crate) fn new(label: &'static str, total: usize, log: &'a (dyn Fn(&str) + Sync)) -> Self {
+        let state = std::sync::Mutex::new((0, total, String::new()));
+        let now = std::time::Instant::now();
+        Stage { label, start: now, state, last: std::sync::Mutex::new(now), log }
+    }
+
+    fn line(&self) -> String {
+        let state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        progress_line(self.label, state.0, state.1, &state.2, self.start.elapsed())
+    }
+
+    pub(crate) fn report(&self, done: usize, step: String) {
+        {
+            let mut state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            state.0 = done.max(state.0);
+            state.2 = step;
+        }
+        self.say();
+    }
+
+    fn say(&self) {
+        *self.last.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = std::time::Instant::now();
+        (self.log)(&self.line());
+    }
+
+    pub(crate) fn set_total(&self, total: usize) {
+        self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner).1 = total;
+    }
+
+    pub(crate) fn total(&self) -> usize {
+        self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner).1
+    }
+
+    pub(crate) fn run<R>(&self, work: impl FnOnce() -> R) -> R {
+        let (stop, wait) = std::sync::mpsc::channel::<()>();
+        std::thread::scope(|scope| {
+            scope.spawn(move || {
+                while let Err(std::sync::mpsc::RecvTimeoutError::Timeout) =
+                    wait.recv_timeout(std::time::Duration::from_secs(PROGRESS_TICK_SECS))
+                {
+                    let quiet = self.last.lock().unwrap_or_else(std::sync::PoisonError::into_inner).elapsed();
+                    if quiet.as_secs_f64() >= PROGRESS_TICK_SECS as f64 - 0.5 {
+                        self.say();
+                    }
+                }
+            });
+            let out = work();
+            drop(stop);
+            out
+        })
+    }
+}
+
+pub(crate) fn merge_workers(groups: usize) -> usize {
+    let cores = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    (cores / 2).clamp(1, MERGE_MAX_WORKERS).min(groups.max(1))
+}
+
+type Built = (hp_ui_mapping::propper::PreparedProp, Vec<(String, String)>, (usize, usize));
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn merge_static_props(
     map: &mut Map,
@@ -521,10 +626,15 @@ pub(crate) fn merge_static_props(
     out_dir: &Path,
     stem: &str,
     facts: &dyn Fn(&str) -> MaterialFacts,
-    log: &mut dyn FnMut(&str),
+    log: &(dyn Fn(&str) + Sync),
 ) -> MergeReport {
     use hp_ui_mapping::propper::combine;
     let mut report = MergeReport::default();
+    let statics = map.entities.iter().filter(|e| merge_key(e).is_some()).count();
+    if statics < 2 {
+        return report;
+    }
+    log(&format!("Optimizing 0%: Merging static props: grouping {statics} static props by model and materials..."));
     let solids = blockers(map, facts);
     let mut materials: HashMap<String, Option<String>> = HashMap::new();
     let mut group_of = |e: &Entity| -> Option<String> {
@@ -555,11 +665,21 @@ pub(crate) fn merge_static_props(
     ));
     let stem: String =
         stem.to_ascii_lowercase().chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').take(40).collect();
-    let mut ids = next_ids(map);
-    let mut removed = vec![false; map.entities.len()];
-    let mut added = Vec::new();
-    for (n, cluster) in clusters.iter().enumerate() {
-        let entities: Vec<Entity> = cluster.iter().map(|&i| map.entities[i].clone()).collect();
+    let total = clusters.len();
+    let workers = merge_workers(total);
+    log(&format!(
+        "-mergestaticprops: {total} groups to build with the model compiler, {workers} at a time (each one stopped after {MERGE_MODEL_TIMEOUT_SECS} s)"
+    ));
+    let entities: Vec<Vec<Entity>> =
+        clusters.iter().map(|c| c.iter().map(|&i| map.entities[i].clone()).collect()).collect();
+    let results: Vec<std::sync::Mutex<Option<Result<Built, String>>>> =
+        (0..total).map(|_| std::sync::Mutex::new(None)).collect();
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let finished = std::sync::atomic::AtomicUsize::new(0);
+    let finish_lock = std::sync::Mutex::new(());
+    let stage = Stage::new("Merging static props", total, log);
+    stage.report(0, format!("building group 1 of {total}"));
+    let build_one = |n: usize| -> Result<Built, String> {
         let settings = combine::CombineSettings {
             origin: hp_app::settings::CombineOrigin::Center,
             keep_originals: false,
@@ -570,30 +690,61 @@ pub(crate) fn merge_static_props(
             source_dir: source_dir.clone(),
             lod: hp_app::settings::ModelLodSettings::default(),
         };
-        let planned = match combine::plan_entities(fs, &entities, &settings, 0) {
-            Ok(p) => p,
-            Err(e) => {
-                report.failed.push(e);
-                continue;
-            }
-        };
+        let planned = combine::plan_entities(fs, &entities[n], &settings, 0)?;
         let draw = planned.draw_calls;
         let keys = planned.keys.clone();
         let mut errors: Vec<String> = Vec::new();
-        let built = combine::build(fs, planned.creation, exe, extra_args, &mut |sev, line| {
+        let limits = combine::BuildLimits {
+            timeout: Some(std::time::Duration::from_secs(MERGE_MODEL_TIMEOUT_SECS)),
+            cancel: None,
+            finish: Some(&finish_lock),
+        };
+        let built = combine::build_limited(fs, planned.creation, exe, extra_args, &limits, &mut |sev, line| {
             if sev == hp_compile::Severity::Error && errors.len() < 4 {
                 errors.push(line);
             }
         });
-        let prepared = match built {
-            Ok(p) => p,
+        match built {
+            Ok(p) => Ok((p, keys, draw)),
             Err(e) => {
                 for l in &errors {
                     log(l);
                 }
+                Err(e)
+            }
+        }
+    };
+    stage.run(|| {
+        std::thread::scope(|scope| {
+            for _ in 0..workers {
+                scope.spawn(|| {
+                    loop {
+                        let n = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        if n >= total {
+                            break;
+                        }
+                        let r = build_one(n);
+                        let what = if r.is_ok() { "built" } else { "left as is" };
+                        *results[n].lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(r);
+                        let done = finished.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                        stage.report(done, format!("{done} of {total} groups done (the last one {what})"));
+                    }
+                });
+            }
+        });
+    });
+    let mut ids = next_ids(map);
+    let mut removed = vec![false; map.entities.len()];
+    let mut added = Vec::new();
+    for (cluster, slot) in clusters.iter().zip(results) {
+        let result = slot.into_inner().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (prepared, keys, draw) = match result {
+            Some(Ok(b)) => b,
+            Some(Err(e)) => {
                 report.failed.push(e);
                 continue;
             }
+            None => continue,
         };
         let o = prepared.origin;
         let mut props = vec![
@@ -643,17 +794,45 @@ pub(crate) fn existing_hints(map: &Map) -> Vec<Aabb> {
         .collect()
 }
 
-pub(crate) fn auto_hints(map: &mut Map, fs: Option<&hp_fs::GameFs>, full: bool) -> Result<HintReport, String> {
+pub(crate) fn auto_hints(
+    map: &mut Map,
+    fs: Option<&hp_fs::GameFs>,
+    log: &(dyn Fn(&str) + Sync),
+) -> Result<HintReport, String> {
     use crate::dispatch::health::optimize;
     let start = std::time::Instant::now();
-    let (base, leaked, _) = optimize::compile(map, fs, full)?;
+    let total = HINT_CANDIDATES + 2;
+    let stage = Stage::new("Auto hints", total, log);
+    stage.report(0, "reference compile with fast visibility".to_owned());
+    let (base, leaked, _) = stage.run(|| optimize::compile(map, fs, false))?;
     if leaked {
         return Err("the map leaks".to_owned());
     }
     let base_secs = start.elapsed().as_secs_f64();
     let existing = existing_hints(map);
-    let (list, note) =
-        optimize::evaluate_hints(map, fs, &existing, &base, full, HINT_CANDIDATES, start, HINT_BUDGET_SECS, base_secs);
+    let (list, note) = stage.run(|| {
+        optimize::evaluate_hints(
+            map,
+            fs,
+            &existing,
+            &base,
+            false,
+            HINT_CANDIDATES,
+            start,
+            HINT_BUDGET_SECS,
+            base_secs,
+            &mut |i, n| {
+                let step = if i < n {
+                    format!("measuring {} of {n}", i + 1)
+                } else {
+                    "checking the hints together".to_owned()
+                };
+                stage.set_total(n + 2);
+                stage.report(1 + i.min(n), step);
+            },
+        )
+    });
+    stage.report(stage.total(), "done".to_owned());
     let good: Vec<_> = list.iter().filter(|c| c.gain.is_some_and(|g| g > 0)).cloned().collect();
     let report = HintReport {
         added: good.len(),
@@ -799,6 +978,37 @@ mod tests {
         ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids.len(), n, "unique ids");
+    }
+
+    #[test]
+    fn optimization_progress_lines_give_percent_and_time_left() {
+        let d = std::time::Duration::from_secs;
+        assert_eq!(
+            progress_line("Merging static props", 0, 32, "building group 1 of 32", d(0)),
+            "Optimizing 0%: Merging static props: building group 1 of 32, 0 s elapsed, estimating the time left"
+        );
+        assert_eq!(
+            progress_line("Merging static props", 8, 32, "8 of 32 groups done", d(12)),
+            "Optimizing 25%: Merging static props: 8 of 32 groups done, 12 s elapsed, about 36 s left"
+        );
+        assert_eq!(
+            progress_line("Auto hints", 10, 10, "done", d(75)),
+            "Optimizing 100%: Auto hints: done, 1 min 15 s elapsed, done"
+        );
+        assert_eq!(merge_workers(1), 1);
+        assert!((1..=MERGE_MAX_WORKERS).contains(&merge_workers(32)));
+        let o = OptimizeArgs { occluders: true, merge_props: true, ..OptimizeArgs::default() };
+        assert_eq!(o.flags(), vec!["-autooccluders", "-mergestaticprops"]);
+        let lines = std::sync::Mutex::new(Vec::new());
+        let log = |l: &str| lines.lock().unwrap().push(l.to_owned());
+        let stage = Stage::new("Auto hints", 4, &log);
+        stage.report(1, "measuring 1 of 2".to_owned());
+        stage.set_total(3);
+        stage.report(3, "done".to_owned());
+        drop(stage);
+        let lines = lines.into_inner().unwrap();
+        assert!(lines[0].starts_with("Optimizing 25%: Auto hints: measuring 1 of 2"), "{lines:?}");
+        assert!(lines[1].starts_with("Optimizing 100%: Auto hints: done"), "{lines:?}");
     }
 
     #[test]

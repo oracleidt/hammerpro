@@ -121,6 +121,16 @@ pub const TR: hp_app::i18n::TrTable = &[
     ("seltool.query.none", "No match", "Aucun résultat"),
     ("seltool.label.copy", "Copy", "Copie"),
     ("seltool.transform_failed", "Transform failed: {0}", "Échec de la transformation : {0}"),
+    (
+        "seltool.remote_overlap",
+        "Another mapper edited an object you were transforming: your change was applied on top of theirs.",
+        "Un autre mappeur a modifié un objet que vous transformiez : votre modification a été appliquée par-dessus la sienne.",
+    ),
+    (
+        "seltool.remote_removed",
+        "Another mapper deleted the objects you were transforming.",
+        "Un autre mappeur a supprimé les objets que vous transformiez.",
+    ),
     ("seltool.key.shift", "Shift", "Maj"),
     ("seltool.key.ctrl", "Ctrl", "Ctrl"),
     ("seltool.key.alt", "Alt", "Alt"),

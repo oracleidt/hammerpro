@@ -209,6 +209,16 @@ pub trait Tool {
         ToolFlow::Ignored
     }
 
+    fn secondary_click_while_flying(
+        &mut self,
+        _state: &mut crate::state::AppState,
+        _view: &crate::view::ViewInfo,
+        _pos: egui::Pos2,
+        _modifiers: egui::Modifiers,
+    ) -> ToolFlow {
+        ToolFlow::Ignored
+    }
+
     fn key_input(&mut self, _state: &mut crate::state::AppState, _ctx: &egui::Context) -> bool {
         false
     }

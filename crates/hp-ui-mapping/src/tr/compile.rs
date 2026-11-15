@@ -1395,8 +1395,8 @@ pub const TR: TrTable = &[
     ),
     (
         "compile.flag.autohints",
-        "Hammer Pro option: the compile measures the hint brushes the optimizer suggests and adds only the ones that lower the visibility totals (the VMF is not changed). Slower: one extra compile per candidate. Needs the visibility.",
-        "Option de Hammer Pro : la compilation mesure les brushes hint que l'optimiseur propose et n'ajoute que ceux qui baissent les totaux de visibilité (le VMF n'est pas modifié). Plus lent : une compilation de plus par candidat. Demande la visibilité.",
+        "Hammer Pro option: the compile measures the hint brushes the optimizer suggests and adds only the ones that lower the visibility totals (the VMF is not changed). Slower: one extra compile with fast visibility per candidate, at most 3 minutes. Needs the visibility.",
+        "Option de Hammer Pro : la compilation mesure les brushes hint que l'optimiseur propose et n'ajoute que ceux qui baissent les totaux de visibilité (le VMF n'est pas modifié). Plus lent : une compilation de plus avec la visibilité rapide par candidat, 3 minutes au plus. Demande la visibilité.",
     ),
     (
         "compile.flag.autofade",

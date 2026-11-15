@@ -1,6 +1,7 @@
 use egui::{Align2, Color32, Stroke, vec2};
 use hp_app::actions::shortcut_label;
 use hp_app::runtime::FlyTextureOp;
+use hp_app::settings::CrosshairInfo;
 use hp_app::view::ViewInfo;
 use hp_app::{Action, AppState, Severity, t, tf};
 use hp_editor::{FaceRef, ObjRef, PickOptions};
@@ -129,7 +130,7 @@ fn apply(state: &mut AppState, faces: &[FaceRef]) -> bool {
     }
 }
 
-pub fn frame(ctx: &egui::Context, state: &mut AppState, input: &FrameInput, view: usize) {
+pub fn frame(ctx: &egui::Context, state: &mut AppState, input: &FrameInput, view: usize, tool_took_right: bool) {
     if !state.runtime.lab.fly_texture.active || state.runtime.lab.fly_texture.view != view {
         enter(state, view);
     }
@@ -138,6 +139,9 @@ pub fn frame(ctx: &egui::Context, state: &mut AppState, input: &FrameInput, view
         if ctx.input_mut(|i| state.keys.take_action(&mut i.events, action)) {
             run(state, op);
         }
+    }
+    if tool_took_right {
+        return;
     }
     if input.pressed[SECONDARY] {
         let op = if input.modifiers.shift { FlyTextureOp::ApplyBrush } else { FlyTextureOp::Apply };
@@ -163,6 +167,16 @@ impl OverlayLayer for FlyTextureLayer {
         if !fly.active || view.index != fly.view || view.kind.is_2d() {
             return;
         }
+        if fly.free_cursor {
+            paint::text_pill(
+                painter,
+                view.rect.center_bottom() + vec2(0.0, -12.0),
+                Align2::CENTER_BOTTOM,
+                t!("viewport.fly_tex.free_cursor").to_owned(),
+                paint::TEXT_WEAK,
+            );
+            return;
+        }
         let c = view.rect.center();
         let color = if fly.target.is_some() { Color32::WHITE } else { Color32::from_gray(200) };
         let stroke = Stroke::new(1.5, color);
@@ -177,7 +191,9 @@ impl OverlayLayer for FlyTextureLayer {
             Some(f) => tf!("viewport.fly_tex.target", f.solid, f.side, fly.material),
             None => t!("viewport.fly_tex.no_target").to_owned(),
         };
-        paint::text_pill(painter, c + vec2(0.0, 28.0), Align2::CENTER_TOP, target, paint::TEXT);
+        if let Some((pos, align)) = crosshair_info_anchor(state.settings.workflow.crosshair_info, view.rect) {
+            paint::text_pill(painter, pos, align, target, paint::TEXT);
+        }
         let key = |a: Action| state.keys.shortcut(a).map_or_else(|| "-".to_owned(), |s| shortcut_label(&s));
         let hint = tf!(
             "viewport.fly_tex.hint",
@@ -197,7 +213,20 @@ impl OverlayLayer for FlyTextureLayer {
     }
 }
 
+pub fn crosshair_info_anchor(mode: CrosshairInfo, rect: egui::Rect) -> Option<(egui::Pos2, Align2)> {
+    match mode {
+        CrosshairInfo::Off => None,
+        CrosshairInfo::Corner => Some((rect.left_top() + vec2(6.0, crate::HEADER_HEIGHT + 10.0), Align2::LEFT_TOP)),
+        CrosshairInfo::Crosshair => Some((rect.center() + vec2(0.0, 28.0), Align2::CENTER_TOP)),
+    }
+}
+
 pub(crate) const TR: hp_app::i18n::TrTable = &[
+    (
+        "viewport.fly_tex.free_cursor",
+        "Cursor free: use the tool with the mouse, release Alt to fly again",
+        "Curseur libre : utilisez l'outil à la souris, relâchez Alt pour revoler",
+    ),
     ("viewport.fly_tex.nothing", "No face under the crosshair.", "Aucune face sous le viseur."),
     ("viewport.fly_tex.picked", "Texture picked: {0}", "Texture prélevée : {0}"),
     ("viewport.fly_tex.failed", "Texturing failed: {0}", "Échec du texturage : {0}"),

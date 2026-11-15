@@ -986,14 +986,24 @@ fn optimize_map(
     let o = &a.optimize;
     let bounds = |p: &str| models.bounds(p);
     let facts = |m: &str| materials.facts(m);
+    if o.any() {
+        say(&format!(
+            "Optimization options on: {} (Compile settings, geometry options, Optimization group)",
+            o.flags().join(", ")
+        ));
+    }
     if o.hints {
         if vis == hp_bspc::VisLevel::Off {
             say("-autohints: skipped, it needs the visibility (-vis or -fastvis)");
         } else {
-            say("-autohints: measuring the suggested hint brushes...");
+            say(&format!(
+                "-autohints: measuring at most {} suggested hint brushes with fast visibility compiles (at most {} s)...",
+                crate::bspc_optimize::HINT_CANDIDATES,
+                crate::bspc_optimize::HINT_BUDGET_SECS
+            ));
             let t = std::time::Instant::now();
             let mounted = (!fs.sources().is_empty()).then_some(fs);
-            match crate::bspc_optimize::auto_hints(map, mounted, vis == hp_bspc::VisLevel::Full) {
+            match crate::bspc_optimize::auto_hints(map, mounted, &say) {
                 Ok(r) => {
                     say(&format!(
                         "-autohints: {} hint brushes added of {} measured (visibility total {} lowered by {}) in {:.1} s",
@@ -1045,16 +1055,7 @@ fn optimize_map(
     }
     let stem = vmf.file_stem().map_or_else(|| "map".into(), |s| s.to_string_lossy().into_owned());
     let t = std::time::Instant::now();
-    let r = crate::bspc_optimize::merge_static_props(
-        map,
-        fs,
-        &exe,
-        &o.model_compiler_args,
-        &dir,
-        &stem,
-        &facts,
-        &mut |l| say(l),
-    );
+    let r = crate::bspc_optimize::merge_static_props(map, fs, &exe, &o.model_compiler_args, &dir, &stem, &facts, &say);
     for e in r.failed.iter().take(8) {
         say(&format!("-mergestaticprops: a group was left as is: {e}"));
     }

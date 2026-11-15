@@ -79,6 +79,7 @@ struct Drag {
     mods: Modifiers,
     last_pos: Pos2,
     revision: u64,
+    overlap: bool,
     elements: bool,
     ghost: Vec<[DVec3; 2]>,
     ghost_points: Vec<DVec3>,
@@ -811,6 +812,7 @@ impl SelectTool {
             mods,
             last_pos: pos,
             revision: state.doc.revision(),
+            overlap: false,
             elements,
             ghost,
             ghost_points,
@@ -832,6 +834,7 @@ impl SelectTool {
             mods,
             last_pos: pos,
             revision: state.doc.revision(),
+            overlap: false,
             elements: false,
             ghost: Vec::new(),
             ghost_points: Vec::new(),
@@ -1057,12 +1060,23 @@ impl SelectTool {
         state.doc.select(&objs, op);
     }
 
+    fn follow_foreign(&mut self, state: &AppState) -> bool {
+        let Some(d) = self.drag.as_mut() else { return true };
+        if !d.edits() || d.revision == state.doc.revision() {
+            return true;
+        }
+        let Some(touched) = state.doc.foreign_changes_since(d.revision) else { return false };
+        d.overlap |= state.doc.foreign_touches(&touched, &d.objs);
+        d.revision = state.doc.revision();
+        true
+    }
+
     fn update_drag(&mut self, state: &AppState, view: &ViewInfo, pos: Pos2, mods: Modifiers) {
         let frame = state.edit_grid_frame(view.kind);
         let grid = frame.nominal();
         let snap_on = Self::snap_on(state, mods);
         let (step, free) = Self::rotation_snap(state, mods);
-        if self.drag.as_ref().is_some_and(|d| d.edits() && d.revision != state.doc.revision()) {
+        if !self.follow_foreign(state) {
             self.drag = None;
             return;
         }
@@ -1322,12 +1336,27 @@ impl SelectTool {
 
     fn finish_drag(&mut self, state: &mut AppState) {
         state.runtime.selection.drag = None;
-        let Some(d) = self.drag.take() else { return };
+        let Some(mut d) = self.drag.take() else { return };
         if d.is_modal() {
             state.runtime.selection.modal_transform = false;
         }
         if d.edits() && d.revision != state.doc.revision() {
-            return;
+            match state.doc.foreign_changes_since(d.revision) {
+                Some(touched) => d.overlap |= state.doc.foreign_touches(&touched, &d.objs),
+                None => return,
+            }
+        }
+        if d.overlap && d.transforms() {
+            let scene = state.doc.scene();
+            d.objs.retain(|obj| match *obj {
+                ObjRef::Solid(id) => scene.solid(id).is_some(),
+                ObjRef::Entity(id) => scene.entity(id).is_some(),
+            });
+            if d.objs.is_empty() && !d.elements {
+                state.notify(Severity::Warning, tf!("seltool.remote_removed"));
+                return;
+            }
+            state.notify(Severity::Info, tf!("seltool.remote_overlap"));
         }
         match &d.op {
             DragOp::Band { start, current } => {

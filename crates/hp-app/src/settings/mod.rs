@@ -85,9 +85,9 @@ pub use update::UpdateSettings;
 pub use visibility::VisibilitySettings;
 pub use vtf::VtfSettings;
 pub use workflow::{
-    CtrlWheel, DisplayUnits, FLY_RESPONSE_MAX, GRID_MAX, GRID_MIN, GRID_STEP_MAX, GRID_STEP_MIN, MAX_LAYOUT_NAME,
-    MAX_LAYOUTS, NavScheme, SavedLayout, TOOL_GRID_MAX, TOOL_GRID_MIN, WorkflowSettings, clamp_grid, grid_step,
-    tool_grid,
+    CrosshairInfo, CtrlWheel, DisplayUnits, FLY_RESPONSE_MAX, GRID_MAX, GRID_MIN, GRID_STEP_MAX, GRID_STEP_MIN,
+    MAX_LAYOUT_NAME, MAX_LAYOUTS, NavScheme, SavedLayout, TOOL_GRID_MAX, TOOL_GRID_MIN, WorkflowSettings, clamp_grid,
+    grid_step, tool_grid,
 };
 
 impl Settings {

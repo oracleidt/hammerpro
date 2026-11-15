@@ -66,7 +66,7 @@ const LIGHT_KEYS: [egui::Key; player::LISTED_LIGHTS] = [
 
 const MIN_CAMERA_SPEED: f32 = 50.0;
 const MAX_CAMERA_SPEED: f32 = 20000.0;
-const HEADER_HEIGHT: f32 = 20.0;
+pub(crate) const HEADER_HEIGHT: f32 = 20.0;
 const POINTER_ONLY: Sense = Sense::CLICK.union(Sense::DRAG);
 
 pub fn register_translations() {
@@ -232,6 +232,7 @@ pub struct Viewports {
     velocity: DVec3,
     gesture: Option<Gesture>,
     mouselook: Option<Mouselook>,
+    fly_free: bool,
     warp: warp::CursorWarp,
     cursor_confined: bool,
     player_view: Option<usize>,
@@ -312,6 +313,7 @@ impl Viewports {
             velocity: DVec3::ZERO,
             gesture: None,
             mouselook: None,
+            fly_free: false,
             warp: warp::CursorWarp::default(),
             cursor_confined: false,
             player_view: None,
@@ -373,6 +375,14 @@ impl Viewports {
         self.mouselook.is_some()
     }
 
+    pub fn is_cursor_free(&self) -> bool {
+        self.mouselook.is_some() && self.fly_free
+    }
+
+    fn mouselook_locked(&self) -> bool {
+        self.mouselook.is_some() && !self.fly_free
+    }
+
     pub fn is_context_menu_open(&self) -> bool {
         self.menu.is_some()
     }
@@ -427,7 +437,7 @@ impl Viewports {
             layer.prepare(state);
         }
         self.keys.layout = state.settings.view.keyboard_layout;
-        let input = FrameInput::gather_for(&ctx, self.keys.layout);
+        let mut input = FrameInput::gather_for(&ctx, self.keys.layout);
         self.keys.update_from_ctx(&ctx, &input);
         self.scroll = ctx.input(|i| trackpad::FrameScroll::gather(&i.events));
         self.trackpad.update(&self.scroll);
@@ -494,8 +504,11 @@ impl Viewports {
 
         let tool_id = tool.id();
         let nav_view = self.navigate(&ctx, state, &input, &slots, hovered, &cfg, ppp, dnd_active, tool);
+        if self.is_cursor_free() {
+            input.modifiers.alt = false;
+        }
         let confine = input.focused
-            && (self.mouselook.is_some()
+            && (self.mouselook_locked()
                 || self.player_view.is_some()
                 || matches!(self.gesture, Some(Gesture::Look { looking: true, .. })));
         if confine != self.cursor_confined {
@@ -544,7 +557,7 @@ impl Viewports {
     }
 
     pub fn wants_frames(&self) -> bool {
-        let flying = self.mouselook.is_some() || self.gesture.is_some_and(|g| g.flies());
+        let flying = self.mouselook_locked() || self.gesture.is_some_and(|g| g.flies());
         self.player_view.is_some() || self.velocity != DVec3::ZERO || (flying && !self.keys.is_empty())
     }
 
@@ -1004,27 +1017,49 @@ impl Viewports {
                     input::consume_z(ctx, self.keys.layout, true);
                 }
                 self.mouselook = None;
+                self.fly_free = false;
                 self.keys.clear();
+            } else if fly_cursor_free(self.fly_free, input.modifiers.alt && !text_focus, &input.down) {
+                if !self.fly_free {
+                    self.fly_free = true;
+                    self.keys.clear();
+                }
+                state.runtime.lab.fly_texture.free_cursor = true;
             } else {
+                if self.fly_free {
+                    self.fly_free = false;
+                    self.warp.reset();
+                }
+                state.runtime.lab.fly_texture.free_cursor = false;
                 look(&mut state.cameras.cam3d, input.look_delta());
                 ctx.set_cursor_icon(CursorIcon::None);
                 if self.warp.request(input.focused, input.pointer, input.motion.is_some(), ml.anchor) {
                     ctx.send_viewport_cmd(egui::ViewportCommand::CursorPosition(ml.anchor));
                 }
-                let span = hp_app::runtime::Span::new("fly_target");
-                fly_texture::frame(ctx, state, input, ml.view);
-                drop(span);
-                if input.pressed[PRIMARY]
-                    && hovered == Some(ml.view)
+                let clickable = hovered == Some(ml.view)
                     && !self.swallow
                     && self.menu.is_none()
                     && !dnd_active
                     && pick::pending(state).is_none()
-                    && !tool_works_while_navigating(tool.id())
-                    && let Some(s) = slot_of(ml.view)
+                    && !tool_works_while_navigating(tool.id());
+                let fly_view = slot_of(ml.view).map(|s| view_info(s.index, s.kind, s.rect, &state.cameras, cfg, ppp));
+                let mut tool_took_right = false;
+                if input.pressed[SECONDARY]
+                    && clickable
+                    && let Some(view) = &fly_view
                 {
-                    let view = view_info(s.index, s.kind, s.rect, &state.cameras, cfg, ppp);
-                    tool.click_while_flying(state, &view, s.rect.center(), input.modifiers);
+                    tool_took_right =
+                        tool.secondary_click_while_flying(state, view, view.rect.center(), input.modifiers)
+                            == ToolFlow::Handled;
+                }
+                let span = hp_app::runtime::Span::new("fly_target");
+                fly_texture::frame(ctx, state, input, ml.view, tool_took_right);
+                drop(span);
+                if input.pressed[PRIMARY]
+                    && clickable
+                    && let Some(view) = &fly_view
+                {
+                    tool.click_while_flying(state, view, view.rect.center(), input.modifiers);
                 }
             }
         } else if input.z_pressed && !text_focus && self.gesture.is_none() && !state.runtime.selection.modal_transform {
@@ -1047,6 +1082,7 @@ impl Viewports {
         }
 
         if self.mouselook.is_none() {
+            self.fly_free = false;
             fly_texture::leave(state);
         }
 
@@ -1260,7 +1296,7 @@ impl Viewports {
             }
         }
 
-        let flying = self.mouselook.is_some() || self.gesture.is_some_and(|g| g.flies());
+        let flying = self.mouselook_locked() || self.gesture.is_some_and(|g| g.flies());
         let space_up = self.gesture.is_none_or(|g| g.space_flies_up());
         let fly = if flying { self.keys.fly_input_with(input.modifiers, space_up) } else { FlyInput::default() };
         let speed = f64::from(state.settings.view.camera_speed);
@@ -1286,13 +1322,13 @@ impl Viewports {
             && !dnd_active
             && let Some(s) = hovered.and_then(slot_of)
         {
-            let offered = self.mouselook.is_none() && self.gesture.is_none() && !self.swallow && self.menu.is_none();
+            let offered = !self.mouselook_locked() && self.gesture.is_none() && !self.swallow && self.menu.is_none();
             self.trackpad_scroll(state, s, input, tool, offered, cfg, ppp);
         } else if input.wheel != 0.0
             && !dnd_active
             && let Some(s) = hovered.and_then(slot_of)
         {
-            let offered = self.mouselook.is_none() && self.gesture.is_none() && !self.swallow && self.menu.is_none();
+            let offered = !self.mouselook_locked() && self.gesture.is_none() && !self.swallow && self.menu.is_none();
             let handled = offered && {
                 let view = view_info(s.index, s.kind, s.rect, &state.cameras, cfg, ppp);
                 tool.wheel(state, &view, input.wheel, input.modifiers) == ToolFlow::Handled
@@ -1302,7 +1338,7 @@ impl Viewports {
             }
         }
 
-        self.mouselook.map(|m| m.view).or(self.gesture.map(|g| g.view())).or(ended)
+        self.mouselook.filter(|_| !self.fly_free).map(|m| m.view).or(self.gesture.map(|g| g.view())).or(ended)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1910,6 +1946,7 @@ impl Viewports {
         }
         if let Some(ml) = self.mouselook
             && ml.view == view.index
+            && !self.fly_free
         {
             paint::crosshair(painter, rect.center());
         }
@@ -2428,6 +2465,10 @@ pub(crate) const RENDER_MODES: [(RenderModeSetting, Action); 10] = [
 
 pub fn tool_takes_right_click(tool: ToolId, kind: ViewKind, modifiers: egui::Modifiers) -> bool {
     tool == ToolId::Slice || tool == ToolId::Texture && kind == ViewKind::Perspective && !modifiers.shift
+}
+
+pub fn fly_cursor_free(was_free: bool, alt_held: bool, buttons_down: &[bool]) -> bool {
+    alt_held || (was_free && buttons_down.iter().any(|&d| d))
 }
 
 pub fn tool_works_while_navigating(tool: ToolId) -> bool {

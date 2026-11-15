@@ -479,7 +479,20 @@ impl InsetModal {
     }
 
     fn stale(&self, state: &AppState) -> bool {
-        state.doc.revision() != self.revision
+        if state.doc.revision() == self.revision {
+            return false;
+        }
+        state
+            .doc
+            .foreign_changes_since(self.revision)
+            .is_none_or(|touched| self.faces.iter().any(|f| touched.touches_solid(f.face.solid)))
+    }
+
+    fn finish_stale(&mut self, state: &mut AppState) {
+        self.finished = true;
+        if state.doc.foreign_changes_since(self.revision).is_some() {
+            state.notify(Severity::Warning, t!("inset_modal.remote_changed"));
+        }
     }
 
     pub fn confirm(&mut self, state: &mut AppState) -> bool {
@@ -754,7 +767,7 @@ impl InsetModal {
             return ToolFlow::Ignored;
         }
         if self.stale(state) {
-            self.finished = true;
+            self.finish_stale(state);
             return ToolFlow::Ignored;
         }
         if input.navigating {
@@ -783,7 +796,7 @@ impl InsetModal {
             return false;
         }
         if self.stale(state) {
-            self.finished = true;
+            self.finish_stale(state);
             return false;
         }
         let mut keys: Vec<Key> = Vec::new();
@@ -993,6 +1006,11 @@ pub const INSET_MODAL_TR: hp_app::i18n::TrTable = &[
     ("modal.grid", "grid {0}", "grille {0}"),
     ("modal.grid_alt", "alt grid {0}", "grille alt. {0}"),
     ("modal.grid_free", "free", "libre"),
+    (
+        "inset_modal.remote_changed",
+        "Another mapper edited the brush under this inset: start it again on the updated faces.",
+        "Un autre mappeur a modifié le bloc de cet encart : relancez-le sur les faces mises à jour.",
+    ),
     (
         "inset_modal.too_small",
         "Move the mouse toward the face center or type a thickness of at least 0.125 first",

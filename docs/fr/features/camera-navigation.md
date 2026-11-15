@@ -36,11 +36,25 @@ En vue souris (`Z`), vous pouvez texturer la face sous le viseur sans quitter le
 | `V` (`fly_pick_texture`) ou clic du milieu | Prélève la texture de la face visée comme texture actuelle |
 | `N` (`fly_align_texture`) | Aligne la texture de la face visée sur la vue (les directions droite et haut de la caméra) |
 
-- La face visée (la première face de solide dans la direction du regard, jusqu'à 16384 unités) n'est pas surlignée : le viseur et son étiquette la désignent. Un viseur est dessiné au centre de la vue avec le solide, la face et la texture de la cible, et une ligne d'aide en bas de la vue liste les touches et la texture actuelle.
+- La face visée (la première face de solide dans la direction du regard, jusqu'à 16384 unités) n'est pas surlignée : un viseur est dessiné au centre de la vue et une étiquette donne le solide, la face et la texture de la cible. L'emplacement de cette étiquette est le réglage **Afficher ce qui est sous le viseur** (**Paramètres > Vues**, `[workflow] crosshair_info`) : **Dans un coin** (par défaut) l'affiche en petit dans le coin en haut à gauche de la vue 3D pour laisser le centre dégagé, **Sous le viseur** l'affiche juste sous le viseur (le comportement de la 2.1.1 et avant), **Désactivé** la masque. Une ligne d'aide en bas de la vue liste les touches et la texture actuelle.
 - Chaque modification est une étape d'annulation. Les touches sont des actions : elles se changent dans **Paramètres > Clavier** (`[keybindings]`) comme les autres, et ne fonctionnent qu'en vue souris.
-- Le clic gauche continue de sélectionner l'objet sous le viseur.
+- Le clic gauche continue de sélectionner l'objet sous le viseur (voir plus bas).
+- Par MCP : `set_setting` `workflow.crosshair_info` avec `Off`, `Corner` ou `Crosshair`.
 - Par MCP : `ui_key` avec `z` entre en vue souris, puis `t`, `f`, `v` ou `n` agissent sur la face au centre de la vue (`set_camera` pour viser, `list_keybindings` pour les touches).
 - Quand l'outil actif utilise le clic droit dans la vue 3D (l'outil de texture applique la texture actuelle), `Maj+clic droit` ouvre le menu contextuel.
+
+### Utiliser les outils en vue souris
+
+Inutile de quitter la vue souris pour travailler sur le brush que vous regardez :
+
+| Entrée | Effet |
+|---|---|
+| Clic gauche | L'outil actif agit sous le viseur : les outils Sélection et Caméra sélectionnent l'objet (`Ctrl+clic` l'ajoute ou le retire) ; l'[outil Édition de faces](texture-tool.md) sélectionne la face et prélève sa texture (`Ctrl+clic` ajoute ou retire la face, `Maj+clic` sélectionne tout le brush) |
+| Clic droit avec l'outil Édition de faces | Applique la texture courante à la face visée comme un clic droit de l'outil (`Ctrl` : nodraw ; `Maj` : tout le brush) |
+| Maintenir `Alt` | Libère le curseur : la caméra ne tourne plus, le viseur disparaît et la souris marche comme hors de la vue souris, pour glisser le gizmo, les poignées ou les flèches de face de la sélection, dessiner avec l'outil actif ou cliquer n'importe où dans la vue. Relâchez `Alt` pour revoler (un glisser commencé avec `Alt` continue jusqu'au relâchement du bouton) |
+
+- Tant que le curseur est libre, `Alt` n'est pas transmis à l'outil (un clic avec `Alt` est un clic simple).
+- Par MCP : `ui_key` `z` entre en vue souris, `ui_click` au centre de la vue 3D clique sous le viseur ; `ui_drag` avec `mods` `["alt"]` glisse avec le curseur libre.
 
 ### Disposition du clavier (touches de la caméra)
 

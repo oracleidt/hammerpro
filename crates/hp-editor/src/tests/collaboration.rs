@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::*;
-use crate::SharedUpdate;
+use crate::{SharedTouched, SharedUpdate};
 
 #[test]
 fn remote_map_keeps_local_path_selection_and_unchanged_geometry() {
@@ -241,4 +241,23 @@ fn shared_journal_reports_an_older_brush_step() {
     let touched = doc.shared_touched_since(initial).expect("the journal covers both steps");
     assert_eq!(touched.solids, [solid], "the moved brush of the older step is shared");
     assert_eq!(touched.entities, [21]);
+}
+
+#[test]
+fn foreign_changes_tell_remote_updates_from_local_edits() {
+    let (mut doc, solid) = shared_fixture();
+    let start = doc.revision();
+    assert_eq!(doc.foreign_changes_since(start), Some(SharedTouched::default()));
+    let mut prop = doc.scene().entity(21).unwrap().entity.clone();
+    prop.set("origin", "0 0 77");
+    doc.apply_shared_update(SharedUpdate { entities: vec![(21, Some(prop))], ..Default::default() }).unwrap();
+    let mut prop = doc.scene().entity(21).unwrap().entity.clone();
+    prop.set("origin", "0 0 78");
+    doc.apply_shared_update(SharedUpdate { entities: vec![(21, Some(prop))], ..Default::default() }).unwrap();
+    let touched = doc.foreign_changes_since(start).unwrap();
+    assert_eq!(touched.entities, [21]);
+    assert!(!doc.foreign_touches(&touched, &[ObjRef::Solid(solid)]));
+    assert!(doc.foreign_touches(&touched, &[ObjRef::Entity(21)]));
+    doc.translate(&[ObjRef::Solid(solid)], DVec3::Z).unwrap();
+    assert!(doc.foreign_changes_since(start).is_none());
 }
