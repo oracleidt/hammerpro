@@ -164,7 +164,7 @@ Surtout sur **Paramètres > Vues** ; les clés `show_*` sont aussi dans le menu 
 | `compile_cordon_only` | `true` | Avec un cordon actif, ne compile que la zone du cordon (sous le nom `<map>_cordon`). |
 | `cordon_material` | `"TOOLS/TOOLSSKYBOX"` | N'est plus lue : le matériau de fermeture est `visibility.cordon_material`. |
 | `smart_recompile` | `true` | Choisit la chaîne la moins coûteuse d'après ce qui a changé (Draft et Normal). |
-| `background_precompile` | `true` à partir de 8 cœurs | Compile en arrière-plan quand l'éditeur est inactif. |
+| `background_precompile` | `false` (désactivé pour tous par la mise à jour 2.1.1) | Compile en arrière-plan quand l'éditeur est inactif, en priorité la plus basse sur au plus la moitié des cœurs logiques (2 toujours laissés libres). Demande 8 cœurs logiques ou plus. |
 | `progressive` | `false` | Jouer tout de suite : compilation Draft, lancement, puis éclairage terminé en arrière-plan et map remplacée. |
 | `progressive_preset` | `"Normal"` | Qualité de cet éclairage en arrière-plan (aucun réglage dans la fenêtre). |
 | `history` | `true` | Garde un historique des durées par map. |
@@ -452,7 +452,7 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `auto_scope_luxels_millions` | `2` | Seuil du mode régional automatique optionnel, de 1 à 64 millions de luxels. |
 | `auto_scope_radius` | `3072` | Rayon de la région automatique optionnelle, de 256 à 32768 unités. Distinct du rayon manuel de l'onglet Éclairage. |
 | `visible_first` | `true` | Sur les maps de 6000 solides ou plus, la zone autour de la caméra est précalculée d'abord, puis toute la map est précalculée en arrière-plan et la remplace. |
-| `prepare` | `true` | Une fois la map ouverte et les modifications en pause, toute la map est compilée et éclairée avec la priorité la plus basse sans être dessinée, pour que l'aperçu précalculé s'affiche aussitôt à l'activation. Pas pendant que la fenêtre est réduite ou qu'une autre fenêtre est active. Demande `auto_bake`. |
+| `prepare` | `false` (désactivé pour tous par la mise à jour 2.1.1) | Une fois la map ouverte et les modifications en pause, toute la map est compilée et éclairée avec la priorité la plus basse sans être dessinée, pour que l'aperçu précalculé s'affiche aussitôt à l'activation. Pas pendant que la fenêtre est réduite ou qu'une autre fenêtre est active. Demande `auto_bake`. |
 | `priority` | `"BelowNormal"` | Priorité processeur des précalculs que vous attendez : `Idle`, `BelowNormal` ou `Normal`. La préparation en arrière-plan et l'éclairage des props tournent toujours en `Idle`. |
 | `pause_minimized` | `true` | Arrêter le précalcul en cours et les mises à jour pendant que la fenêtre est réduite ; ils reprennent à son retour. |
 | `pause_unfocused` | `false` | La même chose pendant qu'une autre fenêtre est active. |

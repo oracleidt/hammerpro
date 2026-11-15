@@ -60,6 +60,7 @@ pub(super) const TR: TrTable = &[
     ("shell.undo.delete_cordon", "Delete cordon", "Suppression du cordon"),
     ("shell.undo.rename_cordon", "Rename cordon", "Renommage du cordon"),
     ("shell.undo.toggle_cordon", "Toggle cordon", "Activation du cordon"),
+    ("shell.undo.cordon_mode", "Cordon mode", "Mode du cordon"),
     ("shell.undo.resize_cordon", "Resize cordon", "Redimensionnement du cordon"),
     ("shell.undo.set_visgroups", "Set visgroups", "Affectation des visgroups"),
     ("shell.undo.move_to_visgroup", "Move to visgroup", "Déplacement vers un visgroup"),

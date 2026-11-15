@@ -164,7 +164,7 @@ Mostly on **Settings > Viewports**; the `show_*` toggles are also in the **View*
 | `compile_cordon_only` | `true` | With an active cordon, compile only the cordoned area (as `<map>_cordon`). |
 | `cordon_material` | `"TOOLS/TOOLSSKYBOX"` | Not read any more: the sealing material is `visibility.cordon_material`. |
 | `smart_recompile` | `true` | Pick the cheapest pipeline from what changed (Draft and Normal). |
-| `background_precompile` | `true` with 8 cores or more | Compile in the background while the editor is idle. |
+| `background_precompile` | `false` (turned off for everyone by the 2.1.1 update) | Compile in the background while the editor is idle, at the lowest priority on at most half of the logical cores (2 always left free). Needs 8 logical cores or more. |
 | `progressive` | `false` | Play now: compile Draft, launch, then finish the lighting in the background and swap the map. |
 | `progressive_preset` | `"Normal"` | Quality of that background lighting (no control in the window). |
 | `history` | `true` | Keep a timing history per map. |
@@ -452,7 +452,7 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `auto_scope_luxels_millions` | `2` | Threshold for the optional automatic regional mode, 1 to 64 million luxels. |
 | `auto_scope_radius` | `3072` | Radius of the optional automatic region, 256 to 32768 units. Separate from the manual camera radius in the Lighting tab. |
 | `visible_first` | `true` | On maps of 6000 solids and more, the area around the camera is baked first, then the whole map is baked in the background and replaces it. |
-| `prepare` | `true` | Once the map is open and edits pause, the whole map is compiled and lit at the lowest priority without drawing it, so the baked preview shows at once when it is turned on. Not while the window is minimized or another window is active. Needs `auto_bake`. |
+| `prepare` | `false` (turned off for everyone by the 2.1.1 update) | Once the map is open and edits pause, the whole map is compiled and lit at the lowest priority without drawing it, so the baked preview shows at once when it is turned on. Not while the window is minimized or another window is active. Needs `auto_bake`. |
 | `priority` | `"BelowNormal"` | CPU priority of the bakes you wait for: `Idle`, `BelowNormal` or `Normal`. The background preparation and the lighting of the props always run at `Idle`. |
 | `pause_minimized` | `true` | Stop the running bake and the relights while the window is minimized; they start again when it comes back. |
 | `pause_unfocused` | `false` | The same while another window is active. |

@@ -134,6 +134,7 @@ pub struct MapSnapshot {
     pub renumbered: (Vec<ObjRef>, usize),
     pub materials: Arc<Vec<MaterialName>>,
     pub cordons: Arc<Vec<Aabb>>,
+    pub exclude_cordons: Arc<Vec<Aabb>>,
 }
 
 impl MapSnapshot {
@@ -562,6 +563,7 @@ impl SnapshotBuilder {
             renumbered: (renumbered, doc.renumbered.len()),
             materials: Arc::clone(&self.materials.names),
             cordons: Arc::new(doc.cordon_boxes()),
+            exclude_cordons: Arc::new(doc.exclude_cordon_boxes()),
         })
     }
 }

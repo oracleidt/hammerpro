@@ -7,7 +7,9 @@ use std::time::{Duration, Instant};
 
 use hp_editor::edicts::{EdictReport, estimate_edicts};
 use hp_editor::limits::checks::{CheckKnowledge, MaterialFacts, check_snapshot, detail_candidates, leak_problems};
-use hp_editor::limits::leak::{LeakInput, LeakPath, LeakReport, apply_cordons, find_leaks, flood_map, leak_input_from};
+use hp_editor::limits::leak::{
+    LeakInput, LeakPath, LeakReport, apply_cordons, apply_exclusions, find_leaks, flood_map_excluding, leak_input_from,
+};
 use hp_editor::limits::snapshot::{MapSnapshot, SnapshotBuilder};
 use hp_editor::limits::{LimitProfile, LimitUse, estimate_limits};
 use hp_editor::{Document, Problem};
@@ -435,18 +437,20 @@ fn run_job(
     }
     let t1 = Instant::now();
     let boxes: &[hp_geom::Aabb] = if leak.cordons { &snap.cordons } else { &[] };
+    let excludes: &[hp_geom::Aabb] = if leak.cordons { &snap.exclude_cordons } else { &[] };
     let mut facts_cache: HashMap<u32, MaterialFacts> = HashMap::new();
     let mut input = leak_input_from(snap, &mut |m| {
         *facts_cache.entry(m).or_insert_with(|| {
             know.material(snap.material_display(m)).unwrap_or_else(|| MaterialFacts::guess(snap.material_key(m)))
         })
     });
+    apply_exclusions(&mut input, excludes);
     apply_cordons(&mut input, boxes);
     let Some(mut report) = find_leaks(&input, cancel) else { return };
     if report.leaks()
         && let Some(confirm) = crate::extend::leak_confirm()
     {
-        let map = flood_map(snap, boxes);
+        let map = flood_map_excluding(snap, boxes, excludes);
         if cancel.load(Ordering::Relaxed) {
             return;
         }

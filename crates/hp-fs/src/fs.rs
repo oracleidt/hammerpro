@@ -226,13 +226,11 @@ impl GameFs {
         }
         let start = std::time::Instant::now();
         let count = rest.len();
-        let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(2, 8);
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(threads)
-            .thread_name(|i| format!("hp-fs-mount-{i}"))
-            .build()
-            .map_err(|e| log::warn!("cannot start the mount threads: {e}"))
-            .ok();
+        let pool =
+            hp_sched::builder("hp-fs-mount", hp_sched::background_threads().clamp(2, 8), hp_sched::Level::BelowNormal)
+                .build()
+                .map_err(|e| log::warn!("cannot start the mount threads: {e}"))
+                .ok();
         let items = rest.items;
         let (opened, warnings) = match pool {
             Some(pool) => pool.install(|| open_all_for(items, Some(progress), self.inner.lookup_only)),

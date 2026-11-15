@@ -90,6 +90,11 @@ pub fn validate(bytes: &[u8]) -> Vec<String> {
             err(format!("too many {name}: {used} of {max}"));
         }
     }
+    if np == 0 || nm == 0 || nl == 0 {
+        err(format!(
+            "the world is empty ({np} planes, {nm} models, {nl} leaves): the game refuses it with \"Map with no planes\""
+        ));
+    }
     for i in 0..np {
         let n = [f32_at(&planes, i * 20), f32_at(&planes, i * 20 + 4), f32_at(&planes, i * 20 + 8)];
         let len: f32 = n.iter().map(|v| v.unwrap_or(0.0).powi(2)).sum::<f32>().sqrt();

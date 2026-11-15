@@ -329,4 +329,25 @@ pub const TR: TrTable = &[
         "The map has {0} cubemaps (about {1} MB of textures, {2} max): more cubemaps load slower and bloat the BSP. One per room with reflective surfaces is usually enough.",
         "La map a {0} cubemaps (environ {1} Mo de textures, {2} au maximum) : plus de cubemaps chargent plus lentement et alourdissent le BSP. Un par pièce avec des surfaces réfléchissantes suffit en général.",
     ),
+    ("optimize.topic.overlays", "Overlays", "Overlays"),
+    (
+        "optimize.why.overlays",
+        "Why: an overlay is cut into one fragment per brush face in its list, even faces its rectangle never reaches. Long lists cost fragments and compile time, and above 64 faces the engine refuses the overlay. Go to selects it: then Tools > Trim overlay faces (or right click) removes the faces it does not touch, in one undo step.",
+        "Pourquoi : un overlay est découpé en un fragment par face de brush de sa liste, même les faces que son rectangle n'atteint jamais. Les longues listes coûtent des fragments et du temps de compilation, et au delà de 64 faces le moteur refuse l'overlay. Aller à le sélectionne : ensuite Outils > Rogner les faces de l'overlay (ou clic droit) retire les faces qu'il ne touche pas, en une seule étape d'annulation.",
+    ),
+    (
+        "optimize.f.overlay_over_limit",
+        "Overlay {0} ({3}) is applied to {1} brush faces, the engine allows {4}: the compile fails or drops it. {2} of them are outside its rectangle: select it with Go to and run Trim overlay faces, or split it.",
+        "L'overlay {0} ({3}) est appliqué à {1} faces de brush, le moteur en accepte {4} : la compilation échoue ou l'abandonne. {2} d'entre elles sont hors de son rectangle : sélectionnez-le avec Aller à et lancez Rogner les faces de l'overlay, ou découpez-le.",
+    ),
+    (
+        "optimize.f.overlay_many_faces",
+        "Overlay {0} ({3}) is applied to {1} brush faces: each face is one more fragment to clip, store and draw. {2} of them are outside its rectangle: select it with Go to and run Trim overlay faces.",
+        "L'overlay {0} ({3}) est appliqué à {1} faces de brush : chaque face est un fragment de plus à découper, stocker et dessiner. {2} d'entre elles sont hors de son rectangle : sélectionnez-le avec Aller à et lancez Rogner les faces de l'overlay.",
+    ),
+    (
+        "optimize.f.overlay_unused_faces",
+        "Overlay {0} ({3}) lists {2} of its {1} brush faces that its rectangle does not touch: they only count toward the {4} face limit. Select it with Go to and run Trim overlay faces.",
+        "L'overlay {0} ({3}) liste {2} de ses {1} faces de brush que son rectangle ne touche pas : elles ne comptent que dans la limite de {4} faces. Sélectionnez-le avec Aller à et lancez Rogner les faces de l'overlay.",
+    ),
 ];

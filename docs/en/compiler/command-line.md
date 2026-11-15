@@ -61,6 +61,9 @@ Geometry and visibility. Defaults are those of the command line alone; the edito
 | `-AllowDynamicPropsAsStatic` | | Keeps static props whose model has `prop_data`. | off |
 | `-replacematerials` | | Applies `cfg/materialsub.cfg` of the game. | off |
 | `-keepstalezip` | | Keeps the files packed in the previous BSP. | off |
+| `-autolightmapscale` | | Coarser lightmap scale on faces never seen up close, see [Compile options](compile-options.md#optimization). | off |
+| `-cleanpak` | | Removes the unused files of the pakfile and compresses it with LZMA. | off |
+| `-autocubemaps` | | Sizes the default size cubemaps from the area they reflect and removes the unused ones. | off |
 | `-embed` | folder | Packs a whole folder into the BSP (full compiles only, refused with `-onlyents`/`-onlyprops`). | none |
 | `-dxlevel` | level | Drops entities excluded by their `mindxlevel`/`maxdxlevel`. | none |
 | `-radius_override` | units | Visibility radius. | fog `farz`, else none |
@@ -69,7 +72,14 @@ Geometry and visibility. Defaults are those of the command line alone; the edito
 | `-trace` | cluster cluster | Writes the line of sight between two clusters to `<map>.lin`. | none |
 | `-nomerge`, `-nosubdiv`, `-notjunc`, `-noprune` | | Debug switches, see [Compile options](compile-options.md). | off |
 | `-novirtualmesh` | | Displacement collision as triangle soups. | off |
+| `-mergestaticprops` | | Combine nearby identical static props into packed static models, see [Optimization](compile-options.md#optimization). | off |
+| `-autohints` | | Add the measured hint brushes that lower the visibility totals. | off |
+| `-autofade` | | Fade distances from the prop size where none is set, detail props too. | off |
+| `-autooccluders` | | func_occluder on big walls hiding many props. | off |
+| `-modelcompiler` | file | Model compiler used by `-mergestaticprops` (the editor passes its Model compiler setting). | studiomdl of the game |
+| `-modelcompilerargs` | text | Extra arguments of that model compiler. | none |
 | `-propdebug` | | Report of the props whose model misbehaves. | off |
+| `-cullverts`, `-culltjunc`, `-cullbrushes` | | Optimization: fewer vertices, fewer T-junction vertices, fewer brushes, same look, see [Compile options](compile-options.md). | off |
 | `-noaddons` | | No folder addons. | addons mounted |
 | `-wsaddons` | | Also the subscribed Workshop items. | off |
 | `-nowsaddons` | | Neither folder addons nor Workshop items. | off |

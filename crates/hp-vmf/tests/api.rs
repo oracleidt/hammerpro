@@ -163,11 +163,17 @@ fn cordon_writing_rules() {
     let mut map = Map::new_empty();
     assert_eq!(map.cordons.cordons.len(), 1, "new maps carry Hammer's default cordon box");
     map.cordons.cordons[0] =
-        Cordon { name: "a".into(), active: true, mins: DVec3::splat(-8.0), maxs: DVec3::splat(8.0) };
+        Cordon { name: "a".into(), active: true, mins: DVec3::splat(-8.0), maxs: DVec3::splat(8.0), exclude: false };
     map.cordons.active = true;
     let text = write(&map);
     assert!(text.contains("cordon\n{\n\t\"mins\" \"(-8 -8 -8)\"\n\t\"maxs\" \"(8 8 8)\"\n\t\"active\" \"1\"\n}\n"));
-    map.cordons.cordons.push(Cordon { name: "b".into(), active: false, mins: DVec3::ZERO, maxs: DVec3::ONE });
+    map.cordons.cordons.push(Cordon {
+        name: "b".into(),
+        active: false,
+        mins: DVec3::ZERO,
+        maxs: DVec3::ONE,
+        exclude: false,
+    });
     let text = write(&map);
     assert!(text.contains(
         "cordons\n{\n\t\"active\" \"1\"\n\tcordon\n\t{\n\t\t\"name\" \"a\"\n\t\t\"active\" \"1\"\n\t\tbox\n\t\t{\n\

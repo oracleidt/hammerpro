@@ -3,7 +3,7 @@ use hp_app::extend::SettingsPage;
 use hp_app::i18n::TrTable;
 use hp_app::runtime::CompileBrowse;
 use hp_app::settings::{
-    CompilePresetSetting, CompileSettings, LightingSetting, PackPolicy, background_precompile_default,
+    CompilePresetSetting, CompileSettings, LightingSetting, PackPolicy, background_precompile_supported,
 };
 use hp_app::{AppState, t, tf};
 
@@ -117,7 +117,7 @@ fn speed(ui: &mut Ui, c: &mut CompileSettings, seal: &mut String) -> bool {
         ui.add_enabled(c.low_priority, egui::Checkbox::new(&mut c.background_precompile, ""))
             .on_hover_text(t!("shell.compile.background_tip"));
         ui.end_row();
-        if !background_precompile_default() {
+        if !background_precompile_supported() {
             ui.label("");
             ui.label(RichText::new(t!("shell.compile.background_few_cores")).small().weak());
             ui.end_row();
@@ -345,13 +345,13 @@ pub(crate) const TR: TrTable = &[
     ("shell.compile.background", "Compile while idle", "Compiler pendant les pauses"),
     (
         "shell.compile.background_tip",
-        "The geometry is built in the background 3 seconds after the last change: F9 reuses it and leaks show up early. Paused on battery.",
-        "La géométrie est construite en arrière-plan 3 secondes après la dernière modification : F9 la réutilise et les fuites apparaissent tôt. En pause sur batterie.",
+        "The geometry is built in the background 3 seconds after the last change: F9 reuses it and leaks show up early. Off by default; it runs at the lowest priority on at most half of the processor threads. Paused on battery.",
+        "La géométrie est construite en arrière-plan 3 secondes après la dernière modification : F9 la réutilise et les fuites apparaissent tôt. Désactivé par défaut ; tourne en priorité la plus basse sur au plus la moitié des threads processeur. En pause sur batterie.",
     ),
     (
         "shell.compile.background_few_cores",
-        "Off by default on this machine (fewer than 8 processor threads).",
-        "Désactivé par défaut sur cette machine (moins de 8 threads processeur).",
+        "Not recommended on this machine (fewer than 8 processor threads).",
+        "Déconseillé sur cette machine (moins de 8 threads processeur).",
     ),
     ("shell.compile.stop_on_leak", "Stop when the map leaks", "S'arrêter quand la map fuit"),
     (

@@ -12,7 +12,7 @@ mod content;
 pub(crate) mod detail_split;
 mod entities;
 mod file_watch;
-mod health;
+pub(crate) mod health;
 mod helpers;
 mod inset;
 mod instances;

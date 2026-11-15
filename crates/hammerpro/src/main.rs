@@ -46,6 +46,7 @@ mod blender;
 mod bspc_cli;
 mod bspc_game;
 mod bspc_instances;
+mod bspc_optimize;
 mod collaboration;
 mod crash;
 mod discord;
@@ -330,6 +331,7 @@ fn main() -> eframe::Result<()> {
         std::process::exit(update::run_helper(&args));
     }
     timing::init_process_start();
+    hp_sched::configure_global();
     let cli = parse_cli();
     let log_rx = logger::init(!cli.is_automated());
     if !cli.is_automated() {

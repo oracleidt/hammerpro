@@ -230,6 +230,7 @@ mod tests {
         "run",
     ];
     const REVIEWED_SAFE: &[&str] = &[
+        "open_last_map",
         "unload_pointfile",
         "unload_portal_file",
         "reload_content",

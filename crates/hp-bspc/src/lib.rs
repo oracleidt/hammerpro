@@ -39,10 +39,12 @@ macro_rules! eprint {
 }
 
 pub mod areas;
+pub mod autoscale;
 pub mod brush;
 pub mod brushbsp;
 pub mod compile;
 pub mod cubemap;
+pub mod cull;
 pub mod detail;
 pub mod detail_props;
 pub mod disp;

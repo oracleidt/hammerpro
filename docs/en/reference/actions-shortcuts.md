@@ -24,6 +24,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 |---|---|---|---|---|
 | New map | `new_map` | `Ctrl+N` |  |  |
 | Open map... | `open_map` | `Ctrl+O` |  |  |
+| Open last edited map | `open_last_map` |  |  |  |
 | Close | `close_map` | `Ctrl+F4` |  |  |
 | Close other maps | `close_other_maps` |  |  |  |
 | Save | `save_map` | `Ctrl+S` |  |  |
@@ -289,6 +290,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Extrude direction: next (each normal, average, axis) | `extrude_cycle_direction` |  |  |  |
 | Extrude grows the brush | `toggle_extrude_grow` |  |  |  |
 | Nodraw on hidden faces... | `nodraw_hidden_faces` |  |  |  |
+| Trim overlay faces | `trim_overlay_faces` |  |  |  |
 | Tie each to its own entity | `tie_each_to_entity` | `Ctrl+Shift+T` |  |  |
 | Edit curve | `curve_edit` |  |  |  |
 | Edit road | `road_edit` |  |  |  |

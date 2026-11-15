@@ -52,7 +52,7 @@ impl Default for LightingSettings {
             auto_scope_luxels_millions: 2,
             auto_scope_radius: 3072,
             visible_first: true,
-            prepare: true,
+            prepare: false,
             priority: BakePriority::BelowNormal,
             pause_minimized: true,
             pause_unfocused: false,
@@ -108,7 +108,7 @@ mod tests {
         let wild = LightingSettings { auto_scope_luxels_millions: 0, auto_scope_radius: 1, ..d };
         assert_eq!((wild.sanitized().auto_scope_luxels_millions, wild.sanitized().auto_scope_radius), (1, 256));
         assert!(!d.auto_scope);
-        assert!(d.prepare && d.visible_first);
+        assert!(!d.prepare && d.visible_first);
         assert!(d.pause_minimized && !d.pause_unfocused);
         assert_eq!((d.priority, d.drag_pause_ms, d.upload_mb_per_frame), (BakePriority::BelowNormal, 120, 4));
         let odd = LightingSettings { drag_pause_ms: 99_999, upload_mb_per_frame: 0, ..d };

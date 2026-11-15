@@ -28,6 +28,9 @@ pub struct CompileOptions {
     pub no_subdiv: bool,
     pub no_tjunc: bool,
     pub no_prune: bool,
+    pub cull_verts: bool,
+    pub cull_tjunc: bool,
+    pub cull_brushes: bool,
     pub default_luxel_size: f64,
     pub luxel_scale: f64,
     pub min_luxel_scale: f64,
@@ -41,6 +44,8 @@ pub struct CompileOptions {
     pub vis_cache: Option<crate::vis::VisCache>,
     pub flood_only: bool,
     pub cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    pub auto_lightmap_scale: bool,
+    pub auto_cubemaps: bool,
 }
 
 pub const RELAXED_NOTE: &str = "the game would refuse this map; this compile goes on";
@@ -74,6 +79,9 @@ impl Default for CompileOptions {
             no_subdiv: false,
             no_tjunc: false,
             no_prune: false,
+            cull_verts: false,
+            cull_tjunc: false,
+            cull_brushes: false,
             default_luxel_size: 16.0,
             luxel_scale: 1.0,
             min_luxel_scale: 1.0,
@@ -87,6 +95,8 @@ impl Default for CompileOptions {
             vis_cache: None,
             flood_only: false,
             cancel: None,
+            auto_lightmap_scale: false,
+            auto_cubemaps: false,
         }
     }
 }
@@ -355,6 +365,13 @@ pub fn compile(
     opts: &CompileOptions,
     log: &mut dyn FnMut(&str),
 ) -> Result<CompileOutput, CompileError> {
+    let scaled = opts.auto_lightmap_scale.then(|| {
+        let mut m = map.clone();
+        let report = crate::autoscale::apply(&mut m, materials);
+        log(&report.summary());
+        m
+    });
+    let map = scaled.as_ref().unwrap_or(map);
     let mut over = None;
     let first = compile_once(map, materials, model_files, opts, log, &mut over);
     let Some(planes) = over else { return first };
@@ -463,6 +480,7 @@ fn compile_once(
     };
 
     let mut cubemaps = crate::cubemap::Cubemaps::new(&entities, opts.map_name.as_deref(), materials);
+    cubemaps.set_auto(opts.auto_cubemaps);
     cubemaps.resolve_parallax(&parallax_obbs(&entities, materials));
     let mut world_brushes: Vec<usize> = Vec::new();
     let mut disps: Vec<crate::disp::DispFace> = Vec::new();
@@ -825,6 +843,21 @@ fn compile_once(
     stage("texture passes");
     crate::disp::setup_allowed_verts(&mut disps);
     stage("displacement allowed vertices");
+    let mut culled = vec![false; brushes.len()];
+    let mut cull_report = crate::cull::BrushCull::default();
+    if opts.cull_brushes {
+        crate::cull::degenerate(&brushes, &world_brushes, &mut culled, &mut cull_report);
+        crate::cull::enclosed(&brushes, &planes, &world_brushes, &mut culled, &mut cull_report);
+        crate::cull::merge_nodraw_boxes(&mut brushes, &planes, &tex, &world_brushes, &mut culled, &mut cull_report);
+        for m in &models {
+            crate::cull::degenerate(&brushes, &m.brushes, &mut culled, &mut cull_report);
+            crate::cull::enclosed(&brushes, &planes, &m.brushes, &mut culled, &mut cull_report);
+        }
+        world_brushes.retain(|&i| !culled[i]);
+        for m in &mut models {
+            m.brushes.retain(|&i| !culled[i]);
+        }
+    }
 
     force_areaportal_window_contents(&entities, &mut brushes);
     let contents_list: Vec<u32> = brushes.iter().map(|b| b.contents).collect();
@@ -932,6 +965,23 @@ fn compile_once(
     }
     leaked |= no_inside;
     portals1.mark_visible_sides(&tree1, &planes, &mut brushes);
+    if opts.cull_brushes && !leaked {
+        let origins: Vec<DVec3> = flood_origins.iter().map(|(_, o)| *o).collect();
+        crate::cull::hidden(&brushes, &world_brushes, &origins, &planes, &mut culled, &mut cull_report);
+        world_brushes.retain(|&i| !culled[i]);
+    }
+    if opts.cull_brushes {
+        let kept = culled.iter().filter(|c| !**c).count();
+        log(&format!(
+            "-cullbrushes: {} brushes removed ({} duplicates, {} inside another brush, {} flat, {} nodraw boxes merged, {} with no face seen from the playable space), {kept} left",
+            cull_report.total(),
+            cull_report.duplicates,
+            cull_report.enclosed,
+            cull_report.degenerate,
+            cull_report.merged,
+            cull_report.hidden
+        ));
+    }
     stage("flood, visible sides");
     let (mut tree, portals) = if leaked {
         (tree1, portals1)
@@ -971,7 +1021,12 @@ Probably too many areaportals"
     }
     crate::areas::remove_areaportal_brushes(&mut tree, &brushes);
     stage("areas");
-    let max_lightmap_dim = opts.max_lightmap_dim.min(f64::from(opts.format.max_lightmap_dim));
+    let wanted_dim = if opts.cull_verts && opts.max_lightmap_dim == crate::faces::MAX_LIGHTMAP_DIM {
+        f64::from(opts.format.max_lightmap_dim)
+    } else {
+        opts.max_lightmap_dim
+    };
+    let max_lightmap_dim = wanted_dim.min(f64::from(opts.format.max_lightmap_dim));
     if max_lightmap_dim < opts.max_lightmap_dim {
         log(&format!(
             "Warning: -maxlightmapdim {} is more than {} takes: {max_lightmap_dim} used",
@@ -984,6 +1039,8 @@ Probably too many areaportals"
         no_merge: opts.no_merge,
         no_subdiv: opts.no_subdiv,
         no_tjunc: opts.no_tjunc,
+        cull_tjunc: opts.cull_tjunc,
+        cull_verts: opts.cull_verts,
         max_lightmap_dim: (max_lightmap_dim != crate::faces::MAX_LIGHTMAP_DIM).then_some(max_lightmap_dim as f32),
         max_extent: (opts.format.limits != hp_bsp::limits::LimitSet::Gmod).then_some(max_extent),
     };
@@ -1025,6 +1082,12 @@ Probably too many areaportals"
         }
     };
     drop(pristine);
+    if opts.cull_verts {
+        log(&format!(
+            "-cullverts: {} world vertices on straight edges removed, faces cut for their lightmaps at {max_lightmap_dim} luxels",
+            faces.culled_verts
+        ));
+    }
     let occluders = crate::occluder::build(
         &occluder_srcs,
         &entities,
@@ -1133,6 +1196,21 @@ Probably too many areaportals"
     }
     let mut lumps = Lumps::new();
     lumps.format = opts.format;
+    lumps.cull_verts = opts.cull_verts;
+    if culled.iter().any(|c| *c) {
+        let mut next = 0u32;
+        lumps.brush_index = Some(
+            culled
+                .iter()
+                .map(|&c| {
+                    (!c).then(|| {
+                        next += 1;
+                        next - 1
+                    })
+                })
+                .collect(),
+        );
+    }
     let mut occluders = occluders;
     if let Some(o) = occluders.as_mut() {
         o.register(&mut lumps);
@@ -1225,7 +1303,9 @@ Probably too many areaportals"
         let phys_solid = |i: usize| -> crate::phys::ConvexSolid {
             let b = &brushes[i];
             let world = b.entity == 0;
-            let sides = crate::phys::lump_brush_sides(&brush_lump, &side_lump, i)
+            let lump_index =
+                lumps.brush_index.as_ref().map_or(Some(i), |m| m.get(i).copied().flatten().map(|k| k as usize));
+            let sides = crate::phys::lump_brush_sides(&brush_lump, &side_lump, lump_index.unwrap_or(usize::MAX))
                 .into_iter()
                 .enumerate()
                 .map(|(k, (plane, texinfo, bevel))| {
@@ -1244,7 +1324,7 @@ Probably too many areaportals"
                     }
                 })
                 .collect();
-            crate::phys::ConvexSolid { sides, brush: i as i32 }
+            crate::phys::ConvexSolid { sides, brush: lump_index.map_or(-1, |k| k as i32) }
         };
         let convexes = |ids: &[usize], mask: u32| -> Vec<crate::phys::ConvexSolid> {
             let mut ids: Vec<usize> = ids.iter().copied().filter(|&i| brushes[i].contents & mask != 0).collect();
@@ -1360,7 +1440,9 @@ Probably too many areaportals"
         lumps.data.insert(crate::emit::lump::OCCLUSION, (data, 2));
     }
     lumps.finish(&planes, &tex);
-    if lumps.dropped_vertices > 0 {
+    if lumps.dropped_vertices > 0 && opts.cull_verts {
+        log(&format!("-cullverts: {} vertices no face uses removed", lumps.dropped_vertices));
+    } else if lumps.dropped_vertices > 0 {
         log(&format!("{} vertices no face uses dropped (MAX_MAP_VERTS)", lumps.dropped_vertices));
     }
     if lumps.prims_over_limit() {

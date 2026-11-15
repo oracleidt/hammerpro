@@ -226,6 +226,7 @@ impl Tabs {
                     title: files::doc_display_name(doc),
                     path: doc.path().map(Path::to_path_buf),
                     dirty: doc.is_dirty(),
+                    pristine: is_pristine(doc),
                 }
             })
             .collect()
@@ -249,18 +250,19 @@ pub(crate) enum TabAction {
     New,
     CopyPath(TabId),
     ShowInFolder(TabId),
+    OpenLast(TabId),
 }
 
 pub(crate) const TAB_BAR_HEIGHT: f32 = 24.0;
 const MAX_TAB_WIDTH: f32 = 220.0;
 
-pub(crate) fn tab_bar(ui: &mut egui::Ui, tabs: &[MapTabInfo], active: TabId) -> Option<TabAction> {
+pub(crate) fn tab_bar(ui: &mut egui::Ui, tabs: &[MapTabInfo], active: TabId, last: Option<&str>) -> Option<TabAction> {
     let mut action = None;
     egui::ScrollArea::horizontal().id_salt("hp_map_tabs").auto_shrink([false, true]).show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
             for tab in tabs {
-                if let Some(a) = tab_ui(ui, tab, tab.id == active, tabs.len()) {
+                if let Some(a) = tab_ui(ui, tab, tab.id == active, tabs.len(), last) {
                     action = Some(a);
                 }
                 ui.separator();
@@ -273,7 +275,7 @@ pub(crate) fn tab_bar(ui: &mut egui::Ui, tabs: &[MapTabInfo], active: TabId) -> 
     action
 }
 
-fn tab_ui(ui: &mut egui::Ui, tab: &MapTabInfo, active: bool, count: usize) -> Option<TabAction> {
+fn tab_ui(ui: &mut egui::Ui, tab: &MapTabInfo, active: bool, count: usize, last: Option<&str>) -> Option<TabAction> {
     let mut action = None;
     let text = if tab.dirty { format!("{}*", tab.title) } else { tab.title.clone() };
     let mut rich = egui::RichText::new(text);
@@ -298,6 +300,12 @@ fn tab_ui(ui: &mut egui::Ui, tab: &MapTabInfo, active: bool, count: usize) -> Op
         action = Some(TabAction::Close(tab.id));
     }
     label.context_menu(|ui| {
+        if let Some(name) = last.filter(|_| tab.pristine) {
+            if ui.button(tf!("tabs.open_last", name)).on_hover_text(t!("tabs.open_last_tip")).clicked() {
+                action = Some(TabAction::OpenLast(tab.id));
+            }
+            ui.separator();
+        }
         if ui.button(hp_app::Action::CloseMap.label()).clicked() {
             action = Some(TabAction::Close(tab.id));
         }
@@ -525,6 +533,10 @@ impl HammerProApp {
                     self.state.notify(Severity::Info, tf!("tabs.path_copied", path.display()));
                 }
             }
+            TabAction::OpenLast(id) => {
+                self.switch_to_tab(id);
+                self.open_last_map(ctx);
+            }
             TabAction::ShowInFolder(id) => {
                 if let Some(dir) = self.tabs.doc(&self.state, id).and_then(Document::path).and_then(Path::parent) {
                     crate::app::open_folder(dir);
@@ -565,9 +577,22 @@ impl HammerProApp {
         self.state.runtime.workflow.active_tab = self.tabs.active_id();
     }
 
+    pub(crate) fn open_last_map(&mut self, ctx: &egui::Context) {
+        let Some(path) = self.state.settings.recent_files.first().cloned() else {
+            self.state.notify(Severity::Info, t!("tabs.no_last"));
+            return;
+        };
+        if !path.is_file() {
+            self.state.notify(Severity::Warning, tf!("tabs.last_missing", path.display()));
+            return;
+        }
+        self.request_open(ctx, path);
+    }
+
     pub(crate) fn map_tabs_ui(&mut self, ui: &mut egui::Ui) {
         let active = self.tabs.active_id();
-        if let Some(action) = tab_bar(ui, &self.state.runtime.workflow.tabs, active) {
+        let last = self.state.settings.recent_files.first().map(|p| hp_ui_shell::menu::recent_name(p));
+        if let Some(action) = tab_bar(ui, &self.state.runtime.workflow.tabs, active, last.as_deref()) {
             self.tab_bar_action = Some(action);
         }
     }
@@ -578,6 +603,14 @@ pub(crate) const TR: hp_app::i18n::TrTable = &[
     ("tabs.copy_path", "Copy the path", "Copier le chemin"),
     ("tabs.show_in_folder", "Show in the folder", "Afficher dans le dossier"),
     ("tabs.path_copied", "Copied: {0}", "Copié : {0}"),
+    ("tabs.open_last", "Open last edited: {0}", "Ouvrir la dernière modifiée : {0}"),
+    (
+        "tabs.open_last_tip",
+        "Open the most recent map of File > Recent maps in place of this empty map",
+        "Ouvrir la map la plus récente de Fichier > Maps récentes à la place de cette map vide",
+    ),
+    ("tabs.no_last", "No recent map to open", "Aucune map récente à ouvrir"),
+    ("tabs.last_missing", "The last edited map is gone: {0}", "La dernière map modifiée n'existe plus : {0}"),
     (
         "tabs.close_question",
         "Save the changes to {0} before closing it?",
@@ -755,8 +788,14 @@ mod tests {
         let _lang = hp_app::testing::lang_lock();
         let _ = state();
         let infos = vec![
-            MapTabInfo { id: 1, title: "first.vmf".into(), path: None, dirty: false },
-            MapTabInfo { id: 7, title: "second.vmf".into(), path: Some("C:/maps/second.vmf".into()), dirty: true },
+            MapTabInfo { id: 1, title: "first.vmf".into(), path: None, dirty: false, pristine: false },
+            MapTabInfo {
+                id: 7,
+                title: "second.vmf".into(),
+                path: Some("C:/maps/second.vmf".into()),
+                dirty: true,
+                pristine: false,
+            },
         ];
         let ctx = egui::Context::default();
         ctx.enable_accesskit();
@@ -770,7 +809,7 @@ mod tests {
                 ..Default::default()
             };
             let mut found = None;
-            let mut out = ctx.run_ui(input, |ui| found = tab_bar(ui, &infos, 1));
+            let mut out = ctx.run_ui(input, |ui| found = tab_bar(ui, &infos, 1, None));
             out.textures_delta.clear();
             (found, nodes(&out))
         };
@@ -798,5 +837,69 @@ mod tests {
             results.push(seen);
         }
         assert_eq!(results, vec![Some(TabAction::Switch(7)), Some(TabAction::Close(7)), Some(TabAction::New)]);
+    }
+
+    #[test]
+    fn an_empty_untitled_tab_offers_the_last_edited_map() {
+        let _lang = hp_app::testing::lang_lock();
+        let _ = state();
+        hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
+        let ctx = egui::Context::default();
+        ctx.enable_accesskit();
+        let mut time = 0.0;
+        let mut run = |infos: &[MapTabInfo], events: Vec<egui::Event>| {
+            time += 0.5;
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(900.0, 400.0))),
+                time: Some(time),
+                events,
+                ..Default::default()
+            };
+            let mut found = None;
+            let mut out = ctx.run_ui(input, |ui| found = tab_bar(ui, infos, 1, Some("gm_last.vmf")));
+            out.textures_delta.clear();
+            (found, nodes(&out))
+        };
+        let click = |pos: egui::Pos2, button: egui::PointerButton| {
+            vec![
+                vec![egui::Event::PointerMoved(pos)],
+                vec![egui::Event::PointerButton { pos, button, pressed: true, modifiers: egui::Modifiers::NONE }],
+                vec![egui::Event::PointerButton { pos, button, pressed: false, modifiers: egui::Modifiers::NONE }],
+            ]
+        };
+        let entry = "Open last edited: gm_last.vmf";
+        for pristine in [false, true] {
+            let infos = vec![MapTabInfo { id: 1, title: "Untitled".into(), path: None, dirty: false, pristine }];
+            let (_, n) = run(&infos, Vec::new());
+            let tab = n.iter().find(|(t, _)| t.contains("Untitled")).map(|(_, r)| *r).expect("tab");
+            let mut menu = Vec::new();
+            for events in click(tab.center(), egui::PointerButton::Secondary) {
+                menu = run(&infos, events).1;
+            }
+            if !menu.iter().any(|(t, _)| t == entry) {
+                menu = run(&infos, Vec::new()).1;
+            }
+            let item = menu.iter().find(|(t, _)| t == entry).map(|(_, r)| *r);
+            assert_eq!(item.is_some(), pristine, "{menu:?}");
+            if let Some(item) = item {
+                let mut seen = None;
+                for events in click(item.center(), egui::PointerButton::Primary) {
+                    if let (Some(a), _) = run(&infos, events) {
+                        seen = Some(a);
+                    }
+                }
+                assert_eq!(seen, Some(TabAction::OpenLast(1)));
+            }
+            run(
+                &infos,
+                vec![egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+        }
     }
 }

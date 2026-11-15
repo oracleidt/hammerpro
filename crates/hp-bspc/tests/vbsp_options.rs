@@ -869,3 +869,70 @@ fn propdebug_lists_the_props_with_problems() {
     assert!(report.iter().any(|l| l.contains("it has no model")), "{report:#?}");
     assert!(report.iter().any(|l| l.starts_with("2 of the 3 props have problems")), "{report:#?}");
 }
+
+fn cull_map() -> Vmf {
+    let mut m = rooms_in_a_row(4);
+    for k in 0..6 {
+        let x = 64.0 + 160.0 * k as f64;
+        m.world.push(block(v(x, 112.0, 0.0), v(x + 24.0, 136.0, 40.0 + 8.0 * k as f64), WALL));
+    }
+    m.world.push(block(v(300.0, 40.0, 0.0), v(340.0, 80.0, 64.0), WALL));
+    m.world.push(block(v(300.0, 40.0, 0.0), v(340.0, 80.0, 64.0), WALL));
+    m.world.push(block(v(310.0, 50.0, 10.0), v(330.0, 70.0, 30.0), WALL));
+    m
+}
+
+fn world_edge_uses(l: &Lumps) -> std::collections::HashMap<(u16, u16), (u32, u32)> {
+    let (edges, surf) = (l.edges(), l.surfedges());
+    let model = &l.models()[0];
+    let faces = l.faces();
+    let mut uses = std::collections::HashMap::new();
+    for f in &faces[model.first_face as usize..(model.first_face + model.num_faces) as usize] {
+        let n = f.num_edges as i32;
+        for k in 0..n {
+            let a = common::lumps::vertex_of(&edges, surf[(f.first_edge + k) as usize]);
+            let b = common::lumps::vertex_of(&edges, surf[(f.first_edge + (k + 1) % n) as usize]);
+            let e = uses.entry((a.min(b), a.max(b))).or_insert((0, 0));
+            if a < b {
+                e.0 += 1;
+            } else {
+                e.1 += 1;
+            }
+        }
+    }
+    uses
+}
+
+#[test]
+fn cull_options_keep_every_edge_shared_and_save_vertices_and_brushes() {
+    let m = cull_map();
+    let (base, _) = compiled(&m, &CompileOptions::default());
+    let all = CompileOptions { cull_verts: true, cull_tjunc: true, cull_brushes: true, ..Default::default() };
+    for (name, o) in [
+        ("default", CompileOptions::default()),
+        ("cullverts", CompileOptions { cull_verts: true, ..Default::default() }),
+        ("culltjunc", CompileOptions { cull_tjunc: true, ..Default::default() }),
+        ("cullbrushes", CompileOptions { cull_brushes: true, ..Default::default() }),
+        ("all", all.clone()),
+    ] {
+        let bsp = run(&m, &o).0.unwrap_or_else(|e| panic!("{name}: {e}")).bsp;
+        let problems = hp_bspc::validate::validate(&bsp);
+        assert!(problems.is_empty(), "{name}: {problems:?}");
+        let l = Lumps::from_bytes(&bsp);
+        for (edge, uses) in world_edge_uses(&l) {
+            assert_eq!(uses, (1, 1), "{name}: edge {edge:?} is not shared by exactly two faces (a crack)");
+        }
+    }
+    let (culled, log) = compiled(&m, &all);
+    let (vb, vc) = (base.vertices().len(), culled.vertices().len());
+    assert!(vc * 10 <= vb * 9, "{vc} of {vb} vertices left");
+    assert!(culled.edges().len() < base.edges().len());
+    assert_eq!(culled.brushes().len() + 2, base.brushes().len(), "the duplicate and the enclosed brush go");
+    assert!(
+        log.iter().any(|l| l.starts_with("-cullbrushes: 2 brushes removed (1 duplicates, 1 inside another brush")),
+        "{log:?}"
+    );
+    assert!(log.iter().any(|l| l.starts_with("-cullverts:")), "{log:?}");
+    let used: std::collections::HashSet<u16> = culled.edges().iter().skip(1).flatten().copied().collect();
+    assert_eq!(used.len() + 1, vc, "no unused vertex is left");
+}

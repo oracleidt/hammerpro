@@ -181,7 +181,7 @@ impl FlagsIndex {
         let (fs, list) = (fs.clone(), Arc::clone(list));
         let (tx, rx) = std::sync::mpsc::channel();
         let repaint = ctx.clone();
-        let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).min(8);
+        let threads = hp_sched::background_threads().min(8);
         let spawned = std::thread::Builder::new().name("hp-material-flags".into()).spawn(move || {
             let _ = tx.send(MaterialFlagsIndex::build(&fs, &list, threads));
             repaint.request_repaint();

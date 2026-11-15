@@ -7,6 +7,7 @@ pub const MIN_VERSION: i32 = 19;
 pub const MAX_VERSION: i32 = 21;
 
 pub mod lump {
+    pub const PLANES: usize = 1;
     pub const ENTITIES: usize = 0;
     pub const TEXDATA: usize = 2;
     pub const VISIBILITY: usize = 4;

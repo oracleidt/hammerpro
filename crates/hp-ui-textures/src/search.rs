@@ -119,6 +119,7 @@ impl MaterialFlagsIndex {
                 list.chunks(chunk).zip(bits.chunks_mut(chunk)).zip(shader_of.chunks_mut(chunk))
             {
                 scope.spawn(move || {
+                    hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
                     for ((e, slot), shader) in entries.iter().zip(out.iter_mut()).zip(shaders.iter_mut()) {
                         let mat = fs.load_material(&e.name);
                         *slot = flag_bits_of_material(mat.as_ref(), |t| fs.texture_alpha_flag(t));

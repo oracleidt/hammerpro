@@ -3,10 +3,7 @@ use std::sync::OnceLock;
 fn pool() -> Option<&'static rayon::ThreadPool> {
     static POOL: OnceLock<Option<rayon::ThreadPool>> = OnceLock::new();
     POOL.get_or_init(|| {
-        let threads = (std::thread::available_parallelism().map_or(4, std::num::NonZeroUsize::get) / 2).clamp(2, 8);
-        rayon::ThreadPoolBuilder::new()
-            .num_threads(threads)
-            .thread_name(|i| format!("hp-render-{i}"))
+        hp_sched::builder("hp-render", hp_sched::background_threads().clamp(2, 8), hp_sched::Level::BelowNormal)
             .build()
             .map_err(|e| log::warn!("hp-render: no worker pool of its own ({e}), the shared one is used"))
             .ok()

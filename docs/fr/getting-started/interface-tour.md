@@ -74,7 +74,7 @@ Faites un clic droit sur un onglet latéral puis **Détacher le panneau**, ou ut
 
 ## Onglets des maps
 
-Au-dessus des vues, un onglet par map ouverte. Un `*` après le nom signale des modifications non enregistrées et l'infobulle donne le chemin complet. Cliquez sur un onglet pour l'afficher, clic molette ou croix pour le fermer, **+** pour une nouvelle map. Clic droit : **Fermer**, **Fermer les autres maps**, **Copier le chemin**, **Afficher dans le dossier**. `Ctrl+Tab` et `Ctrl+Maj+Tab` passent d'un onglet à l'autre. Voir [Plusieurs maps ouvertes](../features/multiple-maps.md).
+Au-dessus des vues, un onglet par map ouverte. Un `*` après le nom signale des modifications non enregistrées et l'infobulle donne le chemin complet. Cliquez sur un onglet pour l'afficher, clic molette ou croix pour le fermer, **+** pour une nouvelle map. Clic droit : **Fermer**, **Fermer les autres maps**, **Copier le chemin**, **Afficher dans le dossier**. Sur une map **Sans titre** vide que personne n'a encore touchée (par exemple juste après le démarrage de Hammer Pro), le menu commence par **Ouvrir la dernière modifiée : <nom>** : il ouvre la map la plus récente de **Fichier > Maps récentes** à la place de cet onglet vide. **Fichier > Maps récentes** commence aussi par **Ouvrir la dernière map modifiée : <nom>** (action `open_last_map`, que vous pouvez lier à une touche ou lancer depuis MCP avec `run_action`). `Ctrl+Tab` et `Ctrl+Maj+Tab` passent d'un onglet à l'autre. Voir [Plusieurs maps ouvertes](../features/multiple-maps.md).
 
 ## Panneau de droite
 

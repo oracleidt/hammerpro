@@ -73,10 +73,11 @@ Pour modifier la liste de faces à la main, utilisez le bouton pipette à côté
 
 ## Astuces
 
+- **Outils > Opérations sur les brushes > Rogner les faces de l'overlay** (aussi dans le menu du clic droit des vues) retire des overlays sélectionnés les faces que leur rectangle ne touche pas, en une étape d'annulation : moins de fragments, et de nouveau sous la limite de 64 faces. **Map > Optimiser la map...** liste les overlays à rogner (thème **Overlays**).
 - **Édition > Définir la distance maximale...** écrit `fademaxdist` sur les overlays pour qu'ils disparaissent en fondu avec la distance.
 - [Vérifier les problèmes](check-problems.md) trouve les overlays dont les faces n'existent plus (avec une correction qui les retire des listes) et ceux posés sur plus de 64 faces. Une map est limitée à 8192 overlays.
 - Le visgroup automatique **Overlays et décals** contient tous les `info_overlay` et `infodecal` (voir [Visgroups](visgroups.md)).
-- Outils MCP : `list_decals`, `create_decal`, `list_overlays`, `create_overlay`, `set_overlay`. Voir la [référence des outils MCP](../../MCP.md) (en anglais).
+- Outils MCP : `list_decals`, `create_decal`, `list_overlays`, `create_overlay`, `set_overlay`, `trim_overlay_faces`. Voir la [référence des outils MCP](../../MCP.md) (en anglais).
 - `set_tool_options` avec l'outil `decal` ou `overlay` et l'option `snap` (`on` ou `off`) active ou coupe l'alignement sur la grille de l'outil, comme sa case à cocher.
 
 ## FAQ

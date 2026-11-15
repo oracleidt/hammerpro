@@ -653,6 +653,7 @@ const UNDO_NEW_CORDON: &str = "New cordon";
 const UNDO_DELETE_CORDON: &str = "Delete cordon";
 const UNDO_RENAME_CORDON: &str = "Rename cordon";
 const UNDO_TOGGLE_CORDON: &str = "Toggle cordon";
+const UNDO_CORDON_MODE: &str = "Cordon mode";
 const UNDO_RESIZE_CORDON: &str = "Resize cordon";
 
 fn cordon_aabb(mins: DVec3, maxs: DVec3) -> Option<Aabb> {
@@ -664,13 +665,28 @@ fn cordon_aabb(mins: DVec3, maxs: DVec3) -> Option<Aabb> {
 }
 
 fn active_boxes(c: &Cordons) -> impl Iterator<Item = Aabb> + '_ {
+    boxes_of_mode(c, false)
+}
+
+fn exclude_boxes_of(c: &Cordons) -> impl Iterator<Item = Aabb> + '_ {
+    boxes_of_mode(c, true)
+}
+
+fn boxes_of_mode(c: &Cordons, exclude: bool) -> impl Iterator<Item = Aabb> + '_ {
     let (cordons, extras) = if c.active { (&c.cordons[..], &c.extra_boxes[..]) } else { (&[][..], &[][..]) };
-    let firsts = cordons.iter().filter(|cd| cd.active).filter_map(|cd| cordon_aabb(cd.mins, cd.maxs));
+    let firsts = cordons
+        .iter()
+        .filter(move |cd| cd.active && cd.exclude == exclude)
+        .filter_map(|cd| cordon_aabb(cd.mins, cd.maxs));
     let extras = extras
         .iter()
-        .filter(|b| cordons.get(b.cordon).is_some_and(|cd| cd.active))
+        .filter(move |b| cordons.get(b.cordon).is_some_and(|cd| cd.active && cd.exclude == exclude))
         .filter_map(|b| cordon_aabb(b.mins, b.maxs));
     firsts.chain(extras).take(MAX_CORDON_BOXES)
+}
+
+pub(crate) fn box_inside_any(boxes: &[Aabb], b: &Aabb) -> bool {
+    boxes.iter().any(|c| c.contains_point(b.min) && c.contains_point(b.max))
 }
 
 fn clean_cordon_name(name: &str) -> String {
@@ -713,7 +729,7 @@ pub(crate) fn normalize_cordons(c: &mut Cordons) -> Vec<Option<usize>> {
         if name.is_empty() {
             LEGACY_CORDON_NAME.clone_into(&mut name);
         }
-        kept.push(Cordon { name, active: cd.active, mins: b.min, maxs: b.max });
+        kept.push(Cordon { name, active: cd.active, mins: b.min, maxs: b.max, exclude: cd.exclude });
     }
     c.extra_boxes = extras
         .into_iter()
@@ -728,7 +744,7 @@ pub(crate) fn normalize_cordons(c: &mut Cordons) -> Vec<Option<usize>> {
     c.cordons = kept;
     let legacy_fits = c.cordons.len() == 1
         && c.extra_boxes.is_empty()
-        && c.cordons.iter().all(|cd| cd.active && cd.name == LEGACY_CORDON_NAME);
+        && c.cordons.iter().all(|cd| cd.active && !cd.exclude && cd.name == LEGACY_CORDON_NAME);
     if !legacy_fits {
         c.style = CordonStyle::Modern;
     }
@@ -740,19 +756,25 @@ impl Document {
         active_boxes(&self.scene.cordons).collect()
     }
 
+    pub fn exclude_cordon_boxes(&self) -> Vec<Aabb> {
+        exclude_boxes_of(&self.scene.cordons).collect()
+    }
+
     pub fn cordon_box_count(&self) -> usize {
-        active_boxes(&self.scene.cordons).count()
+        active_boxes(&self.scene.cordons).count() + exclude_boxes_of(&self.scene.cordons).count()
     }
 
     pub fn cordons_in_use(&self) -> bool {
-        active_boxes(&self.scene.cordons).next().is_some()
+        active_boxes(&self.scene.cordons).next().is_some() || exclude_boxes_of(&self.scene.cordons).next().is_some()
     }
 
     pub fn cordon_key(&self) -> u64 {
         let mut h: u64 = 0xcbf2_9ce4_8422_2325;
         let mut any = false;
-        for b in active_boxes(&self.scene.cordons) {
+        let c = &self.scene.cordons;
+        for (mode, b) in active_boxes(c).map(|b| (0u64, b)).chain(exclude_boxes_of(c).map(|b| (1u64, b))) {
             any = true;
+            h = (h ^ mode).wrapping_mul(0x0100_0000_01b3);
             for v in [b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z] {
                 h = (h ^ v.to_bits()).wrapping_mul(0x0100_0000_01b3);
             }
@@ -764,8 +786,12 @@ impl Document {
         if b.is_empty() || !b.min.is_finite() || !b.max.is_finite() {
             return false;
         }
+        let c = &self.scene.cordons;
+        if exclude_boxes_of(c).any(|x| x.contains_point(b.min) && x.contains_point(b.max)) {
+            return true;
+        }
         let mut any = false;
-        for c in active_boxes(&self.scene.cordons) {
+        for c in active_boxes(c) {
             if c.intersects(b) {
                 return false;
             }
@@ -778,8 +804,12 @@ impl Document {
         if !p.is_finite() {
             return false;
         }
+        let c = &self.scene.cordons;
+        if exclude_boxes_of(c).any(|x| x.contains_point(p)) {
+            return true;
+        }
         let mut any = false;
-        for c in active_boxes(&self.scene.cordons) {
+        for c in active_boxes(c) {
             if c.contains_point(p) {
                 return false;
             }
@@ -876,7 +906,7 @@ impl Document {
             return Err(EditError::Invalid("a cordon box needs a volume".to_owned()));
         };
         let mut c = self.scene.cordons.clone();
-        c.cordons.push(Cordon { name: name.to_owned(), active: true, mins: b.min, maxs: b.max });
+        c.cordons.push(Cordon { name: name.to_owned(), active: true, mins: b.min, maxs: b.max, exclude: false });
         let remap = self.commit_cordons(UNDO_NEW_CORDON, c)?;
         remap.last().copied().flatten().ok_or_else(|| EditError::Invalid("cordon dropped".to_owned()))
     }
@@ -914,6 +944,15 @@ impl Document {
             cd.active = active;
         }
         self.commit_cordons(UNDO_TOGGLE_CORDON, c).map(|_| ())
+    }
+
+    pub fn set_cordon_exclude(&mut self, index: usize, exclude: bool) -> EditResult<()> {
+        self.check_cordon(index)?;
+        let mut c = self.scene.cordons.clone();
+        if let Some(cd) = c.cordons.get_mut(index) {
+            cd.exclude = exclude;
+        }
+        self.commit_cordons(UNDO_CORDON_MODE, c).map(|_| ())
     }
 
     pub fn set_cordon_box(&mut self, index: usize, b: Aabb) -> EditResult<Option<usize>> {
@@ -985,6 +1024,31 @@ mod tests {
         doc.clear_selection();
         doc.clear_history();
         (doc, inside, outside, point, brush)
+    }
+
+    #[test]
+    fn exclude_cordons_cut_what_lies_inside() {
+        let (mut doc, inside, outside, point, brush) = cordon_doc();
+        doc.set_cordon_box(0, aabb([-64.0, -64.0, -64.0], [64.0, 64.0, 64.0])).expect("box");
+        doc.set_cordon_exclude(0, true).expect("exclude");
+        doc.set_cordons_enabled(true).expect("on");
+        assert!(doc.cordons_in_use() && doc.cordon_boxes().is_empty());
+        assert_eq!(doc.exclude_cordon_boxes().len(), 1);
+        assert!(doc.is_cordoned_out(ObjRef::Solid(inside)));
+        assert!(!doc.is_cordoned_out(ObjRef::Solid(outside)));
+        assert!(!doc.is_cordoned_out(ObjRef::Entity(point)));
+        assert!(!doc.is_cordoned_out(ObjRef::Entity(brush)), "one of its brushes is outside");
+        assert!(doc.is_point_cordoned_out(DVec3::ZERO));
+        doc.add_cordon("keep", aabb([400.0, -64.0, -64.0], [700.0, 64.0, 64.0])).expect("include");
+        assert!(doc.is_cordoned_out(ObjRef::Solid(inside)));
+        assert!(!doc.is_cordoned_out(ObjRef::Solid(outside)));
+        assert!(doc.is_cordoned_out(ObjRef::Entity(point)), "outside the include cordon");
+        let key = doc.cordon_key();
+        doc.set_cordon_exclude(0, false).expect("include");
+        assert_ne!(doc.cordon_key(), key);
+        assert!(!doc.is_cordoned_out(ObjRef::Solid(inside)));
+        assert!(doc.undo());
+        assert!(doc.scene().cordons().cordons[0].exclude);
     }
 
     #[test]
@@ -1079,9 +1143,21 @@ mod tests {
         let mut c = Cordons {
             active: true,
             cordons: vec![
-                Cordon { name: "a".into(), active: true, mins: DVec3::ZERO, maxs: DVec3::ZERO },
-                Cordon { name: String::new(), active: true, mins: DVec3::splat(4.0), maxs: DVec3::splat(-4.0) },
-                Cordon { name: "c".into(), active: false, mins: DVec3::splat(f64::NAN), maxs: DVec3::ONE },
+                Cordon { name: "a".into(), active: true, mins: DVec3::ZERO, maxs: DVec3::ZERO, exclude: false },
+                Cordon {
+                    name: String::new(),
+                    active: true,
+                    mins: DVec3::splat(4.0),
+                    maxs: DVec3::splat(-4.0),
+                    exclude: false,
+                },
+                Cordon {
+                    name: "c".into(),
+                    active: false,
+                    mins: DVec3::splat(f64::NAN),
+                    maxs: DVec3::ONE,
+                    exclude: false,
+                },
             ],
             style: CordonStyle::Legacy,
             extra_boxes: vec![
@@ -1116,6 +1192,7 @@ mod tests {
                     active: true,
                     mins: DVec3::splat(f64::from(i) * 10.0),
                     maxs: DVec3::splat(f64::from(i) * 10.0 + 1.0),
+                    exclude: false,
                 })
                 .collect(),
             ..Cordons::default()

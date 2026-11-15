@@ -170,7 +170,7 @@ pub fn reduce_pieces(per_prop: Vec<Vec<Vec<DVec3>>>, max: usize) -> Vec<Vec<DVec
 }
 
 pub fn plan(fs: &GameFs, doc: &Document, props: &[Id], settings: &CombineSettings) -> Result<CombineRequest, String> {
-    let model = creation::model_path(&settings.model).ok_or_else(|| t!("propper.invalid_model_path").to_owned())?;
+    creation::model_path(&settings.model).ok_or_else(|| t!("propper.invalid_model_path").to_owned())?;
     let mut unique: Vec<Id> = Vec::new();
     for id in props {
         if !unique.contains(id) {
@@ -186,6 +186,36 @@ pub fn plan(fs: &GameFs, doc: &Document, props: &[Id], settings: &CombineSetting
         }
         entities.push(e.clone());
     }
+    let planned = plan_entities(fs, &entities, settings, doc.revision())?;
+    Ok(CombineRequest {
+        props: unique,
+        creation: planned.creation,
+        keys: planned.keys,
+        keep_originals: settings.keep_originals,
+        draw_calls: planned.draw_calls,
+        warnings: planned.warnings,
+    })
+}
+
+pub struct PlannedCombine {
+    pub creation: PropCreationRequest,
+    pub keys: Vec<(String, String)>,
+    pub draw_calls: (usize, usize),
+    pub warnings: Vec<String>,
+}
+
+pub fn prop_materials(fs: &GameFs, entity: &hp_vmf::Entity) -> Result<(BTreeSet<String>, usize), String> {
+    let loaded = load_prop(fs, entity, false)?;
+    Ok((loaded.materials, loaded.tris.len()))
+}
+
+pub fn plan_entities(
+    fs: &GameFs,
+    entities: &[hp_vmf::Entity],
+    settings: &CombineSettings,
+    source_serial: u64,
+) -> Result<PlannedCombine, String> {
+    let model = creation::model_path(&settings.model).ok_or_else(|| t!("propper.invalid_model_path").to_owned())?;
     if entities.len() < 2 {
         return Err(t!("propper.combine_select").to_owned());
     }
@@ -194,7 +224,7 @@ pub fn plan(fs: &GameFs, doc: &Document, props: &[Id], settings: &CombineSetting
     let mut before = 0usize;
     let mut materials = BTreeSet::new();
     let mut surfaces = Vec::new();
-    for e in &entities {
+    for e in entities {
         let loaded = load_prop(fs, e, settings.collision)?;
         before += loaded.materials.len();
         materials.extend(loaded.materials.iter().cloned());
@@ -247,7 +277,7 @@ pub fn plan(fs: &GameFs, doc: &Document, props: &[Id], settings: &CombineSetting
     let geometry =
         PropGeometry { tris, disps: Vec::new(), pieces: if collision { pieces } else { Vec::new() }, origin };
     let creation = PropCreationRequest {
-        source_serial: doc.revision(),
+        source_serial,
         solid_ids: Vec::new(),
         geometry,
         options: PropOptions { physics: false, static_prop: true, collision, mass: 10.0 },
@@ -259,14 +289,7 @@ pub fn plan(fs: &GameFs, doc: &Document, props: &[Id], settings: &CombineSetting
         reuse_materials: true,
         lod: settings.lod,
     };
-    Ok(CombineRequest {
-        props: unique,
-        creation,
-        keys,
-        keep_originals: settings.keep_originals,
-        draw_calls: (before, materials.len()),
-        warnings,
-    })
+    Ok(PlannedCombine { creation, keys, draw_calls: (before, materials.len()), warnings })
 }
 
 pub fn summary(request: &CombineRequest) -> String {

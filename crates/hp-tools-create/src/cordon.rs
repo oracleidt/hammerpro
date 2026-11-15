@@ -232,13 +232,12 @@ impl CordonTool {
         if self.drag.is_none()
             && let Some(c) = target_cordon(state).and_then(|i| state.doc.scene().cordons().cordons.get(i))
         {
-            paint_label(
-                painter,
-                rect.left_bottom() + egui::vec2(0.0, 4.0),
-                Align2::LEFT_TOP,
-                shown_name(&c.name),
-                COLOR_TARGET,
-            );
+            let label = if c.exclude {
+                format!("{} ({})", shown_name(&c.name), t!("create.cordon.exclude"))
+            } else {
+                shown_name(&c.name).to_owned()
+            };
+            paint_label(painter, rect.left_bottom() + egui::vec2(0.0, 4.0), Align2::LEFT_TOP, &label, COLOR_TARGET);
         }
         let hovered = self.hover.filter(|(vi, _, frame)| *vi == view.index && fresh(state, *frame)).map(|(_, h, _)| h);
         for h in BoxHandle::RESIZE {
@@ -339,6 +338,18 @@ impl Tool for CordonTool {
                     .on_hover_text(t!("create.cordon.active_tip"))
                     .changed()
                     && let Err(e) = state.doc.set_cordon_active(i, active)
+                {
+                    state.notify(Severity::Warning, tf!("create.cordon.failed", e));
+                }
+                let mut exclude = c.exclude;
+                let include_resp = ui
+                    .selectable_value(&mut exclude, false, t!("create.cordon.include"))
+                    .on_hover_text(t!("create.cordon.include_tip"));
+                let exclude_resp = ui
+                    .selectable_value(&mut exclude, true, t!("create.cordon.exclude"))
+                    .on_hover_text(t!("create.cordon.exclude_tip"));
+                if (include_resp.changed() || exclude_resp.changed())
+                    && let Err(e) = state.doc.set_cordon_exclude(i, exclude)
                 {
                     state.notify(Severity::Warning, tf!("create.cordon.failed", e));
                 }
@@ -462,6 +473,18 @@ pub const CORDON_TR: TrTable = &[
         "Inclure ce cordon dans la zone cordonnée",
     ),
     ("create.cordon.delete", "Delete this cordon", "Supprimer ce cordon"),
+    ("create.cordon.include", "Include", "Inclure"),
+    (
+        "create.cordon.include_tip",
+        "Include cordon: only what touches the include cordons is kept",
+        "Cordon d'inclusion : seul ce qui touche les cordons d'inclusion est gardé",
+    ),
+    ("create.cordon.exclude", "Exclude", "Exclure"),
+    (
+        "create.cordon.exclude_tip",
+        "Exclude cordon: what lies fully inside it is dimmed and left out of cordon compiles, everything else is kept",
+        "Cordon d'exclusion : ce qui est entièrement dedans est estompé et retiré des compilations du cordon, tout le reste est gardé",
+    ),
     (
         "create.cordon.use_tip",
         "While cordons are used, objects outside every active cordon are dimmed, cannot be picked and are left out of cordon compiles",

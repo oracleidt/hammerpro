@@ -29,6 +29,7 @@ pub struct MapTabInfo {
     pub title: String,
     pub path: Option<PathBuf>,
     pub dirty: bool,
+    pub pristine: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

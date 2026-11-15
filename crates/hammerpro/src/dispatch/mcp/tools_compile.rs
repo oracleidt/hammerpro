@@ -52,7 +52,8 @@ domain! { "compile and play";
                 saved ones, like the options menu: flag name without the dash (get_compilers lists them) to true \
                 (switch), a number, [cluster, cluster] for trace, a folder of the map folder for embed to force it \
                 on; false forces it off (even when the preset adds it); null follows the preset again. Example \
-                {\"nodetail\": true, \"luxelscale\": 2, \"radius_override\": 4096}."),
+                {\"nodetail\": true, \"luxelscale\": 2, \"radius_override\": 4096}. Optimization options (off by default, \
+                even in the final preset; the VMF is never changed): mergestaticprops, autohints, autofade, autooccluders."),
             "rad_options": flag_options("Options of the lighting step for this compile, like bsp_options: \
                 {\"final\": true, \"bounce\": 8, \"fast\": false, \"softsun\": 2, \"extrasky\": 4, \"lights\": \
                 \"mylights.rad\"} (lights: a file of the map folder). Baked ambient occlusion (off by default, \
@@ -69,8 +70,9 @@ domain! { "compile and play";
         to the maps folder, its folder, starting the game after a \
         compile, the static prop options (static_prop_lighting, static_prop_shadows) and the options menu of the \
         geometry step (bsp_options: nodetail, nowater, fulldetail, forceskyvis, luxelscale, radius_override, \
-        AllowDynamicPropsAsStatic, wsaddons, serveraddons, propdebug, blocksize (0: no blocks)...) and of the \
-        lighting step \
+        AllowDynamicPropsAsStatic, wsaddons, serveraddons, propdebug, blocksize (0: no blocks), the Optimization \
+        options cullverts, culltjunc, cullbrushes, autolightmapscale, cleanpak, autocubemaps, mergestaticprops, \
+        autohints, autofade, autooccluders (off by default, even in the final preset)...) and of the lighting step \
         (rad_options: final, fast, bounce, \
         StaticPropLighting, StaticPropPolys, textureshadows, lights, chop, smooth, softsun, extrasky, the baked \
         ambient occlusion ao, aoradius, aoscale, aofacesamples, aopropsamples, aodebug...): each \
@@ -118,7 +120,12 @@ domain! { "compile and play";
             "bsp_options": flag_options("Options menu of the geometry and visibility step: flag name without the dash \
                 to true (switch), a number, [cluster, cluster] for trace, a folder of the map folder for embed to \
                 force it on; false forces it off (even when the preset adds it); null follows the preset again. The \
-                named flags leave the extra arguments; the other extra arguments are kept."),
+                named flags leave the extra arguments; the other extra arguments are kept. Optimization options, all off \
+                by default (even in the final preset), applied to the compile only (the VMF is not changed): \
+                mergestaticprops (nearby identical prop_static combined into static models packed in the BSP, with \
+                the model compiler setting), autohints (measured hint brushes that lower the visibility totals), \
+                autofade (fade distances from the prop size where none is set, detail props too), autooccluders \
+                (func_occluder on big walls hiding many props)."),
             "rad_options": flag_options("Options menu of the lighting step, like bsp_options (lights: a .rad file of \
                 the map folder). nostaticpropshadows is static_prop_shadows. Baked ambient occlusion: ao true \
                 (off by default, even in the final preset), aoradius (units, default 32), aoscale (0 to 1, default \
@@ -200,7 +207,7 @@ domain! { "compile and play";
         edits (move, color, brightness, cone, sun, mute or solo) relight only the changed lights plus their bounce \
         light in a fraction of a second without compiling the map again, and brush edits compile the geometry \
         again. On big maps (setting lighting.visible_first, default true) the area around the camera is baked \
-        first, then the whole map replaces it. With lighting.prepare (default true) the whole map is compiled and \
+        first, then the whole map replaces it. With lighting.prepare (default false) the whole map is compiled and \
         lit at the lowest priority in the background once the map is open and edits pause, so turning the baked mode on \
         shows it at once (get_lighting_status prepared). A light edit stops a running refined pass, is shown \
         first and the refined pass starts again after it. Bakes run below normal priority (setting \
@@ -1508,6 +1515,11 @@ mod tests {
             assert!(apply(&mut s.clone(), Bsp, &bad, None, "bsp_options").unwrap_err().contains("blocksize"), "{bad}");
         }
         apply(&mut s, Bsp, &json!({ "blocksize": null, "propdebug": null }), None, "b").unwrap();
+        apply(&mut s, Bsp, &json!({ "cullverts": true, "culltjunc": true, "cullbrushes": true }), None, "b").unwrap();
+        for f in ["-cullverts", "-culltjunc", "-cullbrushes"] {
+            assert!(s.bsp_flag_choices[f].on, "{f}");
+        }
+        apply(&mut s, Bsp, &json!({ "cullverts": null, "culltjunc": null, "cullbrushes": null }), None, "b").unwrap();
         for bad in [
             json!({ "threads": 4 }),
             json!({ "vis": true }),

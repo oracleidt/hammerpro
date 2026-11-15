@@ -7,7 +7,7 @@ use hp_app::settings::{
 use hp_app::{t, tf};
 use hp_compile::{
     BspMode, CompilePlan, DeferredFiles, LaunchMethod, Lighting, PlanOptions, Preset, RadMode, Severity as LogSeverity,
-    StepModes, ToolPaths, VisMode,
+    StepKind, StepModes, ToolPaths, VisMode,
 };
 
 use crate::util::plural;
@@ -225,7 +225,29 @@ pub(crate) fn build_plan_with(
     }
     opts.deferred_pack = extras.deferred_pack;
     opts.content_args = extras.content_args;
-    CompilePlan::preset(preset_of(s.preset), tools, vmf, &opts)
+    let mut plan = CompilePlan::preset(preset_of(s.preset), tools, vmf, &opts)?;
+    pass_model_compiler(&mut plan, s);
+    Ok(plan)
+}
+
+pub(crate) fn pass_model_compiler(plan: &mut CompilePlan, s: &CompileSettings) {
+    let custom = s.model_compiler.as_ref().filter(|p| !p.as_os_str().is_empty());
+    for step in plan.steps.iter_mut().filter(|st| st.kind == StepKind::Bsp) {
+        if !step.args.iter().any(|a| a.eq_ignore_ascii_case("-mergestaticprops")) {
+            continue;
+        }
+        let mut added = Vec::new();
+        if let Some(exe) = custom {
+            added.push("-modelcompiler".to_owned());
+            added.push(exe.to_string_lossy().into_owned());
+        }
+        if !s.model_compiler_args.trim().is_empty() {
+            added.push("-modelcompilerargs".to_owned());
+            added.push(s.model_compiler_args.trim().to_owned());
+        }
+        let at = step.args.len().saturating_sub(1);
+        step.args.splice(at..at, added);
+    }
 }
 
 pub(crate) struct PrepInput {

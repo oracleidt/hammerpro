@@ -156,6 +156,10 @@ pub struct CompileSettings {
 }
 
 pub fn background_precompile_default() -> bool {
+    false
+}
+
+pub fn background_precompile_supported() -> bool {
     std::thread::available_parallelism().is_ok_and(|n| n.get() >= 8)
 }
 

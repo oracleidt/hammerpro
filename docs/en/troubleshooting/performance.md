@@ -203,6 +203,8 @@ The shader cache only holds compiled shaders (a few megabytes): delete `shaders-
 
 ## Background work
 
+Since 2.1.1, opening a map no longer loads every processor core. Background loading (materials, models, workshop mounts, content searches, scene building) runs at below normal priority on at most half of the logical processors, always leaving 2 free; the live checks run at the lowest priority on a third of them. The two jobs that used to start on their own after a map was opened are now off by default, and the 2.1.1 update turns them off for existing users too: **Compile while idle** (`compile.background_precompile`) and **Prepare the baked preview in the background** (`lighting.prepare`). The baked preview is then computed when you turn it on. Turn either back on in the settings if you want it; when on, the background compile also uses at most half of the logical processors.
+
 The live checks (**Check the map as I edit**, **Look for leaks as I edit**, Settings > Map health, both on by default) run in the background a moment after each change. On very large maps on a slow CPU, turning the leak check off saves work; compiles still find leaks. Background precompile (in the compile settings) uses spare CPU to prepare the next compile.
 
 The cursor position in the status bar comes from a ray cast into the map under the mouse. On huge maps, where one cast takes several milliseconds, it is cast again at most every four casts' worth of time (120 ms at most) while the mouse moves, and once more where the mouse stops, so moving the mouse over the 3D view does not slow the frames down.

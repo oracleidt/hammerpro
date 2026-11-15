@@ -15,6 +15,7 @@ pub(crate) struct State {}
 const HANDLED: &[Action] = &[
     Action::NewMap,
     Action::OpenMap,
+    Action::OpenLastMap,
     Action::SaveMap,
     Action::SaveMapAs,
     Action::ImportMap,
@@ -84,6 +85,7 @@ impl Package for Shell {
                     app.request_open(ctx, path);
                 }
             }
+            Action::OpenLastMap => app.open_last_map(ctx),
             Action::SaveMap => app.save_in_background(ctx),
             Action::SaveMapAs => {
                 files::save_map_as(&mut app.state);

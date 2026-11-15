@@ -45,6 +45,16 @@ pub struct Faces {
     vchain: Vec<u32>,
     pub options: FaceOptions,
     pub tight: ahash::AHashMap<(usize, usize, usize), u32>,
+    pub nodraw: Vec<bool>,
+    tj_filter: Option<TjFilter>,
+    tj_tight: bool,
+    pub culled_verts: usize,
+}
+
+#[derive(Clone, Debug, Default)]
+struct TjFilter {
+    corner: Vec<bool>,
+    others: Vec<smallvec::SmallVec<[u32; 6]>>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -52,6 +62,8 @@ pub struct FaceOptions {
     pub no_merge: bool,
     pub no_subdiv: bool,
     pub no_tjunc: bool,
+    pub cull_tjunc: bool,
+    pub cull_verts: bool,
     pub max_lightmap_dim: Option<f32>,
     pub max_extent: Option<i32>,
 }
@@ -81,6 +93,7 @@ impl Faces {
         options: FaceOptions,
     ) -> Faces {
         let mut faces = Faces { options, ..Faces::default() };
+        faces.nodraw = tex.infos.iter().map(|t| t.flags & surf::NODRAW != 0).collect();
         for leaf in 0..tree.nodes.len() {
             let node = &tree.nodes[leaf];
             if !node.is_leaf() || leaf == tree.outside || node.contents & contents::SOLID != 0 {
@@ -334,6 +347,68 @@ impl Faces {
     }
 
     pub fn fix_tjuncs(&mut self, tree: &mut Tree, world: bool) {
+        self.weld_and_fix(tree, world);
+        self.tj_filter = None;
+        if self.options.cull_verts {
+            self.cull_flat_verts(world);
+        }
+    }
+
+    fn hidden(&self, f: usize) -> bool {
+        usize::try_from(self.list[f].texinfo).ok().and_then(|t| self.nodraw.get(t).copied()).unwrap_or(false)
+    }
+
+    fn drawn_faces(&self) -> Vec<usize> {
+        (0..self.list.len())
+            .filter(|&f| self.list[f].live() && self.list[f].verts.len() >= 3 && !self.hidden(f))
+            .collect()
+    }
+
+    fn build_tj_filter(&mut self) {
+        let n = self.vertices.len();
+        let mut filter = TjFilter { corner: vec![false; n], others: vec![smallvec::SmallVec::new(); n] };
+        for f in self.drawn_faces() {
+            let verts = &self.list[f].verts;
+            let m = verts.len();
+            for k in 0..m {
+                let v = verts[k] as usize;
+                filter.corner[v] = true;
+                for o in [verts[(k + m - 1) % m], verts[(k + 1) % m]] {
+                    if o as usize != v && !filter.others[v].contains(&o) {
+                        filter.others[v].push(o);
+                    }
+                }
+            }
+        }
+        self.tj_filter = Some(filter);
+    }
+
+    fn needed_on_edge(&self, j: u32, edge_start: Vec3, edge_end: Vec3, dir: Vec3) -> bool {
+        let Some(filter) = &self.tj_filter else { return true };
+        let j = j as usize;
+        if !filter.corner.get(j).copied().unwrap_or(false) {
+            return false;
+        }
+        let p = self.vertices[j].as_vec3();
+        let on_segment = |x: Vec3, a: Vec3, b: Vec3| {
+            let (d, len) = crate::planes::normalize_f32(b - a);
+            let t = (x - a).dot(d);
+            t > 0.0 && t < len && (x - a - d * t).length() <= 0.25
+        };
+        let ends = |o: u32| {
+            let q = self.vertices[o as usize].as_vec3();
+            let rel = q - edge_start;
+            let off = rel - dir * rel.dot(dir);
+            let (d, len) = crate::planes::normalize_f32(q - p);
+            off.length() <= 0.25
+                || (len > 0.0 && d.cross(dir).length() < 0.01)
+                || on_segment(edge_start, p, q)
+                || on_segment(edge_end, p, q)
+        };
+        filter.others[j].iter().any(|&o| ends(o))
+    }
+
+    fn weld_and_fix(&mut self, tree: &mut Tree, world: bool) {
         self.vertices.clear();
         self.vhash = vec![u32::MAX; HASH_SIZE * HASH_SIZE];
         self.vchain.clear();
@@ -351,17 +426,50 @@ impl Faces {
         if self.options.no_tjunc {
             return;
         }
-        let work: Vec<(usize, usize)> =
-            (0..tree.nodes.len()).flat_map(|n| tree.nodes[n].faces.iter().map(move |&f| (n, f))).collect();
-        let edges: Vec<Option<EdgePoints>> = {
-            use rayon::prelude::*;
-            let me = &*self;
-            work.par_iter().map(|&(_, f)| me.edge_points(f)).collect()
-        };
-        for (&(n, f), e) in work.iter().zip(edges) {
-            if let Some(e) = e {
+        let skip_hidden = self.options.cull_tjunc;
+        let rounds = if self.options.cull_tjunc { 6 } else { 1 };
+        let mut again = false;
+        for round in 0..rounds {
+            if self.options.cull_tjunc {
+                self.build_tj_filter();
+            }
+            self.tj_tight = round > 0;
+            let work: Vec<(usize, usize)> = (0..tree.nodes.len())
+                .flat_map(|n| tree.nodes[n].faces.iter().map(move |&f| (n, f)))
+                .filter(|&(_, f)| !(skip_hidden && self.hidden(f)))
+                .collect();
+            let edges: Vec<Option<EdgePoints>> = {
+                use rayon::prelude::*;
+                let me = &*self;
+                work.par_iter().map(|&(_, f)| me.edge_points(f)).collect()
+            };
+            let mut changed = false;
+            for (&(n, f), e) in work.iter().zip(edges) {
+                let Some(e) = e else { continue };
+                if round > 0 && e.superverts.len() == self.list[f].verts.len() {
+                    continue;
+                }
+                changed |= round > 0;
                 self.fix_face_edges(tree, n, f, world, e);
             }
+            if round > 0 && !changed {
+                break;
+            }
+            again |= changed;
+        }
+        self.tj_tight = false;
+        if again {
+            self.rebuild_prims(world);
+        }
+    }
+
+    fn rebuild_prims(&mut self, world: bool) {
+        self.prim_list.clear();
+        for face in &mut self.list {
+            face.prim = None;
+        }
+        for f in self.drawn_faces() {
+            self.face_prim(f, world);
         }
     }
 
@@ -389,7 +497,10 @@ impl Faces {
 
     fn face_from_superverts(&mut self, tree: &mut Tree, n: usize, f: usize, superverts: &[u32], base: usize) {
         if superverts.len() > MAXEDGES
-            && let Some(pieces) = self.chord_pieces(superverts)
+            && let Some(pieces) = self
+                .chord_pieces(superverts)
+                .filter(|p| p.iter().all(|piece| self.corner_count(piece) >= 3))
+                .or_else(|| self.window_pieces(superverts))
         {
             let mut cur = f;
             let last = pieces.len() - 1;
@@ -461,6 +572,38 @@ impl Faces {
         len < 1e-6 || (pb - pa).cross(ac).length() / len < COLINEAR_EPSILON
     }
 
+    fn corner_count(&self, poly: &[u32]) -> usize {
+        let n = poly.len();
+        (0..n).filter(|&k| !self.colinear(poly[(k + n - 1) % n], poly[k], poly[(k + 1) % n])).count()
+    }
+
+    fn window_pieces(&self, sv: &[u32]) -> Option<Vec<Vec<u32>>> {
+        let mut rest = sv.to_vec();
+        let mut pieces = Vec::new();
+        while rest.len() > MAXEDGES {
+            let n = rest.len();
+            let mut found = None;
+            'search: for size in (3..=MAXEDGES).rev() {
+                for start in 0..n {
+                    let window: Vec<u32> = (0..size).map(|k| rest[(start + k) % n]).collect();
+                    if self.corner_count(&window) < 3 {
+                        continue;
+                    }
+                    let remain: Vec<u32> = (size - 1..=n).map(|k| rest[(start + k) % n]).collect();
+                    if self.corner_count(&remain) >= 3 {
+                        found = Some((window, remain));
+                        break 'search;
+                    }
+                }
+            }
+            let (window, remain) = found?;
+            pieces.push(window);
+            rest = remain;
+        }
+        pieces.push(rest);
+        Some(pieces)
+    }
+
     fn chord_pieces(&self, sv: &[u32]) -> Option<Vec<Vec<u32>>> {
         let n = sv.len();
         let corners: Vec<usize> =
@@ -510,26 +653,32 @@ impl Faces {
         let mut pieces = Vec::new();
         self.final_faces(f, &mut pieces);
         for p in pieces {
+            self.face_prim(p, world);
+        }
+    }
+
+    fn face_prim(&mut self, p: usize, world: bool) {
+        {
             let verts = self.list[p].verts.clone();
             let n = verts.len();
             if n <= 3 {
-                continue;
+                return;
             }
             let flat = |k: usize| self.colinear(verts[(k + n - 1) % n], verts[k], verts[(k + 1) % n]);
             if !(0..n).any(flat) {
-                continue;
+                return;
             }
             let clean = (0..n).find(|&k| !flat(k) && !flat((k + 1) % n) && !flat((k + n - 1) % n));
             if let Some(k) = clean {
                 self.list[p].verts.rotate_left(k);
-                continue;
+                return;
             }
             if !world {
-                continue;
+                return;
             }
             let corners: Vec<usize> = (0..n).filter(|&k| !flat(k)).collect();
             if corners.len() < 3 {
-                continue;
+                return;
             }
             let mut table = vec![[-1i32; 2]; n];
             for (r, &c) in corners.iter().enumerate() {
@@ -557,6 +706,77 @@ impl Faces {
         }
     }
 
+    fn flat_between(&self, a: u32, b: u32, c: u32) -> bool {
+        let at = |v: u32| self.vertices.get(v as usize).copied().unwrap_or(DVec3::ZERO);
+        let (pa, pb, pc) = (at(a), at(b), at(c));
+        let ac = pc - pa;
+        let len = ac.length();
+        if len < 1e-6 {
+            return false;
+        }
+        let t = (pb - pa).dot(ac) / len;
+        t > 0.0 && t < len && (pb - pa).cross(ac).length() / len < CULL_FLAT_EPSILON
+    }
+
+    fn cull_flat_verts(&mut self, world: bool) {
+        let faces = self.drawn_faces();
+        let n = self.vertices.len();
+        let mut keep = vec![false; n];
+        let mut seen = vec![false; n];
+        for &f in &faces {
+            let face = &self.list[f];
+            let verts = &face.verts;
+            let m = verts.len();
+            for k in 0..m {
+                let (a, v, c) = (verts[(k + m - 1) % m], verts[k], verts[(k + 1) % m]);
+                seen[v as usize] = true;
+                if face.smoothing != 0 || a == v || c == v || !self.flat_between(a, v, c) {
+                    keep[v as usize] = true;
+                }
+            }
+        }
+        loop {
+            let mut changed = false;
+            for &f in &faces {
+                let verts = &self.list[f].verts;
+                let m = verts.len();
+                let kept: Vec<usize> = (0..m).filter(|&k| keep[verts[k] as usize]).collect();
+                if kept.len() == m {
+                    continue;
+                }
+                if kept.len() < 3 {
+                    for &v in verts {
+                        if !keep[v as usize] {
+                            keep[v as usize] = true;
+                            changed = true;
+                        }
+                    }
+                    continue;
+                }
+                for (r, &k0) in kept.iter().enumerate() {
+                    let k1 = kept[(r + 1) % kept.len()];
+                    let mut k = (k0 + 1) % m;
+                    while k != k1 {
+                        let v = verts[k];
+                        if !keep[v as usize] && !self.flat_between(verts[k0], v, verts[k1]) {
+                            keep[v as usize] = true;
+                            changed = true;
+                        }
+                        k = (k + 1) % m;
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+        for &f in &faces {
+            self.list[f].verts.retain(|&v| keep[v as usize]);
+        }
+        self.culled_verts = (0..n).filter(|&v| seen[v] && !keep[v]).count();
+        self.rebuild_prims(world);
+    }
+
     fn edge_points(&self, f: usize) -> Option<EdgePoints> {
         if !self.list[f].live() {
             return None;
@@ -574,7 +794,7 @@ impl Faces {
             let edge_verts = self.edge_verts(edge_start, e2);
             let (dir, len) = crate::planes::normalize_f32(e2 - edge_start);
             start[i] = superverts.len();
-            self.test_edge(&edge_verts, edge_start, dir, 0.0, len, p1, p2, 0, &mut superverts);
+            self.test_edge(&edge_verts, (edge_start, e2), dir, 0.0, len, p1, p2, 0, &mut superverts);
             count[i] = superverts.len() - start[i];
         }
         Some(EdgePoints { superverts, start, count })
@@ -647,7 +867,7 @@ impl Faces {
     fn test_edge(
         &self,
         edge_verts: &[u32],
-        edge_start: Vec3,
+        (edge_start, edge_end): (Vec3, Vec3),
         dir: Vec3,
         s: f32,
         e: f32,
@@ -674,11 +894,12 @@ impl Faces {
                 Vec3::new(edge_start.x + dist * dir.x, edge_start.y + dist * dir.y, edge_start.z + dist * dir.z);
             let off = p - exact;
             let error = (off.x * off.x + off.y * off.y + off.z * off.z).sqrt();
-            if f64::from(error) > 0.25 {
+            let limit = if self.tj_tight { TIGHT_TJUNC_EPSILON } else { 0.25 };
+            if f64::from(error) > limit || !self.needed_on_edge(j, edge_start, edge_end, dir) {
                 continue;
             }
-            self.test_edge(edge_verts, edge_start, dir, s, dist, p1, j, k + 1, out);
-            self.test_edge(edge_verts, edge_start, dir, dist, e, j, p2, k + 1, out);
+            self.test_edge(edge_verts, (edge_start, edge_end), dir, s, dist, p1, j, k + 1, out);
+            self.test_edge(edge_verts, (edge_start, edge_end), dir, dist, e, j, p2, k + 1, out);
             return;
         }
         out.push(p1);
@@ -717,6 +938,8 @@ pub fn lightmap_extents(points: impl IntoIterator<Item = Vec3>, lightmap: &[[f32
 
 const MAXEDGES: usize = 32;
 const COLINEAR_EPSILON: f64 = 0.25;
+const CULL_FLAT_EPSILON: f64 = 0.02;
+const TIGHT_TJUNC_EPSILON: f64 = 0.002;
 const HASH_SIZE: usize = 256;
 
 fn hash_cell(v: f32) -> usize {

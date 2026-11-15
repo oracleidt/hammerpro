@@ -3,10 +3,7 @@ use std::sync::OnceLock;
 fn pool() -> Option<&'static rayon::ThreadPool> {
     static POOL: OnceLock<Option<rayon::ThreadPool>> = OnceLock::new();
     POOL.get_or_init(|| {
-        let cores = std::thread::available_parallelism().map_or(2, |n| n.get());
-        rayon::ThreadPoolBuilder::new()
-            .num_threads(cores.saturating_sub(1).max(1))
-            .thread_name(|i| format!("hp-background-{i}"))
+        hp_sched::builder("hp-background", hp_sched::background_threads(), hp_sched::Level::BelowNormal)
             .stack_size(8 << 20)
             .build()
             .ok()

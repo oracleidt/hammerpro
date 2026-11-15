@@ -448,6 +448,12 @@ pub(crate) fn prepare_snapshot(mut input: SnapshotInput) -> SnapshotOutput {
         if input.snapshot.added_player_start {
             messages.push((LogSeverity::Info, t!("compile.cordon_player_start").to_owned()));
         }
+        if !input.snapshot.exclude_boxes.is_empty() {
+            messages.push((LogSeverity::Info, tf!("compile.cordon_excluded", input.snapshot.exclude_boxes.len())));
+        }
+        if input.snapshot.cordon_left_nothing() {
+            messages.push((LogSeverity::Warning, t!("compile.cordon_empty").to_owned()));
+        }
     }
     if input.snapshot.hidden > 0 && !input.background {
         let n = input.snapshot.hidden;
@@ -491,6 +497,7 @@ pub(crate) fn prepare_snapshot(mut input: SnapshotInput) -> SnapshotOutput {
     if input.background {
         modes = StepModes { bsp: BspMode::Full, vis: base.vis, rad: RadMode::Off };
         settings.low_priority = true;
+        settings.threads = Some(background_threads(settings.threads));
         settings.copy_to_maps = false;
         settings.launch_game = false;
         settings.stop_on_leak = true;
@@ -663,8 +670,22 @@ pub(crate) fn auto_text(kind: AutoKind, estimate_ms: Option<u64>, after: bool) -
     }
 }
 
+pub(crate) fn background_threads(chosen: Option<u32>) -> u32 {
+    let cap = u32::try_from(hp_sched::background_threads()).unwrap_or(1).max(1);
+    chosen.filter(|t| *t > 0).map_or(cap, |t| t.min(cap))
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn background_compiles_use_at_most_the_background_share_of_the_cores() {
+        let cap = u32::try_from(hp_sched::background_threads()).unwrap();
+        assert_eq!(super::background_threads(None), cap);
+        assert_eq!(super::background_threads(Some(0)), cap);
+        assert_eq!(super::background_threads(Some(1)), 1);
+        assert_eq!(super::background_threads(Some(999)), cap);
+    }
+
     use super::*;
     use hp_editor::compile_export::CompileExport;
 

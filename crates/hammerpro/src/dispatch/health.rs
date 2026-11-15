@@ -44,6 +44,7 @@ const HANDLED: &[Action] = &[
     Action::ToggleVisleaves,
     Action::ShowCubemaps,
     Action::ToggleCubemapAssignment,
+    Action::TrimOverlayFaces,
 ];
 
 impl Package for Health {
@@ -88,6 +89,7 @@ impl Package for Health {
                 ctx.request_repaint();
             }
             Action::SealAreaportal => seal_opening(app),
+            Action::TrimOverlayFaces => trim_overlay_faces(&mut app.state),
             Action::ShowOptimize => {
                 let rt = &mut app.state.runtime.optimize;
                 rt.show = true;
@@ -290,6 +292,34 @@ fn tick_cubemaps(app: &mut HammerProApp) -> bool {
     }
     let changed = pkg.cube_changed;
     cubemaps::tick(&mut app.state, changed)
+}
+
+pub(crate) fn trim_overlay_faces(state: &mut hp_app::AppState) {
+    let scene = state.doc.scene();
+    let ids: Vec<hp_editor::Id> = state
+        .doc
+        .selected_objects()
+        .into_iter()
+        .filter_map(|o| match o {
+            ObjRef::Entity(id) => scene
+                .entity(id)
+                .filter(|n| hp_editor::side_index::overlay::is_overlay_class(&n.entity.classname))
+                .map(|_| id),
+            ObjRef::Solid(_) => None,
+        })
+        .collect();
+    if ids.is_empty() {
+        state.notify(Severity::Info, t!("app.health.trim_overlay_none"));
+        return;
+    }
+    match state.doc.trim_overlay_faces(&ids) {
+        Ok(r) if r.removed == 0 => state.notify(Severity::Info, t!("app.health.trim_overlay_nothing")),
+        Ok(r) => state.notify(Severity::Success, tf!("app.health.trim_overlay_done", r.removed, r.overlays.len())),
+        Err(e) => state.notify(
+            Severity::Warning,
+            tf!("app.op_failed", Action::TrimOverlayFaces.label(), super::edit_error_text(&e)),
+        ),
+    }
 }
 
 fn seal_opening(app: &mut HammerProApp) {

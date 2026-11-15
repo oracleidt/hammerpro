@@ -61,6 +61,9 @@ Géométrie et visibilité. Les valeurs par défaut sont celles de la ligne de c
 | `-AllowDynamicPropsAsStatic` | | Garde les props statiques dont le modèle a un `prop_data`. | désactivé |
 | `-replacematerials` | | Applique `cfg/materialsub.cfg` du jeu. | désactivé |
 | `-keepstalezip` | | Garde les fichiers empaquetés dans le BSP précédent. | désactivé |
+| `-autolightmapscale` | | Échelle de lightmap plus grossière sur les faces jamais vues de près, voir [Options de compilation](compile-options.md#optimisation). | désactivé |
+| `-cleanpak` | | Retire les fichiers inutilisés du pakfile et le compresse en LZMA. | désactivé |
+| `-autocubemaps` | | Dimensionne les cubemaps de taille par défaut selon la zone qu'ils reflètent et retire ceux qui ne servent pas. | désactivé |
 | `-embed` | dossier | Empaquette un dossier entier dans le BSP (compilations complètes seulement, refusé avec `-onlyents`/`-onlyprops`). | aucun |
 | `-dxlevel` | niveau | Retire les entités exclues par leur `mindxlevel`/`maxdxlevel`. | aucun |
 | `-radius_override` | unités | Rayon de visibilité. | `farz` du brouillard, sinon aucun |
@@ -69,7 +72,14 @@ Géométrie et visibilité. Les valeurs par défaut sont celles de la ligne de c
 | `-trace` | cluster cluster | Écrit la ligne de vue entre deux clusters dans `<map>.lin`. | aucun |
 | `-nomerge`, `-nosubdiv`, `-notjunc`, `-noprune` | | Options de débogage, voir [Options de compilation](compile-options.md). | désactivé |
 | `-novirtualmesh` | | Collision des displacements en soupes de triangles. | désactivé |
+| `-mergestaticprops` | | Combine les props statiques identiques proches en modèles statiques inclus, voir [Optimisation](compile-options.md#optimisation). | désactivé |
+| `-autohints` | | Ajoute les brushes hint mesurés qui baissent les totaux de visibilité. | désactivé |
+| `-autofade` | | Distances de fondu selon la taille des props sans fondu, props de détail aussi. | désactivé |
+| `-autooccluders` | | func_occluder sur les grands murs qui cachent beaucoup de props. | désactivé |
+| `-modelcompiler` | fichier | Compilateur de modèles utilisé par `-mergestaticprops` (l'éditeur passe son réglage Compilateur de modèles). | studiomdl du jeu |
+| `-modelcompilerargs` | texte | Arguments en plus de ce compilateur de modèles. | aucun |
 | `-propdebug` | | Rapport des props dont le modèle pose problème. | désactivé |
+| `-cullverts`, `-culltjunc`, `-cullbrushes` | | Optimisation : moins de sommets, moins de sommets de jonction en T, moins de brushes, même rendu, voir [Options de compilation](compile-options.md). | désactivé |
 | `-noaddons` | | Pas d'addons en dossier. | addons montés |
 | `-wsaddons` | | Aussi les objets du Workshop abonnés. | désactivé |
 | `-nowsaddons` | | Ni addons en dossier ni objets du Workshop. | désactivé |

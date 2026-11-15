@@ -36,6 +36,7 @@ The depth of a new box (the axis you do not see in the view where you draw it) c
 | **Cordon:** | The cordon the tool edits. Shows **New cordon** while the next box will be a new cordon, **(none)** when the map has no cordon. |
 | **+** button | **New cordon**: the next box you draw becomes a new cordon. |
 | **Active** | Includes this cordon in the cordoned area (tooltip: "Include this cordon in the cordoned area"). |
+| **Include** / **Exclude** | The mode of the target cordon (see [Exclude cordons](#exclude-cordons)). |
 | Size | The size of the target box. |
 | **x** button | Deletes this cordon. |
 | **Use cordons** | Same as **View > Use cordons**. |
@@ -60,12 +61,13 @@ The **Cordons** section of the [Visgroups](visgroups.md) tab shows:
 | **Use** | Use cordons (same as **View > Use cordons**). |
 | Count | Number of cordons. |
 | Checkbox of a row | Active: includes the cordon in the cordoned area. |
+| **+** / **-** button of a row | The mode of the cordon: include (+) or exclude (-). A click switches it. Exclude cordons have their name in orange. |
 | Click a row | Makes it the cordon the cordon tool edits. The tooltip gives its corners and size. |
 | Double click a row | Renames it. |
 | Frame button | **Frame the views on this cordon**. |
 | Box button | **Edit the box with the cordon tool**. |
 | **x** button | **Delete cordon**. |
-| Right-click a row | **Edit the box with the cordon tool**, **Frame the views on this cordon**, **Rename**, **Delete cordon**. |
+| Right-click a row | **Make it an exclude cordon** (or **Make it an include cordon**), **Edit the box with the cordon tool**, **Frame the views on this cordon**, **Rename**, **Delete cordon**. |
 
 A cordon with no volume shows "This cordon has no volume: it is deleted at its next edit."
 
@@ -83,6 +85,16 @@ Turning cordons on, off, adding, renaming, resizing or deleting a cordon are und
 ## Compiling only the cordon
 
 In the [Compile and run window](../compiler/compile-window.md), **Compile only the cordoned area** keeps only what touches the active boxes. Each box is sealed by six brushes of the **Cordon seal material**, and the map is compiled as `<map>_cordon` so the full map is never overwritten. When no player start lies inside the cordon, one is added on the floor of the first box. The same option exists on the **Compile** page of the settings (**Compile only the active cordon**).
+
+## Exclude cordons
+
+A cordon is an **include** cordon by default: only what touches the include cordons is kept. Switch a cordon to **Exclude** (options bar of the cordon tool, the **+** / **-** button of its row, or its right-click menu) to do the opposite: what lies entirely inside the box is dimmed in the views, cannot be picked and is removed from cordon compiles, everything else is kept. Use it to hide one building, a heavy area or a broken part while you test the rest of the map.
+
+- Exclude cordons are drawn in orange; the 2D views shade their inside.
+- An object crossing the border of an exclude box is kept (only what lies fully inside is removed), like an object touching an include box is kept.
+- Mixed sets work: the include cordons define the kept area, the exclude cordons cut out of it. With only exclude cordons, the whole map is compiled minus what they cut, with no sealing box; removing a wall can make the map leak, the compile reports it as usual.
+- The compile log says how many exclude boxes were applied, and the compile is still named `<map>_cordon`.
+- Saving: an exclude cordon is written in the `cordons` block with `"active" "0"` and two extra keys, `"hp_mode" "exclude"` and `"hp_active"`, which Hammer and Hammer++ ignore. They open the map normally and never treat an exclude cordon as a cordon (the 2.0.9 rule stays: the file is saved as cordoned only when an include cordon is active).
 
 ## Options
 
@@ -108,6 +120,10 @@ In the [Compile and run window](../compiler/compile-window.md), **Compile only t
 **Why can I not select an object?** It lies outside every active cordon. Stop using cordons or enlarge the box.
 
 **Does a cordon compile overwrite my map?** No. The cordon compile is named `<map>_cordon`.
+
+**Can I hide one area instead of everything else?** Yes: make its cordon an **Exclude** cordon. See [Exclude cordons](#exclude-cordons).
+
+**My cordon compile is empty.** The compile log warns "The cordons keep no brush" when nothing touches the include cordons: the map is still a valid sealed box, but empty. Move or grow the cordon over your brushes and displacements.
 
 **Can a cordon have several boxes?** Hammer Pro keeps the extra boxes of maps made elsewhere and uses them in views and compiles, but it creates one box per cordon. Make several cordons instead.
 

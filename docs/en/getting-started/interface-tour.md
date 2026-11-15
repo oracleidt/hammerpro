@@ -74,7 +74,7 @@ Right-click a side-panel tab and choose **Float panel**, or use the **Float pane
 
 ## Map tabs
 
-Above the views, one tab per open map. A `*` after the name marks unsaved changes and the tooltip shows the full path. Click a tab to show it, middle click or the cross to close it, **+** for a new map. Right click: **Close**, **Close other maps**, **Copy the path**, **Show in the folder**. `Ctrl+Tab` and `Ctrl+Shift+Tab` cycle the tabs. See [Several open maps](../features/multiple-maps.md).
+Above the views, one tab per open map. A `*` after the name marks unsaved changes and the tooltip shows the full path. Click a tab to show it, middle click or the cross to close it, **+** for a new map. Right click: **Close**, **Close other maps**, **Copy the path**, **Show in the folder**. On an empty **Untitled** map nobody touched yet (for example right after Hammer Pro starts), the menu starts with **Open last edited: <name>**: it opens the most recent map of **File > Recent maps** in place of that empty tab. **File > Recent maps** also starts with **Open last edited map: <name>** (action `open_last_map`, which you can bind to a key or run from MCP with `run_action`). `Ctrl+Tab` and `Ctrl+Shift+Tab` cycle the tabs. See [Several open maps](../features/multiple-maps.md).
 
 ## Right dock
 

@@ -177,6 +177,17 @@ impl MapBrush {
         }
     }
 
+    pub fn refresh_windings(&mut self, planes: &PlaneSet) -> bool {
+        if !self.make_windings(planes) {
+            return false;
+        }
+        let fw = self.float_windings(planes, true);
+        for (s, w) in self.sides.iter_mut().zip(fw) {
+            s.fwinding = w;
+        }
+        true
+    }
+
     pub fn add_bevels(&mut self, planes: &mut PlaneSet) {
         let template = |plane: usize, sides: &[BrushSide]| BrushSide {
             plane,

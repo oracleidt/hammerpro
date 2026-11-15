@@ -28,6 +28,18 @@ pub const TR: TrTable = &[
     ("cordons.edit_box", "Edit the box with the cordon tool", "Modifier la boîte avec l'outil cordon"),
     ("cordons.rename", "Rename", "Renommer"),
     (
+        "cordons.mode_include_tip",
+        "Include cordon: only what touches the include cordons is kept. Click to make it an exclude cordon.",
+        "Cordon d'inclusion : seul ce qui touche les cordons d'inclusion est gardé. Cliquez pour en faire un cordon d'exclusion.",
+    ),
+    (
+        "cordons.mode_exclude_tip",
+        "Exclude cordon: what lies fully inside it is dimmed and left out of cordon compiles. Click to make it an include cordon.",
+        "Cordon d'exclusion : ce qui est entièrement dedans est estompé et retiré des compilations du cordon. Cliquez pour en faire un cordon d'inclusion.",
+    ),
+    ("cordons.make_exclude", "Make it an exclude cordon", "En faire un cordon d'exclusion"),
+    ("cordons.make_include", "Make it an include cordon", "En faire un cordon d'inclusion"),
+    (
         "cordons.row_tip",
         "From {0} to {1} (size {2}). Click to make it the cordon the cordon tool edits, double click to rename.",
         "De {0} à {1} (taille {2}). Cliquez pour en faire le cordon modifié par l'outil cordon, double-cliquez pour le renommer.",

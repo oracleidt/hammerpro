@@ -14,6 +14,7 @@ use crate::overlay::box_lines_on_top;
 use crate::paint;
 
 pub const CORDON_COLOR: [f32; 4] = [1.0, 0.16, 0.1, 1.0];
+pub const EXCLUDE_CORDON_COLOR: [f32; 4] = [1.0, 0.62, 0.05, 1.0];
 const MAX_DRAWN: usize = 256;
 const MAX_SHADED: usize = 64;
 const LABEL_MIN_WIDTH: f32 = 48.0;
@@ -28,6 +29,7 @@ pub(crate) const TR: TrTable = &[];
 struct Cache {
     cordons: Option<Cordons>,
     boxes: Vec<Aabb>,
+    exclude: Vec<Aabb>,
     names: Vec<(String, Aabb)>,
 }
 
@@ -51,8 +53,9 @@ impl CordonLayer {
             return;
         }
         self.cache.boxes = state.doc.cordon_boxes();
+        self.cache.exclude = state.doc.exclude_cordon_boxes();
         self.cache.names.clear();
-        if !self.cache.boxes.is_empty() {
+        if !self.cache.boxes.is_empty() || !self.cache.exclude.is_empty() {
             for c in cordons.cordons.iter().filter(|c| c.active).take(MAX_DRAWN) {
                 let b = Aabb::new(c.mins, c.maxs);
                 if c.mins.is_finite() && c.maxs.is_finite() && b.size().min_element() > 1e-3 {
@@ -127,27 +130,36 @@ impl OverlayLayer for CordonLayer {
 
     fn add(&self, state: &AppState, view: &ViewInfo, out: &mut Overlay) {
         let boxes = &self.cache.boxes;
-        if boxes.is_empty() {
+        let exclude = &self.cache.exclude;
+        if boxes.is_empty() && exclude.is_empty() {
             return;
         }
         if view.is_2d() {
             for b in boxes.iter().take(MAX_DRAWN) {
                 box_lines_on_top(out, b.min, b.max, CORDON_COLOR);
             }
+            for b in exclude.iter().take(MAX_DRAWN) {
+                box_lines_on_top(out, b.min, b.max, EXCLUDE_CORDON_COLOR);
+            }
             let settings = &state.settings.visibility;
-            if settings.shade_outside_2d && boxes.len() <= MAX_SHADED {
+            if settings.shade_outside_2d && !boxes.is_empty() && boxes.len() <= MAX_SHADED {
                 self.shade_outside(view, settings.shade_alpha(), out);
+            }
+            if settings.shade_outside_2d {
+                self.shade_excluded(view, settings.shade_alpha(), out);
             }
             return;
         }
-        let faint = [CORDON_COLOR[0], CORDON_COLOR[1], CORDON_COLOR[2], 0.3];
-        for b in boxes.iter().take(MAX_DRAWN) {
-            let c = b.corners();
-            for (i, j) in
-                [(0, 1), (2, 3), (4, 5), (6, 7), (0, 2), (1, 3), (4, 6), (5, 7), (0, 4), (1, 5), (2, 6), (3, 7)]
-            {
-                out.lines.push(OverlayLine { a: f3(c[i]), b: f3(c[j]), color: CORDON_COLOR });
-                out.lines_on_top.push(OverlayLine { a: f3(c[i]), b: f3(c[j]), color: faint });
+        for (list, color) in [(boxes, CORDON_COLOR), (exclude, EXCLUDE_CORDON_COLOR)] {
+            let faint = [color[0], color[1], color[2], 0.3];
+            for b in list.iter().take(MAX_DRAWN) {
+                let c = b.corners();
+                for (i, j) in
+                    [(0, 1), (2, 3), (4, 5), (6, 7), (0, 2), (1, 3), (4, 6), (5, 7), (0, 4), (1, 5), (2, 6), (3, 7)]
+                {
+                    out.lines.push(OverlayLine { a: f3(c[i]), b: f3(c[j]), color });
+                    out.lines_on_top.push(OverlayLine { a: f3(c[i]), b: f3(c[j]), color: faint });
+                }
             }
         }
     }
@@ -171,6 +183,22 @@ impl OverlayLayer for CordonLayer {
 }
 
 impl CordonLayer {
+    fn shade_excluded(&self, view: &ViewInfo, alpha: f32, out: &mut Overlay) {
+        if alpha <= 0.0 {
+            return;
+        }
+        let Some((r, u, _)) = view.kind.axes_2d() else { return };
+        let color = [0.0, 0.0, 0.0, alpha];
+        let kind = view.kind;
+        for b in self.cache.exclude.iter().take(MAX_SHADED) {
+            let p = |x: f64, y: f64| f3(kind.from_2d(DVec2::new(x, y), 0.0));
+            let (c00, c10, c11, c01) =
+                (p(b.min[r], b.min[u]), p(b.max[r], b.min[u]), p(b.max[r], b.max[u]), p(b.min[r], b.max[u]));
+            out.triangles.push(OverlayTri { p: [c00, c10, c11], color });
+            out.triangles.push(OverlayTri { p: [c00, c11, c01], color });
+        }
+    }
+
     fn shade_outside(&self, view: &ViewInfo, alpha: f32, out: &mut Overlay) {
         if alpha <= 0.0 {
             return;

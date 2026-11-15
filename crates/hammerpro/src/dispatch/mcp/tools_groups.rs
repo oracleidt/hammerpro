@@ -132,7 +132,7 @@ domain! { "groups and visibility";
         "Whether objects are visible, hidden, in a hidden visgroup or cordoned out, and the counts of hidden objects.",
         { "ids": ids("Objects to look at (default: none, counts only)."), "solid_ids": target_solid_ids() }, [];
     list_cordons: Read, "List cordons",
-        "The cordons (named boxes that limit what is shown and compiled), whether cordoning is on.",
+        "The cordons (named boxes that limit what is shown and compiled), whether cordoning is on. Each cordon has a mode: include (only what touches the include cordons is kept) or exclude (what lies fully inside it is removed from the compile and dimmed in the views, everything else is kept).",
         {}, [];
     add_cordon: Edit, "Add a cordon",
         "Add a cordon box (active by default) and switch cordoning on (enable false keeps it as it is).",
@@ -140,15 +140,17 @@ domain! { "groups and visibility";
             "name": string("Name (default \"cordon\")."),
             "min": vec3("Box minimum."), "max": vec3("Box maximum."),
             "active": boolean("This cordon is active (default true)."),
+            "mode": choice("include (default: keep only what touches it) or exclude (remove what lies fully inside it).", &["include", "exclude"]),
             "enable": boolean("Switch cordoning on (default true)."),
         }, ["min", "max"];
     edit_cordon: Edit, "Edit a cordon",
-        "Change a cordon by index (list_cordons): name, box, active; or delete it (delete: true).",
+        "Change a cordon by index (list_cordons): name, box, active, mode; or delete it (delete: true).",
         {
             "index": integer("Cordon index.", 0, 4095),
             "name": string("New name."),
             "min": vec3("New box minimum (with max)."), "max": vec3("New box maximum (with min)."),
             "active": boolean("Active."),
+            "mode": choice("include or exclude.", &["include", "exclude"]),
             "delete": boolean("Delete the cordon."),
         }, ["index"];
     set_cordons_enabled: Edit, "Cordoning on or off",
@@ -776,6 +778,7 @@ fn cordons_json(state: &AppState) -> Value {
             "index": i,
             "name": k.name,
             "active": k.active,
+            "mode": if k.exclude { "exclude" } else { "include" },
             "min": super::tools::v3(k.mins),
             "max": super::tools::v3(k.maxs),
         })).collect::<Vec<_>>(),
@@ -800,16 +803,26 @@ fn cordon_box(a: &Args<'_>) -> R<Option<(glam::DVec3, glam::DVec3)>> {
     }
 }
 
+fn cordon_mode(a: &Args<'_>) -> R<Option<bool>> {
+    match a.opt_str("mode", 16)?.map(str::trim) {
+        None => Ok(None),
+        Some(m) if m.eq_ignore_ascii_case("include") => Ok(Some(false)),
+        Some(m) if m.eq_ignore_ascii_case("exclude") => Ok(Some(true)),
+        Some(m) => Err(format!("mode must be include or exclude, not {m:?}")),
+    }
+}
+
 fn add_cordon(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let (mins, maxs) = cordon_box(a)?.ok_or("min and max are required")?;
     let name = name_arg(a, "name")?.unwrap_or_else(|| "cordon".to_owned());
     let active = a.opt_bool("active")?.unwrap_or(true);
     let enable = a.opt_bool("enable")?.unwrap_or(true);
+    let exclude = cordon_mode(a)?.unwrap_or(false);
     let mut c = state.doc.scene().cordons().clone();
     if c.cordons.len() >= MAX_SETS {
         return Err(format!("the map has {MAX_SETS} cordons already"));
     }
-    c.cordons.push(hp_vmf::Cordon { name, active, mins, maxs });
+    c.cordons.push(hp_vmf::Cordon { name, active, mins, maxs, exclude });
     if enable {
         c.active = true;
     }
@@ -824,7 +837,12 @@ fn edit_cordon(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         return Err(format!("the map has {} cordons (index {index} does not exist)", c.cordons.len()));
     }
     if a.opt_bool("delete")?.unwrap_or(false) {
-        if a.get("name").is_some() || a.get("min").is_some() || a.get("max").is_some() || a.get("active").is_some() {
+        if a.get("name").is_some()
+            || a.get("min").is_some()
+            || a.get("max").is_some()
+            || a.get("active").is_some()
+            || a.get("mode").is_some()
+        {
             return Err("delete takes no other change".to_owned());
         }
         c.cordons.remove(index);
@@ -844,6 +862,9 @@ fn edit_cordon(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         }
         if let Some(on) = a.opt_bool("active")? {
             k.active = on;
+        }
+        if let Some(exclude) = cordon_mode(a)? {
+            k.exclude = exclude;
         }
     }
     edit(state, "edit_cordon", |doc| doc.set_cordons(c))?;

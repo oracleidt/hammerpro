@@ -334,6 +334,9 @@ pub struct Lumps {
     pub prims_wanted: (usize, usize),
     pub errors: Vec<String>,
     pub dropped_vertices: usize,
+    pub cull_verts: bool,
+    orig_outlines: Vec<(DVec3, Vec<DVec3>, Vec<u32>)>,
+    pub brush_index: Option<Vec<Option<u32>>>,
     pub sky: bool,
     pub clusters: i32,
     pub game_lumps: Vec<(u32, u16, Vec<u8>)>,
@@ -389,7 +392,9 @@ impl Lumps {
     }
 
     fn begin_model(&mut self) {
-        self.vert_hash = vec![0; 256 * 256];
+        if !self.cull_verts {
+            self.vert_hash = vec![0; 256 * 256];
+        }
         self.vert_edges.clear();
     }
 
@@ -439,18 +444,24 @@ impl Lumps {
         self.orig_count += 1;
         let next = self.orig_heads.insert(side.face_plane, side.key);
         self.orig_sides.insert(side.key, (next, index));
-        let first_edge = self.surfedges.len() as i32;
-        let verts: Vec<u32> = w.points.iter().map(|p| self.vertex(*p)).collect();
-        for i in 0..verts.len() {
-            let e = self.edge(verts[i], verts[(i + 1) % verts.len()], contents);
-            self.surfedges.push(e);
-        }
+        let (first_edge, count) = if self.cull_verts {
+            self.orig_outlines.push((newell(&w.points), w.points.clone(), Vec::new()));
+            (0, 0)
+        } else {
+            let first_edge = self.surfedges.len() as i32;
+            let verts: Vec<u32> = w.points.iter().map(|p| self.vertex(*p)).collect();
+            for i in 0..verts.len() {
+                let e = self.edge(verts[i], verts[(i + 1) % verts.len()], contents);
+                self.surfedges.push(e);
+            }
+            (first_edge, verts.len())
+        };
         let b = &mut self.orig_faces;
         b.u16(side.plane as u16);
         b.u8((side.plane & 1) as u8);
         b.u8(u8::from(!side.detail));
         b.i32(first_edge);
-        b.i16(verts.len() as i16);
+        b.i16(count as i16);
         b.i16(side.texinfo as i16);
         b.i16(disp);
         b.0.extend_from_slice(&[0; 2 + 4 + 4 + 4 + 16]);
@@ -557,6 +568,9 @@ impl Lumps {
         if num_edges < 3 {
             self.surfedges.truncate(first_edge as usize);
             return None;
+        }
+        if let Some(outline) = usize::try_from(orig).ok().and_then(|o| self.orig_outlines.get_mut(o)) {
+            outline.2.extend_from_slice(&verts);
         }
         let (num_prims, first_prim) = match f.prim.and_then(|k| self.prim_ids.get(k).copied().flatten()) {
             Some(id) => (1u16, id),
@@ -941,6 +955,13 @@ impl Lumps {
         let mut leaf_brushes: Vec<u16> = Vec::new();
         let originals = node.brushes.iter().map(|b| b.original).chain(node.extra_brushes.iter().copied());
         for b in originals {
+            let b = match &self.brush_index {
+                Some(map) => match map.get(b).copied().flatten() {
+                    Some(k) => k as usize,
+                    None => continue,
+                },
+                None => b,
+            };
             if b < brushes.len() && !leaf_brushes.contains(&(b as u16)) {
                 leaf_brushes.push(b as u16);
             }
@@ -956,7 +977,10 @@ impl Lumps {
         let mut b = Buf::default();
         let mut s = Buf::default();
         let mut side_count = 0i32;
-        for br in brushes {
+        for (index, br) in brushes.iter().enumerate() {
+            if self.brush_index.as_ref().is_some_and(|m| m.get(index).copied().flatten().is_none()) {
+                continue;
+            }
             let first = side_count;
             let mut count = br.sides.len() as i32;
             for side in &br.sides {
@@ -1144,7 +1168,8 @@ impl Lumps {
         self.data.insert(lump::TEXDATA, (d.0, 0));
         self.data.insert(lump::TEXDATA_STRING_TABLE, (table.0, 0));
         self.data.insert(lump::TEXDATA_STRING_DATA, (strings, 0));
-        if self.vertexes.len() > MAX_MAP_VERTS {
+        self.emit_orig_outlines();
+        if self.cull_verts || self.vertexes.len() > MAX_MAP_VERTS {
             self.dropped_vertices = self.compact_vertices();
         }
         let mut b = Buf::default();
@@ -1235,6 +1260,44 @@ impl Lumps {
             let (name, max) = (limit.valve, limit.max_usize_in(self.format.limits));
             if used > max {
                 self.errors.push(format!("Error! {name} exceeded: {used} of {max}"));
+            }
+        }
+    }
+
+    fn emit_orig_outlines(&mut self) {
+        let outlines = std::mem::take(&mut self.orig_outlines);
+        if outlines.is_empty() {
+            return;
+        }
+        let mut by_ends: AHashMap<(u32, u32), i32> = AHashMap::new();
+        for (e, &[a, b]) in self.edges.iter().enumerate().skip(1) {
+            by_ends.entry((a, b)).or_insert(e as i32);
+        }
+        for (k, (normal, winding, used)) in outlines.into_iter().enumerate() {
+            let points: Vec<(u32, DVec3)> = used.iter().map(|&v| (v, self.vertex_point(v))).collect();
+            let mut ring = outline_hull(&points, normal);
+            if ring.len() < 3 {
+                ring = winding.iter().map(|p| self.vertex(*p)).collect();
+            }
+            let first = self.surfedges.len() as i32;
+            for i in 0..ring.len() {
+                let (a, b) = (ring[i], ring[(i + 1) % ring.len()]);
+                let e = if let Some(&e) = by_ends.get(&(a, b)) {
+                    e
+                } else if let Some(&e) = by_ends.get(&(b, a)) {
+                    -e
+                } else {
+                    let e = self.edges.len() as i32;
+                    self.edges.push([a, b]);
+                    self.edge_faces.push((0, true));
+                    by_ends.insert((a, b), e);
+                    e
+                };
+                self.surfedges.push(e);
+            }
+            if let Some(rec) = self.orig_faces.0.get_mut(k * 56..k * 56 + 56) {
+                rec[4..8].copy_from_slice(&first.to_le_bytes());
+                rec[8..10].copy_from_slice(&(ring.len() as i16).to_le_bytes());
             }
         }
     }
@@ -1358,6 +1421,53 @@ impl Lumps {
         header.extend_from_slice(&body);
         header
     }
+}
+
+fn newell(points: &[DVec3]) -> DVec3 {
+    let mut n = DVec3::ZERO;
+    for i in 0..points.len() {
+        let (a, b) = (points[i], points[(i + 1) % points.len()]);
+        n += DVec3::new((a.y - b.y) * (a.z + b.z), (a.z - b.z) * (a.x + b.x), (a.x - b.x) * (a.y + b.y));
+    }
+    n
+}
+
+fn outline_hull(points: &[(u32, DVec3)], normal: DVec3) -> Vec<u32> {
+    let axis = normal.abs().max_position();
+    let (u, v) = ((axis + 1) % 3, (axis + 2) % 3);
+    let mut pts: Vec<(f64, f64, u32)> = points.iter().map(|(i, p)| (p[u], p[v], *i)).collect();
+    pts.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)).then(a.2.cmp(&b.2)));
+    pts.dedup_by_key(|p| p.2);
+    if pts.len() < 3 {
+        return Vec::new();
+    }
+    let cross = |o: (f64, f64, u32), a: (f64, f64, u32), b: (f64, f64, u32)| {
+        (a.0 - o.0) * (b.1 - o.1) - (a.1 - o.1) * (b.0 - o.0)
+    };
+    let mut hull: Vec<(f64, f64, u32)> = Vec::with_capacity(pts.len() * 2);
+    for pass in 0..2 {
+        let start = hull.len();
+        let iter: Box<dyn Iterator<Item = &(f64, f64, u32)>> =
+            if pass == 0 { Box::new(pts.iter()) } else { Box::new(pts.iter().rev()) };
+        for &p in iter {
+            while hull.len() >= start + 2 && cross(hull[hull.len() - 2], hull[hull.len() - 1], p) <= 1e-6 {
+                hull.pop();
+            }
+            hull.push(p);
+        }
+        hull.pop();
+    }
+    let mut ring: Vec<u32> = hull.iter().map(|p| p.2).collect();
+    ring.dedup();
+    if ring.len() < 3 {
+        return Vec::new();
+    }
+    let at = |i: u32| points.iter().find(|(k, _)| *k == i).map_or(DVec3::ZERO, |(_, p)| *p);
+    let pos: Vec<DVec3> = ring.iter().map(|&i| at(i)).collect();
+    if newell(&pos).dot(normal) < 0.0 {
+        ring.reverse();
+    }
+    ring
 }
 
 #[cfg(test)]

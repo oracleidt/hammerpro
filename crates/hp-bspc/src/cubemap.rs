@@ -42,6 +42,34 @@ pub struct Cubemaps<'a> {
     used: Vec<usize>,
     parallax_names: Vec<String>,
     parallax: Vec<Option<String>>,
+    auto: bool,
+    props: Vec<DVec3>,
+    served: Vec<Served>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Served {
+    min: DVec3,
+    max: DVec3,
+    area: f64,
+}
+
+impl Default for Served {
+    fn default() -> Self {
+        Served { min: DVec3::INFINITY, max: DVec3::NEG_INFINITY, area: 0.0 }
+    }
+}
+
+pub fn auto_size(extent: f64, area: f64) -> i32 {
+    if area < 4096.0 {
+        5
+    } else if extent <= 512.0 {
+        6
+    } else if extent <= 1536.0 {
+        7
+    } else {
+        8
+    }
 }
 
 pub const PARALLAX_OBB_CLASS: &str = "parallax_obb";
@@ -191,7 +219,16 @@ impl<'a> Cubemaps<'a> {
             messages: Vec::new(),
             parallax_names: Vec::new(),
             parallax: Vec::new(),
+            auto: false,
+            props: Vec::new(),
+            served: Vec::new(),
         };
+        for e in entities.iter().skip(1) {
+            if e.classname.to_ascii_lowercase().starts_with("prop_") {
+                let o = sample_origin(e.get("origin").unwrap_or(""));
+                c.props.push(DVec3::new(f64::from(o[0]), f64::from(o[1]), f64::from(o[2])));
+            }
+        }
         for e in entities.iter().skip(1).filter(|e| e.classname.eq_ignore_ascii_case("env_cubemap")) {
             if c.samples.len() + 1 >= MAX_SAMPLES {
                 c.messages
@@ -230,6 +267,10 @@ impl<'a> Cubemaps<'a> {
                     .push(format!("Warning: Cannot find parallax obb \"{name}\" (num_entities is {})", obbs.len())),
             }
         }
+    }
+
+    pub fn set_auto(&mut self, on: bool) {
+        self.auto = on;
     }
 
     pub fn parallax_of(&self, sample: usize) -> Option<&str> {
@@ -274,6 +315,20 @@ impl<'a> Cubemaps<'a> {
         };
         let name = self.patch(material, sample, 0);
         self.note_used(sample, name.is_some());
+        if self.auto
+            && name.is_some()
+            && let Some(w) = winding
+        {
+            if self.served.len() < self.samples.len() {
+                self.served.resize(self.samples.len(), Served::default());
+            }
+            let served = &mut self.served[sample];
+            for p in &w.points {
+                served.min = served.min.min(*p + offset);
+                served.max = served.max.max(*p + offset);
+            }
+            served.area += w.area();
+        }
         if multiple && name.is_some() {
             self.messages.push(format!("Multiple references for cubemap on texture {material}!!!"));
         }
@@ -627,7 +682,76 @@ impl<'a> Cubemaps<'a> {
         Some((f.format, union, f.frames.max(1), f.flags))
     }
 
+    fn auto_adjust(&mut self) {
+        let n = self.samples.len();
+        if n == 0 {
+            return;
+        }
+        self.served.resize(n, Served::default());
+        let mut keep = vec![false; n];
+        for &s in &self.used {
+            keep[s] = true;
+        }
+        for p in &self.props {
+            let pos = |s: &Sample| DVec3::new(f64::from(s.origin[0]), f64::from(s.origin[1]), f64::from(s.origin[2]));
+            if let Some((i, _)) =
+                self.samples.iter().enumerate().min_by(|a, b| pos(a.1).distance(*p).total_cmp(&pos(b.1).distance(*p)))
+            {
+                keep[i] = true;
+            }
+        }
+        let mut resized = 0;
+        for (i, &kept) in keep.iter().enumerate().take(n) {
+            let served = self.served[i];
+            if !kept || self.samples[i].size != 0 || served.area <= 0.0 {
+                continue;
+            }
+            let span = served.max - served.min;
+            self.samples[i].size = auto_size(span.x.max(span.y).max(span.z), served.area);
+            resized += 1;
+        }
+        let removed = keep.iter().filter(|k| !**k).count();
+        if removed > 0 {
+            let mut remap = vec![usize::MAX; n];
+            let mut next = 0;
+            for (i, k) in keep.iter().enumerate() {
+                if *k {
+                    remap[i] = next;
+                    next += 1;
+                }
+            }
+            let mut i = 0;
+            self.samples.retain(|_| {
+                i += 1;
+                keep[i - 1]
+            });
+            let mut i = 0;
+            self.parallax.retain(|_| {
+                i += 1;
+                keep.get(i - 1).copied().unwrap_or(false)
+            });
+            let mut i = 0;
+            self.parallax_names.retain(|_| {
+                i += 1;
+                keep.get(i - 1).copied().unwrap_or(false)
+            });
+            let mut i = 0;
+            self.served.retain(|_| {
+                i += 1;
+                keep[i - 1]
+            });
+            self.used = self.used.iter().map(|&s| remap[s]).filter(|&s| s != usize::MAX).collect();
+        }
+        self.messages.push(format!(
+            "Automatic cubemaps (-autocubemaps): {} kept, {removed} removed (no face or prop uses them), {resized} sized from the area they reflect",
+            self.samples.len()
+        ));
+    }
+
     pub fn finish(&mut self, sky: Option<&str>) -> (Vec<u8>, Vec<(String, Vec<u8>)>) {
+        if self.auto {
+            self.auto_adjust();
+        }
         if !self.map.is_empty() {
             let sky = sky.map(str::trim).unwrap_or("");
             let formats = [self.sky_format(sky, false), self.sky_format(sky, true)];
@@ -1383,5 +1507,51 @@ mod tests {
         let center = to_cube(&m, DVec3::new(256.0, 128.0, 128.0));
         assert!((center - DVec3::splat(0.5)).length() < 1e-4, "{center}");
         assert!(crate::validate::validate(&out.bsp).is_empty());
+    }
+
+    #[test]
+    fn auto_cubemaps_size_from_the_room_and_drop_unused_ones() {
+        let files = Files(
+            vec![(
+                "materials/concrete/floor.vmt",
+                "\"LightmappedGeneric\" { \"$basetexture\" \"concrete/floor\" \"$envmap\" \"env_cubemap\" }",
+            )],
+            Vec::new(),
+        );
+        let world = entity("worldspawn", &[("skyname", "missing")]);
+        let room = entity("env_cubemap", &[("origin", "0 0 64")]);
+        let custom = entity("env_cubemap", &[("origin", "4000 0 64"), ("cubemapsize", "8")]);
+        let unused = entity("env_cubemap", &[("origin", "9000 0 64")]);
+        let near_prop = entity("env_cubemap", &[("origin", "-9000 0 64")]);
+        let prop = entity("prop_static", &[("origin", "-8990 0 0"), ("model", "models/a.mdl")]);
+        let ents = [&world, &room, &custom, &unused, &near_prop, &prop];
+        let mut cm = Cubemaps::new(&ents, Some("gm_auto"), &files);
+        cm.set_auto(true);
+        let f = files.facts("concrete/floor");
+        let big = Winding {
+            points: vec![
+                DVec3::new(-300.0, -300.0, 0.0),
+                DVec3::new(300.0, -300.0, 0.0),
+                DVec3::new(300.0, 300.0, 0.0),
+                DVec3::new(-300.0, 300.0, 0.0),
+            ],
+        };
+        assert!(cm.side_material("concrete/floor", &f, 1, Some(&big), DVec3::ZERO, DVec3::Z).is_some());
+        let far = square(DVec3::new(4000.0, 0.0, 0.0));
+        assert!(cm.side_material("concrete/floor", &f, 2, Some(&far), DVec3::ZERO, DVec3::Z).is_some());
+        let (lump, files_out) = cm.finish(None);
+        assert_eq!(
+            cm.samples(),
+            &[
+                Sample { origin: [0, 0, 64], size: 7 },
+                Sample { origin: [4000, 0, 64], size: 8 },
+                Sample { origin: [-9000, 0, 64], size: 0 }
+            ]
+        );
+        assert_eq!(lump.len(), 3 * 16);
+        assert!(!files_out.iter().any(|(n, _)| n.contains("c9000_0_64")));
+        assert!(cm.messages.iter().any(|m| m.contains("1 removed")), "{:?}", cm.messages);
+        assert_eq!(auto_size(100.0, 100.0), 5);
+        assert_eq!(auto_size(5000.0, 1e6), 8);
     }
 }

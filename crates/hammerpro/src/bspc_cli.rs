@@ -355,12 +355,14 @@ pub(crate) struct BspcArgs {
     pub(crate) threads: Option<usize>,
     pub(crate) embed: Option<PathBuf>,
     pub(crate) keep_stale_zip: bool,
+    pub(crate) clean_pak: bool,
     pub(crate) replace_materials: bool,
     pub(crate) dx_level: Option<i32>,
     pub(crate) search_paths: Vec<PathBuf>,
     pub(crate) verbose: bool,
     pub(crate) fast: bool,
     pub(crate) notes: Vec<String>,
+    pub(crate) optimize: crate::bspc_optimize::OptimizeArgs,
 }
 
 pub(crate) fn app_ids_arg(value: &str) -> Result<Vec<u32>, String> {
@@ -450,6 +452,9 @@ pub(crate) fn parse_bspc_args(args: &[String]) -> Result<BspcArgs, String> {
             "-noprune" => a.opts.no_prune = true,
             "-novirtualmesh" => a.opts.no_virtual_mesh = true,
             "-propdebug" => a.opts.prop_debug = true,
+            "-cullverts" => a.opts.cull_verts = true,
+            "-culltjunc" => a.opts.cull_tjunc = true,
+            "-cullbrushes" => a.opts.cull_brushes = true,
             "-blocksize" => {
                 let v = number(i, arg)?;
                 match hp_bspc::compile::block_size_of(v) {
@@ -510,12 +515,27 @@ pub(crate) fn parse_bspc_args(args: &[String]) -> Result<BspcArgs, String> {
             "-allowdynamicpropsasstatic" => a.allow_dynamic = true,
             "-replacematerials" => a.replace_materials = true,
             "-keepstalezip" => a.keep_stale_zip = true,
+            "-cleanpak" => a.clean_pak = true,
+            "-autolightmapscale" => a.opts.auto_lightmap_scale = true,
+            "-autocubemaps" => a.opts.auto_cubemaps = true,
             "-dxlevel" => {
                 a.dx_level = Some(number(i, arg)? as i32);
                 i += 1;
             }
             "-embed" => {
                 a.embed = Some(PathBuf::from(value(i, arg)?));
+                i += 1;
+            }
+            "-mergestaticprops" => a.optimize.merge_props = true,
+            "-autohints" => a.optimize.hints = true,
+            "-autofade" => a.optimize.fade = true,
+            "-autooccluders" => a.optimize.occluders = true,
+            "-modelcompiler" => {
+                a.optimize.model_compiler = Some(PathBuf::from(value(i, arg)?));
+                i += 1;
+            }
+            "-modelcompilerargs" => {
+                a.optimize.model_compiler_args = value(i, arg)?;
                 i += 1;
             }
             "-radius_override" => {
@@ -806,6 +826,16 @@ fn run_compile(a: &BspcArgs, map: &Path) -> i32 {
     }
     let models = GameModels { fs: &fs, allow_dynamic: a.allow_dynamic };
     let materials = GameMaterials { fs: fs.clone(), opts: a.materials };
+    let merged = if a.optimize.any() && (a.only_ents || a.only_props) {
+        say(
+            "Note: the optimization options (-mergestaticprops, -autohints, -autofade, -autooccluders) only apply to full compiles",
+        );
+        None
+    } else if a.optimize.any() || crate::bspc_optimize::merged_dir(&vmf).is_dir() {
+        optimize_map(&mut parsed, a, &vmf, &fs, &models, &materials, opts.vis, root.as_deref())
+    } else {
+        None
+    };
     let mut log = |l: &str| say(l);
     let bsp = vmf.with_extension("bsp");
     let lin = vmf.with_extension("lin");
@@ -882,7 +912,10 @@ fn run_compile(a: &BspcArgs, map: &Path) -> i32 {
                 let _ = std::fs::write(vmf.with_extension("prt"), out.prt.replace('\n', "\r\n"));
             }
             let mut data = out.bsp;
-            let embed = a.embed.as_deref().map(folder_files).unwrap_or_default();
+            let mut embed = a.embed.as_deref().map(folder_files).unwrap_or_default();
+            if let Some(dir) = &merged {
+                embed.extend(folder_files(dir));
+            }
             if !embed.is_empty() || stale.is_some() {
                 match pack_extra(data.clone(), &embed, stale.as_deref()) {
                     Ok(d) => data = d,
@@ -890,6 +923,16 @@ fn run_compile(a: &BspcArgs, map: &Path) -> i32 {
                         say(&format!("Error: cannot add the files to the pakfile: {e}"));
                         return 1;
                     }
+                }
+            }
+            if a.clean_pak {
+                let name = opts.map_name.clone().unwrap_or_default();
+                match hp_bsp::pakclean::clean(data.clone(), &name) {
+                    Ok((d, report)) => {
+                        data = d;
+                        say(&report.summary());
+                    }
+                    Err(e) => say(&format!("Warning: the pakfile could not be cleaned (-cleanpak): {e}")),
                 }
             }
             if let Err(e) = std::fs::write(&bsp, &data) {
@@ -925,6 +968,111 @@ pub(crate) struct RadArgs {
     pub(crate) search_paths: Vec<PathBuf>,
     pub(crate) ignored: Vec<String>,
     pub(crate) notes: Vec<String>,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn optimize_map(
+    map: &mut hp_vmf::Map,
+    a: &BspcArgs,
+    vmf: &Path,
+    fs: &hp_fs::GameFs,
+    models: &GameModels<'_>,
+    materials: &GameMaterials,
+    vis: hp_bspc::VisLevel,
+    root: Option<&Path>,
+) -> Option<PathBuf> {
+    use hp_bspc::MaterialSource;
+    use hp_bspc::props::ModelSource;
+    let o = &a.optimize;
+    let bounds = |p: &str| models.bounds(p);
+    let facts = |m: &str| materials.facts(m);
+    if o.hints {
+        if vis == hp_bspc::VisLevel::Off {
+            say("-autohints: skipped, it needs the visibility (-vis or -fastvis)");
+        } else {
+            say("-autohints: measuring the suggested hint brushes...");
+            let t = std::time::Instant::now();
+            let mounted = (!fs.sources().is_empty()).then_some(fs);
+            match crate::bspc_optimize::auto_hints(map, mounted, vis == hp_bspc::VisLevel::Full) {
+                Ok(r) => {
+                    say(&format!(
+                        "-autohints: {} hint brushes added of {} measured (visibility total {} lowered by {}) in {:.1} s",
+                        r.added,
+                        r.measured,
+                        r.base_pvs,
+                        r.gain,
+                        t.elapsed().as_secs_f64()
+                    ));
+                    if let Some(n) = r.note {
+                        say(&format!("-autohints: {n}"));
+                    }
+                }
+                Err(e) => say(&format!("-autohints: skipped ({e})")),
+            }
+        }
+    }
+    if o.occluders {
+        let list = crate::bspc_optimize::plan_occluders(map, &bounds, &facts);
+        let hidden: usize = list.iter().map(|o| o.props).sum();
+        let n = crate::bspc_optimize::add_occluders(map, &list);
+        say(&format!("-autooccluders: {n} func_occluder added (walls hiding {hidden} props)"));
+    }
+    if o.fade {
+        let world = map.world.clone();
+        let detail = |types: &[String]| crate::bspc_optimize::detail_size(fs, &world, types, &bounds);
+        let r = crate::bspc_optimize::auto_fade(map, &bounds, &facts, &detail);
+        say(&format!(
+            "-autofade: {} static props got fade distances ({} already had one, {} too big, {} in the 3D skybox)",
+            r.props, r.kept, r.big, r.skybox
+        ));
+        if let Some((min, max)) = r.detail {
+            say(&format!("-autofade: detail props fade from {min} to {max} units (env_detail_controller added)"));
+        }
+    }
+    let dir = crate::bspc_optimize::merged_dir(vmf);
+    let _ = std::fs::remove_dir_all(&dir);
+    if !o.merge_props {
+        return None;
+    }
+    let exe = o.model_compiler.clone().or_else(|| root.and_then(crate::bspc_optimize::default_model_compiler));
+    let Some(exe) = exe.filter(|p| p.is_file()) else {
+        say("-mergestaticprops: skipped, no model compiler (studiomdl) found (Settings > Compile > Model compiler)");
+        return None;
+    };
+    if fs.sources().is_empty() {
+        say("-mergestaticprops: skipped, the game content is not mounted");
+        return None;
+    }
+    let stem = vmf.file_stem().map_or_else(|| "map".into(), |s| s.to_string_lossy().into_owned());
+    let t = std::time::Instant::now();
+    let r = crate::bspc_optimize::merge_static_props(
+        map,
+        fs,
+        &exe,
+        &o.model_compiler_args,
+        &dir,
+        &stem,
+        &facts,
+        &mut |l| say(l),
+    );
+    for e in r.failed.iter().take(8) {
+        say(&format!("-mergestaticprops: a group was left as is: {e}"));
+    }
+    say(&format!(
+        "-mergestaticprops: {} static props merged into {} models, draw calls {} -> {} ({:.1} s)",
+        r.props,
+        r.models,
+        r.draw_before,
+        r.draw_after,
+        t.elapsed().as_secs_f64()
+    ));
+    if r.models == 0 {
+        return None;
+    }
+    if let Err(e) = fs.add_game_dir(&dir) {
+        say(&format!("Warning: {}: {e}", dir.display()));
+    }
+    Some(dir)
 }
 
 pub(crate) fn parse_rad_args(args: &[String]) -> Result<RadArgs, String> {
@@ -1115,7 +1263,12 @@ pub fn run_rad(args: &[String]) -> i32 {
             return 1;
         }
     };
-    let RadArgs { mut opts, map, gmod, game, target, designer, low, mount, search_paths, ignored, notes } = parsed;
+    let RadArgs { mut opts, map, gmod, game, target, designer, low, mount, mut search_paths, ignored, notes } = parsed;
+    if let Some(dir) = map.as_deref().map(|m| crate::bspc_optimize::merged_dir(&m.with_extension("vmf")))
+        && dir.is_dir()
+    {
+        search_paths.push(dir);
+    }
     if low {
         set_low_priority();
     }
@@ -1488,6 +1641,21 @@ mod tests {
     }
 
     #[test]
+    fn optimization_options_are_read() {
+        let a = parse_bspc_args(&args("-vis map")).unwrap();
+        assert!(!a.optimize.any());
+        let a = parse_bspc_args(&args(
+            "-MergeStaticProps -autohints -autofade -autooccluders -modelcompiler C:/tools/studiomdl.exe -modelcompilerargs -fast map",
+        ))
+        .unwrap();
+        let o = &a.optimize;
+        assert!(o.merge_props && o.hints && o.fade && o.occluders);
+        assert_eq!(o.model_compiler.as_deref(), Some(Path::new("C:/tools/studiomdl.exe")));
+        assert_eq!((o.model_compiler_args.as_str(), a.map.as_deref()), ("-fast", Some(Path::new("map"))));
+        assert!(a.notes.is_empty(), "{:?}", a.notes);
+    }
+
+    #[test]
     fn unknown_and_unsupported_options_are_reported() {
         let a =
             parse_bspc_args(&args("-foo -glview -block 1 2 -skyvis -maxlightmapdim 500 -tmpin map")).expect("parsed");
@@ -1527,6 +1695,10 @@ mod tests {
         assert!(a.notes.contains(&"blocksize = 0 (no blocks)".to_owned()), "{:?}", a.notes);
         assert_eq!(a.map.as_deref(), Some(Path::new("map")));
         assert_eq!(parse_bspc_args(&args("-BlockSize 4096 map")).expect("parsed").opts.block_size, 4096);
+        let o = parse_bspc_args(&args("-cullverts -culltjunc -cullbrushes map")).expect("parsed").opts;
+        assert!(o.cull_verts && o.cull_tjunc && o.cull_brushes);
+        let o = parse_bspc_args(&args("map")).expect("parsed").opts;
+        assert!(!o.cull_verts && !o.cull_tjunc && !o.cull_brushes);
         let a = parse_bspc_args(&args("-blocksize 50 map")).expect("parsed");
         assert_eq!(a.opts.block_size, 1024, "an invalid size keeps VBSP's");
         assert!(

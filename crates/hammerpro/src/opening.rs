@@ -120,10 +120,7 @@ struct LoadOut {
 fn open_pool() -> Option<&'static rayon::ThreadPool> {
     static POOL: std::sync::OnceLock<Option<rayon::ThreadPool>> = std::sync::OnceLock::new();
     POOL.get_or_init(|| {
-        let cores = std::thread::available_parallelism().map_or(4, std::num::NonZeroUsize::get);
-        rayon::ThreadPoolBuilder::new()
-            .num_threads(cores.saturating_sub(1).max(1))
-            .thread_name(|i| format!("hp-open-{i}"))
+        hp_sched::builder("hp-open", hp_sched::foreground_threads(), hp_sched::Level::BelowNormal)
             .build()
             .map_err(|e| log::warn!("cannot make the open thread pool: {e}"))
             .ok()

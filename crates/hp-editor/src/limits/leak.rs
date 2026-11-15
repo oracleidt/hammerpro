@@ -1395,7 +1395,19 @@ pub fn apply_cordons(input: &mut LeakInput, boxes: &[Aabb]) {
     }
 }
 
+pub fn apply_exclusions(input: &mut LeakInput, excludes: &[Aabb]) {
+    if excludes.is_empty() {
+        return;
+    }
+    input.brushes.retain(|b| !crate::visibility::box_inside_any(excludes, &b.aabb));
+    input.seeds.retain(|s| !excludes.iter().any(|c| c.contains_point(s.origin)));
+}
+
 pub fn flood_map(snap: &super::snapshot::MapSnapshot, cordons: &[Aabb]) -> hp_vmf::Map {
+    flood_map_excluding(snap, cordons, &[])
+}
+
+pub fn flood_map_excluding(snap: &super::snapshot::MapSnapshot, cordons: &[Aabb], excludes: &[Aabb]) -> hp_vmf::Map {
     let mut world = (*snap.world).clone();
     world.solids.clear();
     world.groups.clear();
@@ -1408,7 +1420,14 @@ pub fn flood_map(snap: &super::snapshot::MapSnapshot, cordons: &[Aabb]) -> hp_vm
         if !snap.is_visible(ObjRef::Entity(e.id)) {
             continue;
         }
-        point.push(snap.entity_solids.get(k).is_none_or(|n| *n == 0));
+        let is_point = snap.entity_solids.get(k).is_none_or(|n| *n == 0);
+        if is_point
+            && !e.classname.eq_ignore_ascii_case("light_environment")
+            && e.origin().is_some_and(|o| excludes.iter().any(|c| c.contains_point(o)))
+        {
+            continue;
+        }
+        point.push(is_point);
         let mut copy = e.clone();
         copy.solids.clear();
         copy.groups.clear();
@@ -1421,6 +1440,9 @@ pub fn flood_map(snap: &super::snapshot::MapSnapshot, cordons: &[Aabb]) -> hp_vm
             continue;
         }
         if !cordons.is_empty() && !cordons.iter().any(|c| c.intersects(&s.geom.aabb)) {
+            continue;
+        }
+        if crate::visibility::box_inside_any(excludes, &s.geom.aabb) {
             continue;
         }
         let sides = s

@@ -67,13 +67,17 @@ Cubemaps cost nothing in visibility, but a reflective floor in a room without it
 
 The advisor reports these as the **Cubemaps** topic (it never changes them). The [Cubemaps tool](../features/cubemaps.md) (**Tools > Placement and props > Cubemaps...**, or **Cubemaps tool** on a finding) shows which face takes which cubemap, draws suggested cubemaps as ghosts in the views, and places those you **Accept** in one undo step; its **Show cubemap assignment** view colours the faces by their cubemap.
 
+## Overlays
+
+An overlay (`info_overlay`) is cut into one fragment per brush face of its `sides` list, even the faces its rectangle never reaches. A long list costs fragments and compile time, and the engine refuses an overlay on more than 64 faces. The advisor reports overlays on more than 16 faces (more than 64: high impact) and overlays listing 4 faces or more that their rectangle does not touch, as the **Overlays** topic. **Go to** selects the overlay and frames it. The advisor never edits it: run **Tools > Brush operations > Trim overlay faces** (also in the right click menu of the views) on the selected overlays to remove the faces their rectangle does not touch, in one undo step. Faces it touches and side ids that no longer exist are kept; an overlay that touches none of its faces is left as is.
+
 ## The Optimize the map window
 
 **Map > Optimize the map...** opens an advisor: it tells you what is not optimized and what to do, in plain language. It never changes the map by itself.
 
 - **Refresh** compiles the BSP, the portals and the visibility of the current map in the background (nothing is written next to the map; the editor stays usable) and checks it. The first opening runs it once. When the map changes, a line says the analysis is out of date.
 - The summary gives the visleaves, portals, areas, and how many visleaves a visleaf sees on average and at most.
-- The findings are sorted by impact (high, medium, low). The buttons at the top filter them by topic: visleaves, func_detail, hints, areaportals, lights, cubemaps.
+- The findings are sorted by impact (high, medium, low). The buttons at the top filter them by topic: visleaves, func_detail, hints, areaportals, lights, cubemaps, overlays.
 - Each finding says what is wrong, why it costs performance and the concrete thing to do, for example *Turn these 12 brushes into func_detail: they are small, do not seal the map and cut 40 visleaves*, *Put an areaportal in the frame of door 214: when the door is closed nothing behind it is drawn*, or *Light 88 has no lamp near it: move it to a lamp or add a fixture*.
 - **Go to** selects the objects of the finding and frames them in the 2D and 3D views; for a place without objects (a visleaf, a hint plane, an opening) it moves the cameras there. The box of the finding is drawn in the views while the window is open.
 - The func_detail finding also has **Select these**: it selects the suggested brushes without moving the views, so you can review them and press **Make func_detail**.
@@ -89,6 +93,7 @@ The checks:
 | Areaportals | Every areaportal: one brush, thin, narrow opening, sealed on all four sides, not touching another, door link and start state, really separating two areas. Doors without areaportal and doorless openings that are the only way between two groups of visleaves get a suggested areaportal fitted to the opening. |
 | Lights | Floating lights, lamps without light, blocked lights, lamps of the same model with different lights, redundant lights, spot lights aimed into walls, too many switchable lights, a missing light_environment, broken falloff values. |
 | Cubemaps | Rooms with reflective materials and no cubemap that sees them, faces taking the cubemap of another room or one behind a wall, faces far from their cubemap, cubemaps inside brushes, in the void, at floor level, too close together, too big or too small, too many cubemaps. Fixes are placed with the [Cubemaps tool](../features/cubemaps.md). |
+| Overlays | Overlays on more than 16 brush faces (more than 64 is refused by the engine) and overlays listing faces their rectangle does not touch. Fixed with **Trim overlay faces**. |
 
 ## With an AI assistant (MCP)
 
@@ -107,6 +112,7 @@ The same checks are MCP tools, and there they can apply the fixes (one undo step
 | `analyze_cubemaps` | The cubemap analysis: rooms, which face takes which cubemap, findings and suggestions. |
 | `suggest_cubemaps` | Suggested cubemaps at eye height and sides fixes; `apply` places them. |
 | `show_cubemap_assignment` | Shows the faces coloured by their cubemap in the views. |
+| `trim_overlay_faces` | Removes from overlays the faces their rectangle does not touch (`ids`, `all`, `preview`), one undo step. |
 
 On a big map the analysis can take longer than one call: the tool then answers `running: true` and the analysis goes on in the background; calling the tool again with the same arguments (without editing the map) returns the result. `vis: "auto"` (the default) uses the exact visibility on maps up to 4000 brushes and the fast one above.
 

@@ -108,11 +108,12 @@ action_list! { shell_actions {
     About => "about", Help, HelpAbout, None, Ready;
     FaceSelectionBack => "face_selection_back", Edit, EditFaceHistory, sc(ALT, Key::Z), Ready;
     FaceSelectionForward => "face_selection_forward", Edit, EditFaceHistory, sc(ALT, Key::Y), Ready;
+    OpenLastMap => "open_last_map", File, Hidden, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[Action::Undo, Action::Redo, Action::GridSmaller, Action::GridLarger];
 
-pub(super) const TR: TrTable = &[];
+pub(super) const TR: TrTable = &[("action.open_last_map", "Open last edited map", "Ouvrir la dernière map modifiée")];
 
 pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
     let sel = state.doc.selection();
@@ -166,6 +167,7 @@ pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
         | Action::Center3dOnSelection
         | Action::ApplyCurrentTexture => has_any,
         Action::UnloadPointfile => state.pointfile.is_some(),
+        Action::OpenLastMap => !state.settings.recent_files.is_empty(),
         _ => return None,
     })
 }

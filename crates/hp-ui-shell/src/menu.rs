@@ -188,9 +188,13 @@ fn hammer_order(group: MenuGroup) -> &'static [Action] {
             A::ExtrudeCycleDirection,
             A::ToggleExtrudeGrow,
         ],
-        MenuGroup::ToolsBrushMisc => {
-            &[A::ConvertToDetail, A::SelectDetailCandidates, A::TieEachToEntity, A::NodrawHiddenFaces]
-        }
+        MenuGroup::ToolsBrushMisc => &[
+            A::ConvertToDetail,
+            A::SelectDetailCandidates,
+            A::TieEachToEntity,
+            A::NodrawHiddenFaces,
+            A::TrimOverlayFaces,
+        ],
         MenuGroup::ToolsDisp => {
             &[A::DispSubdivide, A::DispSmoothLoop, A::DispLoopHeight, A::DispInvertAlpha, A::DispSelectBySlope]
         }
@@ -718,6 +722,10 @@ fn menu_item(ui: &mut Ui, state: &mut AppState, item: MenuItem, extensions: &mut
     }
 }
 
+pub fn recent_name(path: &std::path::Path) -> String {
+    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string())
+}
+
 fn recent_menu(ui: &mut Ui, state: &mut AppState) {
     submenu(ui, t!("menu.recent"), |ui| {
         ui.set_min_width(MENU_MIN_WIDTH);
@@ -726,12 +734,16 @@ fn recent_menu(ui: &mut Ui, state: &mut AppState) {
             return;
         }
         let mut open = None;
+        let last =
+            state.settings.recent_files.first().map(std::path::PathBuf::as_path).map(recent_name).unwrap_or_default();
+        let shortcut = state.keys.shortcut(Action::OpenLastMap);
+        let r = menu_entry(ui, &tf!("shell.menu.open_last", last), shortcut, true, Check::None);
+        if r.clicked() {
+            state.request(Action::OpenLastMap);
+        }
+        ui.separator();
         for (i, path) in state.settings.recent_files.iter().enumerate() {
-            let name = path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| path.display().to_string());
-            let label = format!("{}  {name}", i + 1);
+            let label = format!("{}  {}", i + 1, recent_name(path));
             let r = menu_entry(ui, &label, None, true, Check::None);
             if r.on_hover_text(path.display().to_string()).clicked() {
                 open = Some(path.clone());
@@ -800,6 +812,7 @@ pub fn menu_actions() -> Vec<Action> {
 
 pub(crate) const TR: TrTable = &[
     ("shell.menu.clear_recent", "Clear recent maps", "Vider la liste des maps récentes"),
+    ("shell.menu.open_last", "Open last edited map: {0}", "Ouvrir la dernière map modifiée : {0}"),
     ("shell.menu.first_run", "Setup assistant...", "Assistant de configuration..."),
     ("shell.menu.not_saved_yet", "Not saved yet", "Pas encore enregistrée"),
     ("shell.menu.unsaved_changes", "Unsaved changes", "Modifications non enregistrées"),

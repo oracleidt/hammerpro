@@ -16,6 +16,7 @@ action_list! { health_actions {
     ToggleVisleaves => "toggle_visleaves", Map, MapOptimize, None, Ready;
     ShowCubemaps => "show_cubemaps", Tools, ToolsPlacement, None, Ready;
     ToggleCubemapAssignment => "toggle_cubemap_assignment", View, ViewDiagnostics, None, Ready;
+    TrimOverlayFaces => "trim_overlay_faces", Tools, ToolsBrushMisc, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];
@@ -27,8 +28,20 @@ pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
         Action::AnalyzeOptimization => Some(!state.runtime.optimize.running),
         Action::ToggleVisleaves => Some(state.runtime.optimize.portals.is_some() || state.runtime.optimize.view),
         Action::SealAreaportal => Some(!state.doc.selection().objects.is_empty()),
+        Action::TrimOverlayFaces => Some(selected_overlays(state).next().is_some()),
         _ => None,
     }
+}
+
+fn selected_overlays(state: &AppState) -> impl Iterator<Item = hp_editor::Id> + '_ {
+    let scene = state.doc.scene();
+    state.doc.selection().objects.iter().filter_map(move |o| match o {
+        hp_editor::ObjRef::Entity(id) => scene
+            .entity(*id)
+            .filter(|n| hp_editor::side_index::overlay::is_overlay_class(&n.entity.classname))
+            .map(|_| *id),
+        hp_editor::ObjRef::Solid(_) => None,
+    })
 }
 
 pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
@@ -73,4 +86,21 @@ pub(super) const TR: TrTable = &[
     ("action.show_cubemaps", "Cubemaps...", "Cubemaps..."),
     ("action.toggle_cubemap_assignment", "Show cubemap assignment", "Afficher l'attribution des cubemaps"),
     ("shell.undo.place_cubemaps", "Place cubemaps", "Placement de cubemaps"),
+    ("action.trim_overlay_faces", "Trim overlay faces", "Rogner les faces de l'overlay"),
+    ("shell.undo.trim_overlay_faces", "Trim overlay faces", "Rognage des faces d'overlay"),
+    (
+        "app.health.trim_overlay_none",
+        "Select one or more overlays (info_overlay) first",
+        "Sélectionnez d'abord un ou plusieurs overlays (info_overlay)",
+    ),
+    (
+        "app.health.trim_overlay_done",
+        "Removed {0} faces the overlay does not touch from {1} overlays",
+        "{0} faces que l'overlay ne touche pas retirées de {1} overlays",
+    ),
+    (
+        "app.health.trim_overlay_nothing",
+        "Every face of the selected overlays is touched by its rectangle: nothing to trim",
+        "Chaque face des overlays sélectionnés est touchée par leur rectangle : rien à rogner",
+    ),
 ];

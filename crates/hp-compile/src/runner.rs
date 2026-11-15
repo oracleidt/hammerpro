@@ -274,13 +274,19 @@ impl Worker {
                     outcome
                 }
             },
-            StepAction::Pack { files } => self.run_pack(index, files),
+            StepAction::Pack { files } => {
+                let outcome = self.run_pack(index, files);
+                self.clean_pak(index, outcome)
+            }
             StepAction::PackDeferred { files } => match self.wait_deferred(index, files) {
-                Some(files) => self.run_pack(index, &files),
+                Some(files) => {
+                    let outcome = self.run_pack(index, &files);
+                    self.clean_pak(index, outcome)
+                }
                 None if self.cancelled() => Outcome { cancelled: true, ..Outcome::FAILED },
                 None => {
                     self.notice(index, Notice::PackListUnavailable);
-                    Outcome::OK
+                    self.clean_pak(index, Outcome::OK)
                 }
             },
             StepAction::Copy { .. } | StepAction::Spawn if crate::sandbox::is_sandboxed() => {
@@ -306,6 +312,7 @@ impl Worker {
         let lin = self.plan.lin_path();
         let lin_before = mtime(&lin);
         let bsp = self.plan.bsp_path();
+        let bsp_before = mtime(&bsp);
         let mut outcome = self.run_process(index, step);
         if outcome.cancelled {
             return outcome;
@@ -326,9 +333,15 @@ impl Worker {
             return outcome;
         }
         self.report_failure(index, step, outcome);
-        if outcome.success && !bsp.is_file() {
+        let stale = bsp_before.is_some() && mtime(&bsp) == bsp_before;
+        if outcome.success && (!bsp.is_file() || stale) {
             outcome.success = false;
             self.notice(index, Notice::BspNotWritten { bsp });
+        } else if outcome.success
+            && let Some(problem) = empty_world(&bsp)
+        {
+            outcome.success = false;
+            self.emit(CompileEvent::Log { step: index, line: problem, severity: Severity::Error, location: None });
         } else if outcome.success
             && let Err(error) = self.repair_collision(index, &bsp)
         {
@@ -381,6 +394,22 @@ impl Worker {
                 Err(()) => return None,
             }
         }
+    }
+
+    fn clean_pak(&mut self, index: usize, outcome: Outcome) -> Outcome {
+        let wanted = self.plan.steps.iter().any(|s| {
+            s.enabled && s.kind == StepKind::Bsp && s.args.iter().any(|a| a.eq_ignore_ascii_case(pack::CLEAN_PAK_FLAG))
+        });
+        if !wanted || !outcome.success || outcome.cancelled || self.cancelled() {
+            return outcome;
+        }
+        let map = self.plan.map_name().unwrap_or_default().to_owned();
+        let (line, severity) = match pack::clean_in_place(&self.plan.bsp_path(), &map) {
+            Ok(report) => (report.summary(), Severity::Info),
+            Err(e) => (format!("Warning: the pakfile could not be cleaned (-cleanpak): {e}"), Severity::Warning),
+        };
+        self.emit(CompileEvent::Log { step: index, line, severity, location: None });
+        outcome
     }
 
     fn run_pack(&mut self, index: usize, files: &[(String, PathBuf)]) -> Outcome {
@@ -718,6 +747,24 @@ fn reap_in_background(child: Child) {
     }
     #[cfg(not(unix))]
     drop(child);
+}
+
+pub(crate) fn empty_world(path: &Path) -> Option<String> {
+    if std::fs::metadata(path).is_ok_and(|m| m.len() == 0) {
+        return Some(format!("{} is empty: the map was not copied nor started.", path.display()));
+    }
+    let bsp = match hp_bsp::Bsp::open(path) {
+        Ok(bsp) => bsp,
+        Err(hp_bsp::BspError::NotBsp | hp_bsp::BspError::UnsupportedVersion(_)) => return None,
+        Err(error) => return Some(format!("{} cannot be read as a map: {error}", path.display())),
+    };
+    let planes = bsp.lump(hp_bsp::lump::PLANES).map_or(0, |p| p.len());
+    (planes == 0).then(|| {
+        format!(
+            "{} has no planes: the game would refuse it with \"Map with no planes\". The map was not copied nor started.",
+            path.display()
+        )
+    })
 }
 
 fn mtime(path: &Path) -> Option<SystemTime> {
@@ -1086,6 +1133,39 @@ mod tests {
         let n = notices(&events);
         assert!(n.iter().any(|(s, n)| *s == 0 && matches!(n, Notice::Leaked { .. })));
         assert!(!n.iter().any(|(_, n)| *n == Notice::PipelineStopped));
+    }
+
+    #[test]
+    fn a_map_with_no_planes_is_never_copied_nor_started() {
+        let dir = scratch("runner_no_planes");
+        let src = dir.join("empty_src.bin");
+        std::fs::write(&src, hp_bsp::synthetic_bsp(20, &[])).unwrap();
+        let bsp = dir.join("gm_x_cordon.bsp");
+        let maps = dir.join("maps");
+        #[cfg(windows)]
+        let script = format!(
+            "copy /Y {} {}",
+            src.display().to_string().replace('/', "\\"),
+            bsp.display().to_string().replace('/', "\\")
+        );
+        #[cfg(not(windows))]
+        let script = format!("cp '{}' '{}'", src.display(), bsp.display());
+        let mut step = shell_step(&script);
+        step.kind = StepKind::Bsp;
+        let mut plan = CompilePlan::new(dir.join("gm_x_cordon.vmf"));
+        plan.steps.push(step);
+        plan.steps.push(Step::copy(StepKind::CopyToMaps, bsp.clone(), maps.join("gm_x_cordon.bsp")));
+        let events = collect(start(plan, &dir));
+        assert!(!finished(&events).0);
+        assert!(
+            log_lines(&events).iter().any(|(_, l, _)| l.contains("Map with no planes")),
+            "{:?}",
+            log_lines(&events)
+        );
+        assert!(!maps.join("gm_x_cordon.bsp").exists());
+        assert!(empty_world(&src).is_some());
+        std::fs::write(&src, b"").unwrap();
+        assert!(empty_world(&src).is_some_and(|m| m.contains("empty")));
     }
 
     #[test]

@@ -737,6 +737,10 @@ fn cameras_from_block(b: &Block) -> Cameras {
     }
 }
 
+pub(crate) const HP_ACTIVE: &str = "hp_active";
+pub(crate) const HP_MODE: &str = "hp_mode";
+pub(crate) const EXCLUDE_MODE: &str = "exclude";
+
 fn legacy_cordon(cordons: &mut Cordons, b: &Block) {
     cordons.style = CordonStyle::Legacy;
     cordons.active = b.get("active").and_then(parse_bool).unwrap_or(false);
@@ -745,22 +749,26 @@ fn legacy_cordon(cordons: &mut Cordons, b: &Block) {
         active: true,
         mins: vec3_or(b, "mins", DVec3::splat(-1024.0)),
         maxs: vec3_or(b, "maxs", DVec3::splat(1024.0)),
+        exclude: false,
     });
 }
 
 fn modern_cordons(cordons: &mut Cordons, b: &Block) {
     cordons.style = CordonStyle::Modern;
-    cordons.active = b.get("active").and_then(parse_bool).unwrap_or(false);
+    cordons.active = b.get(HP_ACTIVE).or_else(|| b.get("active")).and_then(parse_bool).unwrap_or(false);
     for c in b.children_named("cordon") {
         let index = cordons.cordons.len();
         let mut boxes =
             c.children_named("box").map(|bx| (vec3_or(bx, "mins", DVec3::ZERO), vec3_or(bx, "maxs", DVec3::ZERO)));
         let (mins, maxs) = boxes.next().unwrap_or((DVec3::ZERO, DVec3::ZERO));
+        let exclude = c.get(HP_MODE).is_some_and(|m| m.trim().eq_ignore_ascii_case(EXCLUDE_MODE));
+        let active_key = if exclude { c.get(HP_ACTIVE).or_else(|| c.get("active")) } else { c.get("active") };
         cordons.cordons.push(Cordon {
             name: c.get("name").unwrap_or_default().to_owned(),
-            active: c.get("active").and_then(parse_bool).unwrap_or(true),
+            active: active_key.and_then(parse_bool).unwrap_or(true),
             mins,
             maxs,
+            exclude,
         });
         cordons.extra_boxes.extend(boxes.map(|(mins, maxs)| CordonBox { cordon: index, mins, maxs }));
     }

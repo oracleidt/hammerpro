@@ -15,8 +15,15 @@ pub(crate) struct OptimizeWindow {
     topic: Option<Topic>,
 }
 
-const TOPICS: [Topic; 6] =
-    [Topic::Visleaves, Topic::Detail, Topic::Hints, Topic::Areaportals, Topic::Lights, Topic::Cubemaps];
+const TOPICS: [Topic; 7] = [
+    Topic::Visleaves,
+    Topic::Detail,
+    Topic::Hints,
+    Topic::Areaportals,
+    Topic::Lights,
+    Topic::Cubemaps,
+    Topic::Overlays,
+];
 
 fn topic_label(t: Topic) -> &'static str {
     match t {
@@ -26,6 +33,7 @@ fn topic_label(t: Topic) -> &'static str {
         Topic::Areaportals => t!("optimize.topic.areaportals"),
         Topic::Lights => t!("optimize.topic.lights"),
         Topic::Cubemaps => t!("optimize.topic.cubemaps"),
+        Topic::Overlays => t!("optimize.topic.overlays"),
     }
 }
 
@@ -37,6 +45,7 @@ fn why(t: Topic) -> &'static str {
         Topic::Areaportals => t!("optimize.why.areaportals"),
         Topic::Lights => t!("optimize.why.lights"),
         Topic::Cubemaps => t!("optimize.why.cubemaps"),
+        Topic::Overlays => t!("optimize.why.overlays"),
     }
 }
 
@@ -285,6 +294,9 @@ mod tests {
                 obj.clone(),
                 Finding::new(Topic::Cubemaps, "cubemap_far", Impact::Low, "m".to_owned())
                     .args(vec!["2".to_owned(), "1024".to_owned()]),
+                Finding::new(Topic::Overlays, "overlay_many_faces", Impact::Medium, "m".to_owned())
+                    .objects(vec![hp_editor::ObjRef::Entity(1)])
+                    .args(vec!["1".to_owned(), "20".to_owned(), "19".to_owned(), "x".to_owned(), "64".to_owned()]),
             ],
             vis: Some(hp_editor::optimize::vis::VisReport {
                 clusters: 12,

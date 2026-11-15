@@ -43,7 +43,7 @@ pub use brush::{
 pub use compile::{
     BspModeSetting, CompilePresetSetting, CompileProfile, CompileSettings, FlagChoiceSetting, LightingSetting,
     PackPolicy, ProfileStep, RadModeSetting, StaticPropShadows, VisModeSetting, WindowPlacement,
-    background_precompile_default,
+    background_precompile_default, background_precompile_supported,
 };
 pub use compilers::{CompilerProfile, CompilerStep, CompilerStepKind};
 pub use content::{ContentSettings, ReleaseMode};
@@ -229,12 +229,16 @@ impl Default for Settings {
     }
 }
 
-pub const SETTINGS_REVISION: u32 = 1;
+pub const SETTINGS_REVISION: u32 = 2;
 
 impl Settings {
     pub fn migrate(&mut self) {
         if self.revision < 1 {
             self.selection.box_confirm = false;
+        }
+        if self.revision < 2 {
+            self.compile.background_precompile = false;
+            self.lighting.prepare = false;
         }
         self.revision = self.revision.max(SETTINGS_REVISION);
     }
@@ -390,6 +394,33 @@ undo = "Ctrl+Alt+Z"
         assert_eq!(toml::from_str::<Settings>(&text).unwrap(), s);
         let newer = format!("{text}\n[some_future_package]\nanswer = 42\n");
         assert_eq!(toml::from_str::<Settings>(&newer).unwrap(), s);
+    }
+
+    #[test]
+    fn background_work_at_startup_is_off_after_the_upgrade_and_stays_on_when_chosen_again() {
+        let mut old: Settings = toml::from_str(
+            "revision = 1
+[compile]
+background_precompile = true
+[lighting]
+prepare = true
+",
+        )
+        .unwrap();
+        old.migrate();
+        assert!(!old.compile.background_precompile && !old.lighting.prepare);
+        assert_eq!(old.revision, SETTINGS_REVISION);
+        old.compile.background_precompile = true;
+        old.lighting.prepare = true;
+        let text = toml::to_string(&old).unwrap();
+        let mut again: Settings = toml::from_str(&text).unwrap();
+        again.migrate();
+        assert!(
+            again.compile.background_precompile && again.lighting.prepare,
+            "a user who turns them back on keeps them"
+        );
+        let d = Settings::default();
+        assert!(!d.compile.background_precompile && !d.lighting.prepare);
     }
 
     #[test]

@@ -150,9 +150,7 @@ pub(super) fn scan(world: &mut World, cands: &[usize], o: &ScanOpts, cancel: Opt
         order.par_iter().map(|&i| one(i)).collect()
     } else if order.len() >= PARALLEL_FROM {
         use rayon::prelude::*;
-        let threads = std::thread::available_parallelism().map_or(2, |n| (n.get() / 2).max(1));
-        match rayon::ThreadPoolBuilder::new().num_threads(threads).thread_name(|i| format!("hp-placement-{i}")).build()
-        {
+        match hp_sched::builder("hp-placement", hp_sched::background_threads(), hp_sched::Level::Idle).build() {
             Ok(pool) => pool.install(|| order.par_iter().map(|&i| one(i)).collect()),
             Err(_) => order.iter().map(|&i| one(i)).collect(),
         }

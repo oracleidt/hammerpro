@@ -9,6 +9,8 @@ use crate::{Document, EditError, EditResult, Id};
 
 pub const CORDON_SEAL_THICKNESS: f64 = 16.0;
 
+pub const MAX_CORDON_COORD: f64 = 16384.0 - 2.0 * CORDON_SEAL_THICKNESS;
+
 pub const DEFAULT_SEAL_MATERIAL: &str = "TOOLS/TOOLSSKYBOX";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -36,7 +38,9 @@ impl Default for CompileExport {
 pub struct CompileSnapshot {
     pub map: Map,
     pub cordon_boxes: Vec<Aabb>,
+    pub exclude_boxes: Vec<Aabb>,
     pub cordoned_out: usize,
+    pub kept_after_cordon: usize,
     pub hidden: usize,
     pub hidden_lights: usize,
     pub added_player_start: bool,
@@ -44,7 +48,11 @@ pub struct CompileSnapshot {
 
 impl CompileSnapshot {
     pub fn is_cordoned(&self) -> bool {
-        !self.cordon_boxes.is_empty()
+        !self.cordon_boxes.is_empty() || !self.exclude_boxes.is_empty()
+    }
+
+    pub fn cordon_left_nothing(&self) -> bool {
+        self.is_cordoned() && self.kept_after_cordon == 0
     }
 
     pub fn write(&self, dir: &Path, name: &str) -> EditResult<PathBuf> {
@@ -90,6 +98,12 @@ pub fn seal_boxes(b: &Aabb, thickness: f64) -> [Aabb; 6] {
     ]
 }
 
+fn clamp_to_world(b: &Aabb) -> Option<Aabb> {
+    let lim = DVec3::splat(MAX_CORDON_COORD);
+    let c = Aabb::new(b.min.clamp(-lim, lim), b.max.clamp(-lim, lim));
+    (c.min.is_finite() && c.max.is_finite() && c.size().min_element() >= 1.0).then_some(c)
+}
+
 fn inside_any(boxes: &[Aabb], p: DVec3) -> bool {
     boxes.iter().any(|b| b.contains_point(p))
 }
@@ -105,14 +119,17 @@ impl Document {
 
     pub fn compile_snapshot(&self, export: &CompileExport) -> CompileSnapshot {
         let boxes = if export.cordons { self.cordon_boxes() } else { Vec::new() };
-        self.snapshot_in(export, boxes)
+        let excludes = if export.cordons { self.exclude_cordon_boxes() } else { Vec::new() };
+        self.snapshot_in(export, boxes, excludes)
     }
 
     pub fn compile_snapshot_in(&self, export: &CompileExport, boxes: &[Aabb]) -> CompileSnapshot {
-        self.snapshot_in(export, boxes.to_vec())
+        let excludes = if export.cordons { self.exclude_cordon_boxes() } else { Vec::new() };
+        self.snapshot_in(export, boxes.to_vec(), excludes)
     }
 
-    fn snapshot_in(&self, export: &CompileExport, boxes: Vec<Aabb>) -> CompileSnapshot {
+    fn snapshot_in(&self, export: &CompileExport, boxes: Vec<Aabb>, excludes: Vec<Aabb>) -> CompileSnapshot {
+        let boxes: Vec<Aabb> = boxes.iter().filter_map(clamp_to_world).collect();
         let mut map = self.to_map();
         let scene = self.scene();
         let mut hidden = 0usize;
@@ -146,6 +163,27 @@ impl Document {
 
         let mut cordoned_out = 0usize;
         let mut added_player_start = false;
+        if !excludes.is_empty() {
+            let cut = |id: Id| scene.solid(id).is_some_and(|n| crate::visibility::box_inside_any(&excludes, &n.bounds));
+            let before = map.world.solids.len();
+            map.world.solids.retain(|s| !cut(s.id));
+            cordoned_out += before - map.world.solids.len();
+            let before = map.entities.len();
+            map.entities.retain(|e| {
+                if !e.solids.is_empty() {
+                    return !e.solids.iter().all(|s| cut(s.id));
+                }
+                e.classname.eq_ignore_ascii_case("worldspawn")
+                    || e.classname.eq_ignore_ascii_case("light_environment")
+                    || e.origin().is_none_or(|o| !inside_any(&excludes, o))
+            });
+            cordoned_out += before - map.entities.len();
+        }
+        let kept = |map: &Map| {
+            map.world.solids.iter().filter(|s| !s.hidden).count()
+                + map.entities.iter().filter(|e| !e.hidden && !e.solids.is_empty()).count()
+        };
+        let mut kept_after_cordon = kept(&map);
         if !boxes.is_empty() {
             let solid_touches = |id: Id| scene.solid(id).is_some_and(|n| touches_any(&boxes, &n.bounds));
             let before = map.world.solids.len();
@@ -170,9 +208,12 @@ impl Document {
                     }
                 }
             }
+            kept_after_cordon = kept(&map);
             let next_id = self.seal_cordons(&mut map, &boxes, &export.seal_material);
             added_player_start = self.add_player_start(&mut map, &boxes, next_id);
-            map.cordons.active = false;
+        }
+        if !boxes.is_empty() || !excludes.is_empty() {
+            map.cordons = hp_vmf::Cordons { style: hp_vmf::CordonStyle::Modern, ..hp_vmf::Cordons::default() };
         }
         crate::sky::bake_switches(&mut map);
         let hidden_lights = if export.visibility == VisibilityExport::Everything {
@@ -180,7 +221,16 @@ impl Document {
         } else {
             map.entities.iter().filter(|e| e.hidden && e.classname.to_ascii_lowercase().starts_with("light")).count()
         };
-        CompileSnapshot { map, cordon_boxes: boxes, cordoned_out, hidden, hidden_lights, added_player_start }
+        CompileSnapshot {
+            map,
+            cordon_boxes: boxes,
+            exclude_boxes: excludes,
+            cordoned_out,
+            kept_after_cordon,
+            hidden,
+            hidden_lights,
+            added_player_start,
+        }
     }
 
     pub fn write_compile_snapshot(&self, dir: &Path, name: &str, export: &CompileExport) -> EditResult<PathBuf> {
@@ -318,6 +368,7 @@ entity { "id" "12" "classname" "info_player_start" "origin" "1032 1032 100" }
                 active: true,
                 mins: DVec3::new(-128.0, -128.0, 0.0),
                 maxs: DVec3::splat(256.0),
+                exclude: false,
             }],
             ..Cordons::default()
         };
@@ -345,12 +396,19 @@ entity { "id" "12" "classname" "info_player_start" "origin" "1032 1032 100" }
 
         let mut c = d.scene().cordons().clone();
         c.extra_boxes.push(CordonBox { cordon: 0, mins: DVec3::new(900.0, 900.0, -100.0), maxs: DVec3::splat(1100.0) });
-        c.cordons.push(Cordon { name: "off".into(), active: false, mins: DVec3::ZERO, maxs: DVec3::ONE });
+        c.cordons.push(Cordon {
+            name: "off".into(),
+            active: false,
+            mins: DVec3::ZERO,
+            maxs: DVec3::ONE,
+            exclude: false,
+        });
         c.cordons.push(Cordon {
             name: "flat".into(),
             active: true,
             mins: DVec3::ZERO,
             maxs: DVec3::new(10.0, 10.0, 0.0),
+            exclude: false,
         });
         d.set_cordons(c).expect("cordons");
         assert_eq!(d.cordon_boxes().len(), 2);

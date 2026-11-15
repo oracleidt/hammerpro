@@ -37,6 +37,16 @@ domain! { "overlays and decals";
             "rotate_by": number("Degrees added around the normal.", -360.0, 360.0),
             "render_order": integer("Render order (0 to 3).", 0, 3),
         }, ["id"];
+    trim_overlay_faces: Edit, "Trim overlay faces",
+        "Remove from overlays (info_overlay) the brush faces their projected rectangle does not touch, in one \
+        undo step: fewer fragments, and back under the 64 face engine limit. Faces that touch the rectangle \
+        and side ids that no longer exist are kept; an overlay touching none of its faces is left as is. \
+        Default: the selected overlays. preview reports what would be removed without editing.",
+        {
+            "ids": ids("info_overlay ids (default: the selected overlays)."),
+            "all": boolean("Every overlay of the map."),
+            "preview": boolean("Only report, do not edit (default false)."),
+        }, [];
     list_decals: Read, "List decals",
         "The infodecal entities: id, material (texture), origin, targetname.",
         { "limit": limit(), "offset": offset() }, [];
@@ -253,6 +263,52 @@ fn set_overlay(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         })
     })?;
     Ok(ToolResult::json(json!({ "id": id, "changed": changes.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>() })))
+}
+
+fn trim_overlay_faces(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let ids: Vec<u32> = if a.opt_bool("all")?.unwrap_or(false) {
+        state.doc.scene().entities().iter().filter(|(_, e)| is_overlay(&e.entity)).map(|(id, _)| *id).collect()
+    } else if a.get("ids").is_some() {
+        let ids = entity_ids(&state.doc, a, "ids")?;
+        if let Some(id) = ids.iter().find(|id| state.doc.scene().entity(**id).is_none_or(|n| !is_overlay(&n.entity))) {
+            return Err(format!("{id} is not an overlay"));
+        }
+        ids
+    } else {
+        state
+            .doc
+            .selected_entity_ids()
+            .into_iter()
+            .filter(|id| state.doc.scene().entity(*id).is_some_and(|n| is_overlay(&n.entity)))
+            .collect()
+    };
+    if ids.is_empty() {
+        return Err("no overlay: give ids, all, or select overlays first".to_owned());
+    }
+    let survey: Vec<Value> = ids
+        .iter()
+        .filter_map(|id| hp_editor::optimize::overlays::overlay_faces(&state.doc, *id))
+        .map(|o| {
+            json!({
+                "id": o.id,
+                "faces": o.listed,
+                "touched": o.touched.len(),
+                "untouched_side_ids": o.untouched,
+                "missing_side_ids": o.missing,
+                "trimmable": o.trimmed().is_some(),
+            })
+        })
+        .collect();
+    if a.opt_bool("preview")?.unwrap_or(false) {
+        return Ok(ToolResult::json(json!({ "preview": true, "overlays": survey })));
+    }
+    let r = edit(state, "trim_overlay_faces", |doc| doc.trim_overlay_faces(&ids))?;
+    Ok(ToolResult::json(json!({
+        "removed": r.removed,
+        "trimmed": r.overlays.iter().map(|(id, kept, removed)| json!({ "id": id, "kept": kept, "removed": removed })).collect::<Vec<_>>(),
+        "overlays": survey,
+        "undo": if r.removed > 0 { "one undo step: MCP: trim_overlay_faces" } else { "nothing changed" },
+    })))
 }
 
 fn list_decals(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {

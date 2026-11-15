@@ -75,8 +75,9 @@ To edit the face list by hand, use the eyedropper button next to the `sides` key
 
 - **Edit > Set maximum distance...** writes `fademaxdist` on overlays so they fade out with distance.
 - [Check for problems](check-problems.md) finds overlays whose faces no longer exist (with a fix that removes them from the lists) and overlays on more than 64 faces. A map is limited to 8192 overlays.
+- **Tools > Brush operations > Trim overlay faces** (also in the right click menu of the views) removes from the selected overlays the faces their rectangle does not touch, in one undo step: fewer fragments, and back under the 64 face limit. **Map > Optimize the map...** lists the overlays worth trimming (topic **Overlays**).
 - The auto visgroup **Overlays and decals** holds every `info_overlay` and `infodecal` (see [Visgroups](visgroups.md)).
-- MCP tools: `list_decals`, `create_decal`, `list_overlays`, `create_overlay`, `set_overlay`. See the [MCP tool reference](../../MCP.md).
+- MCP tools: `list_decals`, `create_decal`, `list_overlays`, `create_overlay`, `set_overlay`, `trim_overlay_faces`. See the [MCP tool reference](../../MCP.md).
 - `set_tool_options` with tool `decal` or `overlay` and the option `snap` (`on` or `off`) switches the grid snapping of the tool, like its checkbox.
 
 ## FAQ

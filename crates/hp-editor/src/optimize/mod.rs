@@ -8,6 +8,7 @@ pub mod cubemaps;
 pub mod detail;
 pub mod hints;
 pub mod lights;
+pub mod overlays;
 #[doc(hidden)]
 pub mod sample;
 pub mod sealing;
@@ -41,6 +42,7 @@ pub enum Topic {
     Areaportals,
     Lights,
     Cubemaps,
+    Overlays,
 }
 
 impl Topic {
@@ -52,6 +54,7 @@ impl Topic {
             Topic::Areaportals => "areaportals",
             Topic::Lights => "lights",
             Topic::Cubemaps => "cubemaps",
+            Topic::Overlays => "overlays",
         }
     }
 }

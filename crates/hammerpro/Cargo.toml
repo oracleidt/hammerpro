@@ -12,6 +12,7 @@ name = "hammerpro"
 path = "src/main.rs"
 
 [dependencies]
+hp-sched.workspace = true
 hp-collab = { path = "../hp-collab" }
 anyhow.workspace = true
 chrono = "0.4"

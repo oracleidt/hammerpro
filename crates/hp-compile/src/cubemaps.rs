@@ -11,7 +11,13 @@ pub(crate) fn copy_keeping_cubemaps(from: &Path, to: &Path) -> std::io::Result<O
         return Ok(None);
     }
     let Some((new, writer, kept)) = carried(from, to, map) else { return Ok(None) };
-    let Ok(zip) = writer.finish(PakOptions::default()) else { return Ok(None) };
+    let compressed = new.pakfile().is_ok_and(|p| p.any_compressed());
+    let opts = if compressed {
+        PakOptions { compression: hp_bsp::PakCompression::Lzma, ..PakOptions::default() }
+    } else {
+        PakOptions::default()
+    };
+    let Ok(zip) = writer.finish(opts) else { return Ok(None) };
     let mut edit = new.edit();
     if edit.set_pakfile(zip).is_err() {
         return Ok(None);

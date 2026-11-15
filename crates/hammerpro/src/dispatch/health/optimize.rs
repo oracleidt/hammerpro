@@ -135,7 +135,7 @@ pub(crate) fn prepare(state: &AppState, doors: bool) -> Prepared {
 }
 
 fn threads() -> usize {
-    std::thread::available_parallelism().map_or(2, |n| n.get()).div_ceil(2).max(1)
+    hp_sched::background_threads()
 }
 
 pub(crate) fn compile(
@@ -151,7 +151,7 @@ pub(crate) fn compile(
         preview: true,
         ..Default::default()
     };
-    let builder = || rayon::ThreadPoolBuilder::new().num_threads(threads()).thread_name(|i| format!("hp-optimize-{i}"));
+    let builder = || hp_sched::builder("hp-optimize", threads(), hp_sched::Level::BelowNormal);
     let pool = builder()
         .stack_size(STACK)
         .build()
@@ -260,8 +260,11 @@ pub(crate) fn simulate(
     }
 }
 
-fn evaluate_hints(
-    p: &Prepared,
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn evaluate_hints(
+    source: &hp_vmf::Map,
+    fs: Option<&hp_fs::GameFs>,
+    existing: &[Aabb],
     base: &BspAnalysis,
     full: bool,
     max: usize,
@@ -271,7 +274,7 @@ fn evaluate_hints(
 ) -> (Vec<HintCandidate>, Option<String>) {
     let Some(portals) = base.portals.as_ref() else { return (Vec::new(), None) };
     let visible = hints::visible_counts(&base.vis);
-    let mut list = hints::candidates(&base.vis, portals, &visible, &p.existing_hints);
+    let mut list = hints::candidates(&base.vis, portals, &visible, existing);
     if max == 0 || list.is_empty() {
         return (list, None);
     }
@@ -283,18 +286,18 @@ fn evaluate_hints(
             note = Some(format!("time budget reached: {i} of {evals} hint candidates measured"));
             break;
         }
-        let mut map = p.map.clone();
+        let mut map = source.clone();
         simulate(&mut map, &[], std::slice::from_ref(c), &[]);
-        if let Ok((a, false, _)) = compile(&map, p.fs.as_ref(), full) {
+        if let Ok((a, false, _)) = compile(&map, fs, full) {
             c.gain = Some(base_pvs - a.report.total_pvs as i64);
         }
     }
     list.sort_by(|a, b| b.gain.unwrap_or(i64::MIN).cmp(&a.gain.unwrap_or(i64::MIN)));
     let good: Vec<HintCandidate> = list.iter().filter(|c| c.gain.is_some_and(|g| g > 0)).cloned().collect();
     if good.len() > 1 && start.elapsed().as_secs_f64() + base_secs <= budget as f64 {
-        let mut map = p.map.clone();
+        let mut map = source.clone();
         simulate(&mut map, &[], &good, &[]);
-        if let Ok((a, false, _)) = compile(&map, p.fs.as_ref(), full) {
+        if let Ok((a, false, _)) = compile(&map, fs, full) {
             let together = base_pvs - a.report.total_pvs as i64;
             let best = good[0].gain.unwrap_or(0);
             if together < best {
@@ -348,7 +351,17 @@ pub(crate) fn run(p: Prepared, o: Options, cancel: &AtomicBool) -> Analysis {
     if !a.leaked
         && let Some(base) = a.bsp()
     {
-        let (list, note) = evaluate_hints(&p, base, o.full_vis, o.hint_evals, start, o.budget_secs, base_secs);
+        let (list, note) = evaluate_hints(
+            &p.map,
+            p.fs.as_ref(),
+            &p.existing_hints,
+            base,
+            o.full_vis,
+            o.hint_evals,
+            start,
+            o.budget_secs,
+            base_secs,
+        );
         a.hints = list;
         a.hints_note = note;
     }
@@ -438,6 +451,7 @@ pub(crate) fn compose(state: &AppState, a: &Analysis, include_open: bool) -> Com
     let lights = light_audit(state);
     findings.extend(lights.findings.iter().cloned());
     findings.extend(super::cubemaps::analyze_with(state, a.bsp().map(|b| &b.vis)).findings);
+    findings.extend(hp_editor::optimize::overlays::findings(&state.doc));
     sort_findings(&mut findings);
     let report = OptimizeReport {
         vis: a.report().cloned(),

@@ -14,7 +14,16 @@ fn main() {
     let map = hp_vmf::parse(&text).expect("parse");
     let mut log = |l: &str| println!("{l}");
     let name = std::path::Path::new(&output).file_stem().map(|s| s.to_string_lossy().into_owned());
-    let opts = hp_bspc::CompileOptions { map_name: name, ..Default::default() };
+    let mut opts = hp_bspc::CompileOptions { map_name: name, ..Default::default() };
+    for flag in args {
+        match flag.as_str() {
+            "-cullverts" => opts.cull_verts = true,
+            "-culltjunc" => opts.cull_tjunc = true,
+            "-cullbrushes" => opts.cull_brushes = true,
+            "-vis" => opts.vis = hp_bspc::VisLevel::Full,
+            other => println!("unknown flag {other}"),
+        }
+    }
     match hp_bspc::compile(&map, &ByName, &hp_bspc::props::NoModels, &opts, &mut log) {
         Ok(out) => {
             std::fs::write(&output, &out.bsp).expect("write");

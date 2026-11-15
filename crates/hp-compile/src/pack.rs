@@ -45,6 +45,15 @@ pub(crate) fn pack_into(
     Ok(PackReport { packed: files.len(), pak_bytes, missing })
 }
 
+pub const CLEAN_PAK_FLAG: &str = "-cleanpak";
+
+pub(crate) fn clean_in_place(bsp: &Path, map: &str) -> Result<hp_bsp::pakclean::PakCleanReport, String> {
+    let data = std::fs::read(bsp).map_err(|e| format!("{}: {e}", bsp.display()))?;
+    let (out, report) = hp_bsp::pakclean::clean(data, map).map_err(|e| e.to_string())?;
+    std::fs::write(bsp, out).map_err(|e| format!("{}: {e}", bsp.display()))?;
+    Ok(report)
+}
+
 #[cfg(test)]
 pub(crate) fn pak_entries(bsp: &Path) -> Option<Vec<String>> {
     let bsp = Bsp::read(bsp).ok()?;

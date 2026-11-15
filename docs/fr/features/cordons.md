@@ -36,6 +36,7 @@ La profondeur d'une nouvelle boîte (l'axe invisible dans la vue où vous dessin
 | **Cordon :** | Le cordon modifié par l'outil. Affiche **Nouveau cordon** quand la prochaine boîte sera un nouveau cordon, **(aucun)** quand la map n'a pas de cordon. |
 | Bouton **+** | **Nouveau cordon** : la prochaine boîte dessinée devient un nouveau cordon. |
 | **Actif** | Inclut ce cordon dans la zone cordonnée. |
+| **Inclure** / **Exclure** | Le mode du cordon cible (voir [Cordons d'exclusion](#cordons-dexclusion)). |
 | Taille | La taille de la boîte cible. |
 | Bouton **x** | Supprime ce cordon. |
 | **Utiliser les cordons** | Comme **Affichage > Utiliser les cordons**. |
@@ -60,12 +61,13 @@ La section **Cordons** de l'onglet [Visgroups](visgroups.md) contient :
 | **Utiliser** | Utiliser les cordons (comme **Affichage > Utiliser les cordons**). |
 | Compteur | Nombre de cordons. |
 | Case d'une ligne | Actif : inclut le cordon dans la zone cordonnée. |
+| Bouton **+** / **-** d'une ligne | Le mode du cordon : inclusion (+) ou exclusion (-). Un clic l'inverse. Le nom des cordons d'exclusion est en orange. |
 | Clic sur une ligne | En fait le cordon modifié par l'outil cordon. L'infobulle donne ses coins et sa taille. |
 | Double-clic | Renomme le cordon. |
 | Bouton de cadrage | **Cadrer les vues sur ce cordon**. |
 | Bouton boîte | **Modifier la boîte avec l'outil cordon**. |
 | Bouton **x** | **Supprimer le cordon**. |
-| Clic droit | **Modifier la boîte avec l'outil cordon**, **Cadrer les vues sur ce cordon**, **Renommer**, **Supprimer le cordon**. |
+| Clic droit | **En faire un cordon d'exclusion** (ou **En faire un cordon d'inclusion**), **Modifier la boîte avec l'outil cordon**, **Cadrer les vues sur ce cordon**, **Renommer**, **Supprimer le cordon**. |
 
 Un cordon sans volume affiche « Ce cordon n'a pas de volume : il sera supprimé à sa prochaine modification. »
 
@@ -83,6 +85,16 @@ Activer, désactiver, ajouter, renommer, redimensionner ou supprimer un cordon s
 ## Compiler seulement le cordon
 
 Dans la [fenêtre Compiler et lancer](../compiler/compile-window.md), **Compiler uniquement la zone du cordon** ne garde que ce qui touche les boîtes actives. Chaque boîte est fermée par six brushes du **Matériau de scellement du cordon**, et la map est compilée sous le nom `<map>_cordon` : la map complète n'est jamais écrasée. S'il n'y a aucun point d'apparition dans le cordon, un est ajouté au sol de la première boîte. La même option existe dans la page **Compilation** des paramètres (**Compiler seulement le cordon actif**).
+
+## Cordons d'exclusion
+
+Un cordon est par défaut un cordon d'**inclusion** : seul ce qui touche les cordons d'inclusion est gardé. Passez un cordon en **Exclure** (barre d'options de l'outil cordon, bouton **+** / **-** de sa ligne, ou son menu du clic droit) pour faire l'inverse : ce qui est entièrement dans la boîte est estompé dans les vues, ne peut pas être sélectionné et est retiré des compilations du cordon, tout le reste est gardé. Pratique pour cacher un bâtiment, une zone lourde ou une partie cassée pendant que vous testez le reste de la map.
+
+- Les cordons d'exclusion sont dessinés en orange ; les vues 2D ombrent leur intérieur.
+- Un objet qui traverse le bord d'une boîte d'exclusion est gardé (seul ce qui est entièrement dedans est retiré), comme un objet qui touche une boîte d'inclusion est gardé.
+- Les ensembles mixtes fonctionnent : les cordons d'inclusion définissent la zone gardée, les cordons d'exclusion y découpent des trous. Avec seulement des cordons d'exclusion, toute la map est compilée moins ce qu'ils retirent, sans boîte de scellement ; retirer un mur peut faire fuir la map, la compilation le signale comme d'habitude.
+- Le journal de compilation indique combien de boîtes d'exclusion ont été appliquées, et la compilation s'appelle toujours `<map>_cordon`.
+- Enregistrement : un cordon d'exclusion est écrit dans le bloc `cordons` avec `"active" "0"` et deux clés en plus, `"hp_mode" "exclude"` et `"hp_active"`, que Hammer et Hammer++ ignorent. Ils ouvrent la map normalement et ne traitent jamais un cordon d'exclusion comme un cordon (la règle de la 2.0.9 reste : le fichier n'est enregistré comme cordonné que si un cordon d'inclusion est actif).
 
 ## Options
 
@@ -102,6 +114,10 @@ Dans la [fenêtre Compiler et lancer](../compiler/compile-window.md), **Compiler
 - Outils MCP : `list_cordons`, `add_cordon`, `edit_cordon`, `set_cordons_enabled`, `get_visibility` (voir la [référence des outils MCP](../../MCP.md), en anglais).
 
 ## FAQ
+
+**Puis-je cacher une zone au lieu de tout le reste ?** Oui : faites de son cordon un cordon d'**exclusion**. Voir [Cordons d'exclusion](#cordons-dexclusion).
+
+**Ma compilation du cordon est vide.** Le journal avertit « Les cordons ne gardent aucun brush » quand rien ne touche les cordons d'inclusion : la map reste une boîte scellée valide, mais vide. Déplacez ou agrandissez le cordon sur vos brushs et déplacements.
 
 **J'ai dessiné un cordon mais rien n'est estompé.** Les cordons ne sont pas utilisés. Cochez **Utiliser les cordons** (barre d'options, liste des cordons ou menu Affichage) et vérifiez que le cordon est **Actif**.
 

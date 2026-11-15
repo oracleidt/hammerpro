@@ -417,8 +417,9 @@ fn write_cameras(out: &mut Out, c: &Cameras) {
 }
 
 fn write_cordons(out: &mut Out, c: &Cordons) {
-    let active = c.active && c.cordons.iter().any(|cd| cd.active);
-    let legacy = c.style == CordonStyle::Legacy && c.cordons.len() <= 1 && c.extra_boxes.is_empty();
+    let active = c.active && c.cordons.iter().any(|cd| cd.active && !cd.exclude);
+    let any_exclude = c.cordons.iter().any(|cd| cd.exclude);
+    let legacy = c.style == CordonStyle::Legacy && c.cordons.len() <= 1 && c.extra_boxes.is_empty() && !any_exclude;
     if legacy {
         let (mins, maxs) =
             c.cordons.first().map_or((DVec3::splat(-1024.0), DVec3::splat(1024.0)), |cd| (cd.mins, cd.maxs));
@@ -431,10 +432,17 @@ fn write_cordons(out: &mut Out, c: &Cordons) {
     }
     open(out, 0, "cordons");
     kv_bool(out, 1, "active", active);
+    if any_exclude {
+        kv_bool(out, 1, crate::read::HP_ACTIVE, c.active);
+    }
     for (index, cd) in c.cordons.iter().enumerate() {
         open(out, 1, "cordon");
         kv_text(out, 2, "name", &cd.name);
-        kv_bool(out, 2, "active", cd.active);
+        kv_bool(out, 2, "active", cd.active && !cd.exclude);
+        if cd.exclude {
+            kv_text(out, 2, crate::read::HP_MODE, crate::read::EXCLUDE_MODE);
+            kv_bool(out, 2, crate::read::HP_ACTIVE, cd.active);
+        }
         let extra = c.extra_boxes.iter().filter(|b| b.cordon == index).map(|b| (b.mins, b.maxs));
         for (mins, maxs) in std::iter::once((cd.mins, cd.maxs)).chain(extra) {
             open(out, 2, "box");
@@ -812,7 +820,8 @@ mod tests {
             let text = o.into_string();
             assert!(text.contains("\"active\" \"0\""), "{text}");
             assert!(!text.contains("\"active\" \"1\""), "{text}");
-            let off = crate::Cordon { name: "a".into(), active: false, mins: DVec3::ZERO, maxs: DVec3::ONE };
+            let off =
+                crate::Cordon { name: "a".into(), active: false, mins: DVec3::ZERO, maxs: DVec3::ONE, exclude: false };
             let disabled = Cordons { active: true, style, cordons: vec![off.clone()], ..Default::default() };
             let mut o = out();
             write_cordons(&mut o, &disabled);
@@ -823,6 +832,42 @@ mod tests {
             write_cordons(&mut o, &used);
             assert!(o.into_string().contains("\"active\" \"1\""));
         }
+    }
+
+    #[test]
+    fn exclude_cordons_stay_inactive_for_hammer_and_round_trip() {
+        let cut = crate::Cordon {
+            name: "cut".into(),
+            active: true,
+            mins: DVec3::ZERO,
+            maxs: DVec3::splat(64.0),
+            exclude: true,
+        };
+        let only_cut =
+            Cordons { active: true, style: CordonStyle::Legacy, cordons: vec![cut.clone()], ..Default::default() };
+        let mut o = out();
+        write_cordons(&mut o, &only_cut);
+        let text = o.into_string();
+        assert!(text.starts_with("cordons"), "{text}");
+        assert!(!text.contains("\"active\" \"1\""), "Hammer must never see an active cordon: {text}");
+        assert!(text.contains("\"hp_mode\" \"exclude\"") && text.contains("\"hp_active\" \"1\""), "{text}");
+        let keep = crate::Cordon { name: "keep".into(), exclude: false, maxs: DVec3::splat(512.0), ..cut.clone() };
+        let mut map = crate::Map {
+            cordons: Cordons {
+                active: true,
+                style: CordonStyle::Modern,
+                cordons: vec![keep, cut],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let back = crate::parse(&crate::write(&map)).expect("parse");
+        assert_eq!(back.cordons.cordons, map.cordons.cordons);
+        assert!(back.cordons.active);
+        map.cordons.active = false;
+        let back = crate::parse(&crate::write(&map)).expect("parse");
+        assert!(!back.cordons.active);
+        assert!(back.cordons.cordons[1].exclude && back.cordons.cordons[1].active);
     }
 
     #[test]

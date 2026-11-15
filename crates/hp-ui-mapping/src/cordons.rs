@@ -19,6 +19,7 @@ pub(crate) fn dialogs() -> Vec<Box<dyn MapDialog>> {
 pub(crate) enum CordonAction {
     SetEnabled(bool),
     SetActive(usize, bool),
+    SetExclude(usize, bool),
     StartRename(usize),
     CommitRename(usize, String),
     CancelRename,
@@ -140,6 +141,12 @@ impl CordonList {
         if button(ui, right, "⛶", t!("cordons.edit_box")) {
             actions.push(CordonAction::EditBox(i));
         }
+        right -= 24.0;
+        let (mode_icon, mode_tip) =
+            if c.exclude { ("➖", t!("cordons.mode_exclude_tip")) } else { ("➕", t!("cordons.mode_include_tip")) };
+        if button(ui, right, mode_icon, mode_tip) {
+            actions.push(CordonAction::SetExclude(i, !c.exclude));
+        }
         right -= 26.0;
         let name_rect =
             egui::Rect::from_min_max(egui::pos2(x, rect.top() + 1.0), egui::pos2(right, rect.bottom() - 1.0));
@@ -165,7 +172,11 @@ impl CordonList {
                 }
             }
         } else {
-            let color = if c.active { ui.visuals().text_color() } else { ui.visuals().weak_text_color() };
+            let color = match (c.active, c.exclude) {
+                (false, _) => ui.visuals().weak_text_color(),
+                (true, true) => theme::warning(),
+                (true, false) => ui.visuals().text_color(),
+            };
             let galley =
                 painter.layout_no_wrap(shown_name(&c.name).to_owned(), egui::FontId::proportional(13.0), color);
             let pos = egui::pos2(name_rect.left(), rect.center().y - galley.size().y * 0.5);
@@ -189,7 +200,9 @@ impl CordonList {
             actions.push(CordonAction::Target(i));
         }
         resp.context_menu(|ui| {
+            let mode = if c.exclude { t!("cordons.make_include") } else { t!("cordons.make_exclude") };
             for (label, action) in [
+                (mode, CordonAction::SetExclude(i, !c.exclude)),
                 (t!("cordons.edit_box"), CordonAction::EditBox(i)),
                 (t!("cordons.focus"), CordonAction::Focus(i)),
                 (t!("cordons.rename"), CordonAction::StartRename(i)),
@@ -216,6 +229,7 @@ impl CordonList {
                     Ok(())
                 }
                 CordonAction::SetActive(i, on) => state.doc.set_cordon_active(i, on),
+                CordonAction::SetExclude(i, on) => state.doc.set_cordon_exclude(i, on),
                 CordonAction::StartRename(i) => {
                     if let Some(c) = state.doc.scene().cordons().cordons.get(i) {
                         self.rename = Some(Rename { index: i, text: c.name.clone(), focus_requested: false });
@@ -344,6 +358,10 @@ mod tests {
         assert_eq!(state.doc.scene().cordons().cordons[1].name, "Room");
         list.apply(&mut state, vec![CordonAction::SetActive(1, false)]);
         assert!(!state.doc.scene().cordons().cordons[1].active);
+        list.apply(&mut state, vec![CordonAction::SetExclude(1, true)]);
+        assert!(state.doc.scene().cordons().cordons[1].exclude);
+        list.apply(&mut state, vec![CordonAction::SetExclude(1, false)]);
+        assert!(!state.doc.scene().cordons().cordons[1].exclude);
         list.apply(&mut state, vec![CordonAction::Target(0)]);
         assert_eq!((state.runtime.visibility.edit_cordon, state.requested_tool), (Some(0), None));
         list.apply(&mut state, vec![CordonAction::EditBox(0)]);
@@ -371,7 +389,7 @@ mod tests {
         let mut out = ctx.run_ui(egui::RawInput::default(), |_| {});
         out.textures_delta.clear();
         let font = egui::FontId::proportional(13.0);
-        for c in ['➕', '✖', '🎯', '⛶', '▣', '📂'] {
+        for c in ['➕', '✖', '🎯', '⛶', '▣', '📂', '➖'] {
             assert!(ctx.fonts_mut(|f| f.has_glyph(&font, c)), "missing glyph {c}");
         }
     }

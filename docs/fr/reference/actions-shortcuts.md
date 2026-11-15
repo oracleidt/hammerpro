@@ -24,6 +24,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 |---|---|---|---|---|
 | Nouvelle map | `new_map` | `Ctrl+N` |  |  |
 | Ouvrir une map... | `open_map` | `Ctrl+O` |  |  |
+| Ouvrir la dernière map modifiée | `open_last_map` |  |  |  |
 | Fermer | `close_map` | `Ctrl+F4` |  |  |
 | Fermer les autres maps | `close_other_maps` |  |  |  |
 | Enregistrer | `save_map` | `Ctrl+S` |  |  |
@@ -289,6 +290,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Direction d'extrusion : suivante (chaque normale, moyenne, axe) | `extrude_cycle_direction` |  |  |  |
 | L'extrusion agrandit le brush | `toggle_extrude_grow` |  |  |  |
 | Nodraw sur les faces cachées... | `nodraw_hidden_faces` |  |  |  |
+| Rogner les faces de l'overlay | `trim_overlay_faces` |  |  |  |
 | Lier chacun à sa propre entité | `tie_each_to_entity` | `Ctrl+Maj+T` |  |  |
 | Modifier la courbe | `curve_edit` |  |  |  |
 | Modifier la route | `road_edit` |  |  |  |

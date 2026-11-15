@@ -242,6 +242,7 @@ fn smoke_settings_and_history() {
             active: true,
             mins: DVec3::splat(-64.0),
             maxs: DVec3::splat(64.0),
+            exclude: false,
         }],
         ..hp_vmf::Cordons::default()
     };

@@ -13,6 +13,7 @@ pub mod limits;
 pub mod lzma;
 pub mod nav;
 pub mod pak;
+pub mod pakclean;
 pub mod physics;
 pub mod protect;
 pub mod rename;

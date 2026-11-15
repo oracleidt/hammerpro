@@ -133,6 +133,24 @@ pub const FLAGS: &[FlagInfo] = &[
         false,
         "List in the compile log every prop whose model misbehaves (missing or broken model, no collision model, bad skin or body group, outside the world, not a static prop, too many vertices for the prop lighting), with its entity, model and position.",
     ),
+    info(
+        StepKind::Bsp,
+        "-cullverts",
+        false,
+        "Optimization: fewer vertices (often 30 to 50 percent less) with the same look: faces are cut for their lightmaps only at the game's real lightmap limit, vertices on straight edges no face needs are dropped, the original faces reuse the vertices of the drawn faces, unused vertices go and brush entities share vertices with the world.",
+    ),
+    info(
+        StepKind::Bsp,
+        "-culltjunc",
+        false,
+        "Optimization: T-junction vertices are only added where another drawn face really continues along the same edge (none from nodraw, skip or hint faces, no fixing of faces that are never drawn): fewer edges, still no cracks.",
+    ),
+    info(
+        StepKind::Bsp,
+        "-cullbrushes",
+        false,
+        "Optimization: leaves out the brushes that change nothing: exact duplicates, brushes inside another brush, flat brushes, solid brushes no playable space can see (buried or in the void), and merges side by side nodraw boxes. Collision, sealing, lighting and the look stay the same.",
+    ),
     info(StepKind::Bsp, "-noaddons", false, "Do not mount the folder addons of garrysmod/addons."),
     info(StepKind::Bsp, "-wsaddons", false, "Also mount the subscribed workshop items (Valve's VBSP does not)."),
     info(StepKind::Bsp, "-nowsaddons", false, "Mount neither the folder addons nor the workshop items."),
@@ -152,6 +170,48 @@ pub const FLAGS: &[FlagInfo] = &[
     info(StepKind::Bsp, "-nosort", false, "Visibility without sorting the portals first (same result)."),
     info(StepKind::Bsp, "-trace", true, "Write the line of sight between two clusters (cluster numbers) to <map>.lin."),
     info(StepKind::Bsp, "-verbose", false, "Print the options of the compile."),
+    info(
+        StepKind::Bsp,
+        "-autolightmapscale",
+        false,
+        "Automatic lightmap scale: coarser on faces never seen up close (high ceilings, roof undersides, the 3D skybox), finer only near walkable areas and lights; scales set by the mapper are kept.",
+    ),
+    info(
+        StepKind::Bsp,
+        "-cleanpak",
+        false,
+        "Remove the files of the pakfile the map does not use (not referenced by the map, its materials, models, sounds or particles) and compress the pakfile with LZMA.",
+    ),
+    info(
+        StepKind::Bsp,
+        "-autocubemaps",
+        false,
+        "Pick the size of each env_cubemap left at the default size from the area it reflects, and remove the cubemaps no face or prop uses.",
+    ),
+    info(
+        StepKind::Bsp,
+        "-mergestaticprops",
+        false,
+        "Hammer Pro option: nearby prop_static props with the same model or materials, skin and lighting keys are combined at compile time into one static model per room area (fewer draw calls, culling kept). The VMF is not changed; the models are built with the model compiler (studiomdl) and packed into the BSP. Off by default, even in the Final preset.",
+    ),
+    info(
+        StepKind::Bsp,
+        "-autohints",
+        false,
+        "Hammer Pro option: the compile measures the hint brushes the optimizer suggests and adds only the ones that lower the visibility totals (the VMF is not changed). Slower: one extra compile per candidate. Needs the visibility.",
+    ),
+    info(
+        StepKind::Bsp,
+        "-autofade",
+        false,
+        "Hammer Pro option: static props without fade distances get them from their size (small props fade earlier, at most 4000 units; big props and the 3D skybox are left alone), and detail props get a fade from their size when the map has no env_detail_controller.",
+    ),
+    info(
+        StepKind::Bsp,
+        "-autooccluders",
+        false,
+        "Hammer Pro option: big solid walls that hide many props get a func_occluder in the compile (conservative: straight box walls only, at most 16; the VMF is not changed).",
+    ),
     info(StepKind::Rad, "-ldr", false, "Standard dynamic range lighting only (fastest, what most players see)."),
     info(StepKind::Rad, "-hdr", false, "High dynamic range lighting only."),
     info(StepKind::Rad, "-both", false, "Standard and high dynamic range lighting (two passes, needed for release)."),
@@ -328,14 +388,29 @@ pub enum FlagGroup {
     Content,
     Debug,
     Occlusion,
+    Optimization,
 }
 
+pub const OPTIMIZATION_FLAGS: &[(StepKind, &str)] = &[
+    (StepKind::Bsp, "-cullverts"),
+    (StepKind::Bsp, "-culltjunc"),
+    (StepKind::Bsp, "-cullbrushes"),
+    (StepKind::Bsp, "-autolightmapscale"),
+    (StepKind::Bsp, "-cleanpak"),
+    (StepKind::Bsp, "-autocubemaps"),
+    (StepKind::Bsp, "-mergestaticprops"),
+    (StepKind::Bsp, "-autohints"),
+    (StepKind::Bsp, "-autofade"),
+    (StepKind::Bsp, "-autooccluders"),
+];
+
 impl FlagGroup {
-    pub const ALL: [FlagGroup; 11] = [
+    pub const ALL: [FlagGroup; 12] = [
         FlagGroup::Quality,
         FlagGroup::Occlusion,
         FlagGroup::Speed,
         FlagGroup::Geometry,
+        FlagGroup::Optimization,
         FlagGroup::Visibility,
         FlagGroup::Lightmaps,
         FlagGroup::Props,
@@ -358,6 +433,7 @@ impl FlagGroup {
             FlagGroup::Content => "content",
             FlagGroup::Debug => "debug",
             FlagGroup::Occlusion => "occlusion",
+            FlagGroup::Optimization => "optimization",
         }
     }
 }
@@ -419,6 +495,9 @@ pub fn managed_by(step: StepKind, flag: &str) -> Option<ManagedBy> {
 pub fn flag_group(step: StepKind, flag: &str) -> FlagGroup {
     if managed_by(step, flag).is_some() {
         return FlagGroup::Managed;
+    }
+    if OPTIMIZATION_FLAGS.iter().any(|(s, f)| *s == step && f.eq_ignore_ascii_case(flag)) {
+        return FlagGroup::Optimization;
     }
     match (step, flag.to_ascii_lowercase().as_str()) {
         (_, "-low") => FlagGroup::Speed,
@@ -665,6 +744,10 @@ mod tests {
         }
         assert_eq!(flag_group(StepKind::Bsp, "-radius_override"), FlagGroup::Visibility);
         assert_eq!(flag_group(StepKind::Bsp, "-nomerge"), FlagGroup::Debug);
+        for (step, f) in OPTIMIZATION_FLAGS {
+            assert_eq!(flag_group(*step, f), FlagGroup::Optimization, "{f}");
+            assert!(FLAGS.iter().any(|i| i.step == *step && i.flag == *f), "{f} is in the flag list");
+        }
         assert_eq!(managed_by(StepKind::Rad, "-NoStaticPropShadows"), Some(ManagedBy::StaticPropShadows));
         assert_eq!(managed_by(StepKind::Bsp, "-vis"), Some(ManagedBy::VisMode));
         assert_eq!(managed_by(StepKind::Rad, "-threads"), Some(ManagedBy::Threads));
@@ -714,6 +797,23 @@ mod tests {
         let (args, _) = merge_flags(StepKind::Bsp, &default, &strict, &[]);
         assert!(!args.iter().any(|arg| arg.eq_ignore_ascii_case("-AllowDynamicPropsAsStatic")));
         assert!(args.iter().any(|arg| arg == "-vis"));
+    }
+
+    #[test]
+    fn optimization_flags_are_grouped_and_off_in_every_preset() {
+        for (_, f) in OPTIMIZATION_FLAGS {
+            assert_eq!(flag_group(StepKind::Bsp, f), FlagGroup::Optimization, "{f}");
+            assert!(flag_info(StepKind::Bsp, f).is_some_and(|i| !i.value), "{f}");
+        }
+        for mode in [BspMode::Full, BspMode::OnlyEnts, BspMode::OnlyProps, BspMode::EntsAndProps] {
+            for vis in [VisMode::Off, VisMode::Fast, VisMode::Full] {
+                let flags = bsp_flags(mode, vis, true);
+                assert!(!flags.iter().any(|f| OPTIMIZATION_FLAGS.iter().any(|(_, o)| o.eq_ignore_ascii_case(f))));
+            }
+        }
+        let on = [choice("-autofade", true, ""), choice("-mergestaticprops", true, "")];
+        let (args, _) = merge_flags(StepKind::Bsp, &bsp_flags(BspMode::Full, VisMode::Full, false), &on, &[]);
+        assert!(args.iter().any(|a| a == "-autofade") && args.iter().any(|a| a == "-mergestaticprops"));
     }
 
     #[test]

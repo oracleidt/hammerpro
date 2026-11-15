@@ -43,6 +43,7 @@ pub const ENTRIES: &[MenuEntry] = &[
     MenuEntry::Action(Action::CenterOrigins),
     MenuEntry::Action(Action::RandomRotate),
     MenuEntry::Action(Action::CombineProps),
+    MenuEntry::Action(Action::TrimOverlayFaces),
     MenuEntry::Separator,
     MenuEntry::CenterHere,
     MenuEntry::CreateHere,

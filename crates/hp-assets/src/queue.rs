@@ -226,8 +226,7 @@ impl Shared {
 }
 
 pub(crate) fn worker_count() -> usize {
-    let cores = std::thread::available_parallelism().map_or(4, std::num::NonZeroUsize::get);
-    cores.saturating_sub(1).clamp(2, 16)
+    hp_sched::background_threads().clamp(2, 16)
 }
 
 pub(crate) fn spawn_workers(shared: &Arc<Shared>, n: usize) -> Vec<JoinHandle<()>> {
@@ -237,6 +236,7 @@ pub(crate) fn spawn_workers(shared: &Arc<Shared>, n: usize) -> Vec<JoinHandle<()
             std::thread::Builder::new()
                 .name(format!("hp-assets-{i}"))
                 .spawn(move || {
+                    hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
                     while let Some(job) = shared.next_job() {
                         let result = crate::jobs::run(job, &shared);
                         let sent = result.is_none_or(|r| shared.tx.send(r).is_ok());

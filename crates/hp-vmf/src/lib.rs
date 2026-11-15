@@ -366,6 +366,7 @@ pub struct Cordon {
     pub active: bool,
     pub mins: DVec3,
     pub maxs: DVec3,
+    pub exclude: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -449,6 +450,7 @@ impl Map {
                     active: true,
                     mins: DVec3::splat(-1024.0),
                     maxs: DVec3::splat(1024.0),
+                    exclude: false,
                 }],
                 style: CordonStyle::Legacy,
                 extra_boxes: Vec::new(),

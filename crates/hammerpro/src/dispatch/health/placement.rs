@@ -149,6 +149,7 @@ impl PlacementChecks {
             if (waiting && !force)
                 || hp_app::runtime::HealthRuntime::user_busy(state)
                 || matches!(state.assets.status(), AssetStatus::Mounting)
+                || (state.runtime.startup.resources.is_some() && !force)
             {
                 if force {
                     self.forced = true;

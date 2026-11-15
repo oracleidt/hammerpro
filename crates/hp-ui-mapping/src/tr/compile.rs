@@ -570,6 +570,16 @@ pub const TR: TrTable = &[
         "No player start inside the cordon: one was added on the floor of the first box.",
         "Aucun point d'apparition dans le cordon : un a été ajouté au sol de la première boîte.",
     ),
+    (
+        "compile.cordon_excluded",
+        "{0} exclude cordon box(es): what lies fully inside them is left out of this compile.",
+        "{0} boîte(s) de cordon d'exclusion : ce qui est entièrement dedans est retiré de cette compilation.",
+    ),
+    (
+        "compile.cordon_empty",
+        "The cordons keep no brush: only the sealing box is compiled, the map is empty. Move or grow the cordon over your brushes and displacements, or turn cordons off.",
+        "Les cordons ne gardent aucun brush : seule la boîte de scellement est compilée, la map est vide. Déplacez ou agrandissez le cordon sur vos brushs et déplacements, ou désactivez les cordons.",
+    ),
     ("compile.hidden_skipped_one", "{0} hidden object is not compiled.", "{0} objet masqué n'est pas compilé."),
     ("compile.hidden_skipped", "{0} hidden objects are not compiled.", "{0} objets masqués ne sont pas compilés."),
     (
@@ -822,6 +832,21 @@ pub const TR: TrTable = &[
         "Liste dans le journal de compilation chaque prop dont le modèle pose problème (modèle manquant ou cassé, pas de modèle de collision, skin ou groupe de corps invalide, hors du monde, pas un prop statique, trop de sommets pour l'éclairage des props), avec son entité, son modèle et sa position.",
     ),
     (
+        "compile.flag.cullverts",
+        "Optimization: fewer vertices (often 30 to 50 percent less) with the same look: faces are cut for their lightmaps only at the game's real lightmap limit, vertices on straight edges no face needs are dropped, the original faces reuse the vertices of the drawn faces, unused vertices go and brush entities share vertices with the world.",
+        "Optimisation : moins de sommets (souvent 30 à 50 pour cent de moins) pour le même rendu : les faces ne sont découpées pour leurs lightmaps qu'à la vraie limite de lightmap du jeu, les sommets sur des arêtes droites dont aucune face n'a besoin sont retirés, les faces d'origine réutilisent les sommets des faces dessinées, les sommets inutilisés disparaissent et les entités de brushes partagent leurs sommets avec le monde.",
+    ),
+    (
+        "compile.flag.culltjunc",
+        "Optimization: T-junction vertices are only added where another drawn face really continues along the same edge (none from nodraw, skip or hint faces, no fixing of faces that are never drawn): fewer edges, still no cracks.",
+        "Optimisation : les sommets de jonction en T ne sont ajoutés que là où une autre face dessinée continue vraiment le long de la même arête (aucun venant des faces nodraw, skip ou hint, pas de correction des faces jamais dessinées) : moins d'arêtes, toujours sans fissures.",
+    ),
+    (
+        "compile.flag.cullbrushes",
+        "Optimization: leaves out the brushes that change nothing: exact duplicates, brushes inside another brush, flat brushes, solid brushes no playable space can see (buried or in the void), and merges side by side nodraw boxes. Collision, sealing, lighting and the look stay the same.",
+        "Optimisation : laisse de côté les brushes qui ne changent rien : doublons exacts, brushes à l'intérieur d'un autre brush, brushes plats, brushes solides qu'aucun espace jouable ne voit (enfouis ou dans le vide), et fusionne les boîtes nodraw côte à côte. Collision, étanchéité, éclairage et rendu restent identiques.",
+    ),
+    (
         "compile.flag.noaddons",
         "Do not mount the folder addons of garrysmod/addons.",
         "Ne monte pas les addons en dossier de garrysmod/addons.",
@@ -852,6 +877,21 @@ pub const TR: TrTable = &[
         "Écrit la ligne de vue entre deux clusters (numéros de cluster) dans <map>.lin.",
     ),
     ("compile.flag.verbose", "Print the options of the compile.", "Affiche les options de la compilation."),
+    (
+        "compile.flag.autolightmapscale",
+        "Automatic lightmap scale: coarser on faces never seen up close (high ceilings, roof undersides, the 3D skybox), finer only near walkable areas and lights; scales set by the mapper are kept.",
+        "Échelle de lightmap automatique : plus grossière sur les faces jamais vues de près (plafonds hauts, dessous des toits, skybox 3D), plus fine seulement près des zones praticables et des lumières ; les échelles réglées par le mappeur sont gardées.",
+    ),
+    (
+        "compile.flag.cleanpak",
+        "Remove the files of the pakfile the map does not use (not referenced by the map, its materials, models, sounds or particles) and compress the pakfile with LZMA.",
+        "Retire du pakfile les fichiers que la map n'utilise pas (ni la map, ni ses matériaux, modèles, sons ou particules n'y font référence) et compresse le pakfile en LZMA.",
+    ),
+    (
+        "compile.flag.autocubemaps",
+        "Pick the size of each env_cubemap left at the default size from the area it reflects, and remove the cubemaps no face or prop uses.",
+        "Choisit la taille de chaque env_cubemap laissé à la taille par défaut selon la zone qu'il reflète, et retire les cubemaps qu'aucune face ni aucun prop n'utilise.",
+    ),
     (
         "compile.flag.ldr",
         "Standard dynamic range lighting only (fastest, what most players see).",
@@ -1277,6 +1317,7 @@ pub const TR: TrTable = &[
     ("compile.flag_group.quality", "Quality", "Qualité"),
     ("compile.flag_group.speed", "Speed", "Vitesse"),
     ("compile.flag_group.geometry", "Geometry", "Géométrie"),
+    ("compile.flag_group.optimization", "Optimization", "Optimisation"),
     ("compile.flag_group.visibility", "Visibility", "Visibilité"),
     ("compile.flag_group.lightmaps", "Lightmaps", "Lightmaps"),
     ("compile.flag_group.props", "Static props", "Props statiques"),
@@ -1347,4 +1388,24 @@ pub const TR: TrTable = &[
     ),
     ("compile.flag_group.occlusion", "Ambient occlusion", "Occlusion ambiante"),
     ("compile.light_stage.ambient_occlusion", "Ambient occlusion", "Occlusion ambiante"),
+    (
+        "compile.flag.mergestaticprops",
+        "Hammer Pro option: nearby prop_static props with the same model or materials, skin and lighting keys are combined at compile time into one static model per room area (fewer draw calls, culling kept). The VMF is not changed; the models are built with the model compiler (studiomdl) and packed into the BSP. Off by default, even in the Final preset.",
+        "Option de Hammer Pro : les prop_static proches qui ont le même modèle ou les mêmes matériaux, le même skin et les mêmes clés d'éclairage sont combinés à la compilation en un seul modèle statique par zone de pièce (moins d'appels de dessin, le culling est gardé). Le VMF n'est pas modifié ; les modèles sont construits avec le compilateur de modèles (studiomdl) et inclus dans le BSP. Désactivée par défaut, même dans le préréglage Final.",
+    ),
+    (
+        "compile.flag.autohints",
+        "Hammer Pro option: the compile measures the hint brushes the optimizer suggests and adds only the ones that lower the visibility totals (the VMF is not changed). Slower: one extra compile per candidate. Needs the visibility.",
+        "Option de Hammer Pro : la compilation mesure les brushes hint que l'optimiseur propose et n'ajoute que ceux qui baissent les totaux de visibilité (le VMF n'est pas modifié). Plus lent : une compilation de plus par candidat. Demande la visibilité.",
+    ),
+    (
+        "compile.flag.autofade",
+        "Hammer Pro option: static props without fade distances get them from their size (small props fade earlier, at most 4000 units; big props and the 3D skybox are left alone), and detail props get a fade from their size when the map has no env_detail_controller.",
+        "Option de Hammer Pro : les props statiques sans distances de fondu en reçoivent selon leur taille (les petits props disparaissent plus tôt, au plus 4000 unités ; les gros props et la skybox 3D ne sont pas touchés), et les props de détail reçoivent un fondu selon leur taille quand la map n'a pas d'env_detail_controller.",
+    ),
+    (
+        "compile.flag.autooccluders",
+        "Hammer Pro option: big solid walls that hide many props get a func_occluder in the compile (conservative: straight box walls only, at most 16; the VMF is not changed).",
+        "Option de Hammer Pro : les grands murs pleins qui cachent beaucoup de props reçoivent un func_occluder dans la compilation (prudent : seulement des murs en boîte droits, 16 au plus ; le VMF n'est pas modifié).",
+    ),
 ];
