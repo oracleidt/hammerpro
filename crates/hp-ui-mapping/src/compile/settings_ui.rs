@@ -494,6 +494,11 @@ impl CompileDialog {
                         .response
                         .on_hover_text(t!("compile.lighting_tip"));
                 });
+                if !external {
+                    wrap_group(ui, "raytracing", |ui| {
+                        ui.add_enabled_ui(!s.expert, |ui| super::raytrace_ui::toggle_row(ui, s));
+                    });
+                }
                 if changed {
                     settle_preset(s);
                 }

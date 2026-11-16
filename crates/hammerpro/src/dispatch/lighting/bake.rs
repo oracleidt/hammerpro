@@ -26,6 +26,19 @@ static PAUSE_MINIMIZED: AtomicBool = AtomicBool::new(true);
 static PAUSE_UNFOCUSED: AtomicBool = AtomicBool::new(false);
 static STOPPED_AWAY: AtomicBool = AtomicBool::new(false);
 static MODELS_HALTED: AtomicBool = AtomicBool::new(false);
+static INTERACTIVE: AtomicBool = AtomicBool::new(false);
+static CAMERA: std::sync::Mutex<Option<[f32; 3]>> = std::sync::Mutex::new(None);
+
+pub(super) fn set_interactive(on: bool, camera: [f32; 3]) {
+    if let Ok(mut slot) = CAMERA.lock() {
+        *slot = Some(camera);
+    }
+    INTERACTIVE.store(on, Ordering::Relaxed);
+}
+
+fn camera() -> Option<[f32; 3]> {
+    CAMERA.lock().ok().and_then(|c| *c)
+}
 
 pub(super) fn set_pause_rules(minimized: bool, unfocused: bool) {
     PAUSE_MINIMIZED.store(minimized, Ordering::Relaxed);
@@ -94,6 +107,7 @@ pub(crate) struct Job {
     pub exact: bool,
     pub quiet: bool,
     pub priority: BakePriority,
+    pub raytracing: Option<super::host::RayOptions>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -131,6 +145,7 @@ pub(crate) struct Baked {
     pub child_peak: Option<super::memory::Usage>,
     pub animations: Vec<super::style_maps::AnimatedFace>,
     pub stats: LitStats,
+    pub pass: u32,
 }
 
 pub(crate) enum Outcome {
@@ -154,6 +169,8 @@ pub(crate) enum Msg {
     Done { job: u64, outcome: Outcome },
     Models { job: u64, models: Box<ModelLight> },
     Costs { job: u64, costs: Vec<host::CostEntry> },
+    Raytrace { job: u64, report: host::RayReport },
+    Shafts { job: u64, shafts: Box<hp_render::light_shafts::LightShafts> },
 }
 
 struct Cancelled;
@@ -623,6 +640,7 @@ pub(super) fn options_of(job: &Job) -> LightOptions {
         prop_lighting: job.prop_lighting,
         tuning: job.tuning.arg(),
         threads: job.threads.1.max(1),
+        raytracing: job.raytracing.clone(),
     }
 }
 
@@ -667,6 +685,7 @@ fn wait(link: &mut Link, stash: &mut Stash, job: u64, ctx: &Ctx<'_>, phases: &mu
     let mut cancel_sent: Option<Instant> = None;
     loop {
         link.set_priority(ctx.priority());
+        link.pace(INTERACTIVE.load(Ordering::Relaxed), camera());
         if cancel_sent.is_none()
             && !ctx.cancelled()
             && window_away()
@@ -695,7 +714,7 @@ fn wait(link: &mut Link, stash: &mut Stash, job: u64, ctx: &Ctx<'_>, phases: &mu
                     continue;
                 }
                 match reply {
-                    Reply::Progress { .. } | Reply::Partial { .. } => {
+                    Reply::Progress { .. } | Reply::Partial { .. } | Reply::Raytrace { .. } | Reply::Shafts { .. } => {
                         if cancel_sent.is_none() {
                             phases(&reply, &blob);
                         }
@@ -903,13 +922,19 @@ fn run_inner(job: Job, ctx: &Ctx<'_>, pipe: &mut Pipeline, stash: &mut Stash) ->
     let next_layout = &mut pipe.next_layout;
     let mut forward = |reply: &Reply, blob: &[u8]| match reply {
         Reply::Progress { phase, fraction, .. } => ctx.progress(phase_of(*phase), fraction_of(*phase, *fraction)),
-        Reply::Partial { .. } if !all => {
+        Reply::Raytrace { report, .. } => ctx.send(Msg::Raytrace { job: id, report: report.clone() }),
+        Reply::Shafts { .. } => match host::decode_shafts(blob) {
+            Ok(shafts) => ctx.send(Msg::Shafts { job: id, shafts: Box::new(shafts) }),
+            Err(e) => log::warn!("lighting preview: {e}"),
+        },
+        Reply::Partial { pass, .. } if !all => {
             if let (Ok(faces), Some(shown)) = (host::decode_faces(blob), state.shown.as_ref()) {
-                let baked = patch(shown, &faces, hdr);
+                let mut baked = patch(shown, &faces, hdr);
+                baked.pass = *pass;
                 ctx.send(Msg::Partial { job: id, baked: Box::new(baked) });
             }
         }
-        Reply::Partial { .. } if !lit => {
+        Reply::Partial { pass, .. } if !lit => {
             if early.is_none()
                 && let Some(Ok(handle)) = geometry_task.take()
                 && let Ok(Some(mut geo)) = handle.join()
@@ -924,7 +949,9 @@ fn run_inner(job: Job, ctx: &Ctx<'_>, pipe: &mut Pipeline, stash: &mut Stash) ->
                 early = Some((shown, geo.unbound));
             }
             if let (Ok(faces), Some((shown, _))) = (host::decode_faces(blob), early.as_ref()) {
-                ctx.send(Msg::Partial { job: id, baked: Box::new(patch(shown, &faces, hdr)) });
+                let mut baked = patch(shown, &faces, hdr);
+                baked.pass = *pass;
+                ctx.send(Msg::Partial { job: id, baked: Box::new(baked) });
             }
         }
         _ => {}

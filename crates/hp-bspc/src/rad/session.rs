@@ -140,7 +140,7 @@ impl StateKey {
     }
 }
 
-fn params(opts: &RadOptions) -> bake::Params {
+pub(crate) fn params(opts: &RadOptions) -> bake::Params {
     let mut params = bake::Params::of(opts.quality);
     if opts.no_extra {
         params.supersample_passes = 0;
@@ -159,25 +159,26 @@ fn params(opts: &RadOptions) -> bake::Params {
     params
 }
 
-struct Scene {
-    src: hp_bsp::Bsp,
-    map: MapData,
-    faces: Vec<LitFace>,
-    shadow: Bvh,
-    surf: Bvh,
-    surf_info: Vec<SurfTri>,
-    blockers: Bvh,
-    water: Bvh,
-    water_reflectivity: Vec3A,
-    static_props: props::StaticProps,
-    occluders: props::Occluders,
-    sky_clusters: Vec<i32>,
-    cameras: Vec<(Vec3A, f32)>,
-    camera_areas: Vec<bool>,
-    emission: texlights::Emission,
-    passes: Vec<bool>,
+pub(crate) struct Scene {
+    pub(crate) src: hp_bsp::Bsp,
+    pub(crate) map: MapData,
+    pub(crate) faces: Vec<LitFace>,
+    pub(crate) shadow: Bvh,
+    pub(crate) surf: Bvh,
+    pub(crate) surf_info: Vec<SurfTri>,
+    pub(crate) blockers: Bvh,
+    pub(crate) water: Bvh,
+    pub(crate) water_reflectivity: Vec3A,
+    pub(crate) static_props: props::StaticProps,
+    pub(crate) occluders: props::Occluders,
+    pub(crate) sky_clusters: Vec<i32>,
+    pub(crate) cameras: Vec<(Vec3A, f32)>,
+    pub(crate) camera_areas: Vec<bool>,
+    pub(crate) emission: texlights::Emission,
+    pub(crate) passes: Vec<bool>,
     key: SceneKey,
-    luxels: usize,
+    pub(crate) luxels: usize,
+    pub(crate) rt_prop_tris: Vec<hp_light::bvh::Triangle>,
 }
 
 struct State {
@@ -305,7 +306,22 @@ const CHANGE_ABS: f32 = 0.05;
 const FAINT_BOUNCE: f32 = 0.05;
 const CHANGE_REL: f32 = 0.002;
 
-fn make_ctx<'a>(
+pub(crate) fn scene_lights(
+    scene: &Scene,
+    entities: &[hp_bsp::Entity],
+    opts: &RadOptions,
+) -> (Vec<hp_bsp::Entity>, bool, Lights) {
+    let mut ents = entities.to_vec();
+    let styled = lights::assign_styles(&mut ents, hp_bsp::limits::SWITCHED_LIGHTS.max_usize_in(opts.limits));
+    let mut lights = lights::parse(&ents, &scene.passes, &scene.map);
+    if lights.sun_extent <= 0.0 && opts.soft_sun > 0.0 {
+        lights.sun_extent = opts.soft_sun.to_radians().sin().max(0.0);
+    }
+    lights.list.extend(scene.emission.lights.iter().cloned());
+    (ents, styled, lights)
+}
+
+pub(crate) fn make_ctx<'a>(
     scene: &'a Scene,
     lights: &'a Lights,
     params: bake::Params,
@@ -774,14 +790,7 @@ impl Session {
     }
 
     fn lights_of(&self, entities: &[hp_bsp::Entity], opts: &RadOptions) -> (Vec<hp_bsp::Entity>, bool, Lights) {
-        let mut ents = entities.to_vec();
-        let styled = lights::assign_styles(&mut ents, hp_bsp::limits::SWITCHED_LIGHTS.max_usize_in(opts.limits));
-        let mut lights = lights::parse(&ents, &self.scene.passes, &self.scene.map);
-        if lights.sun_extent <= 0.0 && opts.soft_sun > 0.0 {
-            lights.sun_extent = opts.soft_sun.to_radians().sin().max(0.0);
-        }
-        lights.list.extend(self.scene.emission.lights.iter().cloned());
-        (ents, styled, lights)
+        scene_lights(&self.scene, entities, opts)
     }
 
     pub fn light_costs(&self, entities: &[hp_bsp::Entity], opts: &RadOptions) -> Vec<LightCost> {
@@ -1240,6 +1249,18 @@ pub struct ModelsJob {
 }
 
 impl ModelsJob {
+    pub(crate) fn of(
+        scene: std::sync::Arc<Scene>,
+        lights: Lights,
+        params: bake::Params,
+        total: Vec<FaceLight>,
+        entities: Vec<hp_bsp::Entity>,
+    ) -> Self {
+        ModelsJob { scene, lights, params, total, entities }
+    }
+}
+
+impl ModelsJob {
     pub fn lit_bsp(
         self,
         opts: &RadOptions,
@@ -1554,7 +1575,7 @@ fn changed_outputs(
         .collect()
 }
 
-fn face_out(f: &LitFace, l: &FaceLight, values: Vec<Vec3A>, pass: usize) -> FaceOut {
+pub(crate) fn face_out(f: &LitFace, l: &FaceLight, values: Vec<Vec3A>, pass: usize) -> FaceOut {
     let lux = f.luxels();
     let nn = l.normals.max(1);
     let mut out = Vec::with_capacity(l.styles.len() * nn * lux);
@@ -1593,7 +1614,7 @@ fn stitched_out(
 }
 
 impl Scene {
-    fn build(
+    pub(crate) fn build(
         bsp: Vec<u8>,
         opts: &RadOptions,
         models: &dyn crate::props::ModelSource,
@@ -1659,6 +1680,7 @@ impl Scene {
         if (ctl.cancelled)() {
             return Err(Stop::Cancelled);
         }
+        let rt_prop_tris = if opts.raytracing.is_some() { prop_tris.clone() } else { Vec::new() };
         let (shadow, _) = surface::shadow_scene(&map, &all, prop_tris, !opts.no_disp_shadows);
         (ctl.progress)(Phase::Scene, 0.7);
         let (surf, surf_info) = surface::surface_scene(&map, &all, &lit_index);
@@ -1700,11 +1722,12 @@ impl Scene {
             passes,
             key: SceneKey::of(opts),
             luxels,
+            rt_prop_tris,
         })
     }
 }
 
-fn widen(values: &[glam::Vec3]) -> Vec<Vec3A> {
+pub(crate) fn widen(values: &[glam::Vec3]) -> Vec<Vec3A> {
     values.iter().map(|v| Vec3A::from(*v)).collect()
 }
 

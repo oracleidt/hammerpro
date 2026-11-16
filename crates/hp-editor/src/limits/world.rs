@@ -133,6 +133,7 @@ pub struct BspWorld {
     pub static_props: Vec<StaticPropPlacement>,
     pub entity_ids: Vec<u32>,
     pub rope_entities: Vec<hp_vmf::Entity>,
+    pub effect_sprites: Vec<hp_vmf::Entity>,
     pub particle_entities: Vec<hp_vmf::Entity>,
     pub particle_volumes: ParticleVolumes,
     pub light: WorldLight,

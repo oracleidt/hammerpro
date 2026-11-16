@@ -168,6 +168,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | 3D render mode > Lightmap grid | `render_lightmap_grid` | `Alt+8` |  |  |
 | 3D render mode > 3D Color Correction | `render_color_corrected` | `Alt+9` |  |  |
 | 3D render mode > Baked lighting preview | `render_baked` | `Ctrl+F5` |  |  |
+| 3D render mode > Ray traced lighting preview | `render_ray_traced` | `Ctrl+Shift+F5` |  |  |
 | Show models | `toggle_models` |  |  |  |
 | Show helpers and sprites | `toggle_helpers` |  |  |  |
 | Show tool textures | `toggle_tool_textures` |  |  | `Ctrl+Shift+F2` |

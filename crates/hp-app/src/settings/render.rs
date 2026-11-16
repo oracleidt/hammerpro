@@ -448,7 +448,7 @@ impl RenderSettings {
     }
 
     pub fn lighting_hdr(&self, mode: super::RenderModeSetting, lighting: super::LightingSetting) -> bool {
-        if matches!(mode, super::RenderModeSetting::Baked | super::RenderModeSetting::LightmapGrid) {
+        if mode.shows_bake() || mode == super::RenderModeSetting::LightmapGrid {
             matches!(lighting, super::LightingSetting::Hdr | super::LightingSetting::Both)
         } else {
             self.preview_hdr(lighting)

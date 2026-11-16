@@ -16,6 +16,7 @@ mod indirect;
 mod instance_cull;
 mod light_animation;
 mod light_cull;
+pub mod light_shafts;
 pub mod lightmap;
 mod lights;
 mod live_lighting;
@@ -345,6 +346,7 @@ pub struct Renderer {
     hooks: Vec<Box<dyn PassHook>>,
     opaque: opaque::OpaquePass,
     lightmap: lightmap::Lightmaps,
+    light_shafts: light_shafts::ShaftState,
     compiled: compiled_light::CompiledLight,
     model_lights: compiled_light::ModelLights,
     environment: Environment,
@@ -1121,6 +1123,7 @@ impl Renderer {
             hooks: Vec::new(),
             opaque: opaque::OpaquePass::new(&device),
             lightmap: lightmap::Lightmaps::default(),
+            light_shafts: light_shafts::ShaftState::default(),
             compiled: compiled_light::CompiledLight::default(),
             model_lights: compiled_light::ModelLights::default(),
             environment: Environment::default(),

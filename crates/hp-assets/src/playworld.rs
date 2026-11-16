@@ -156,6 +156,7 @@ impl AssetManager {
                 }
                 renderer.set_compiled_objects(Default::default());
                 renderer.clear_compiled_lighting();
+                renderer.set_player_light_shafts(None);
                 for id in self.play_world.owned_cubes.drain(..) {
                     renderer.destroy_cubemap(id);
                 }
@@ -334,6 +335,7 @@ impl AssetManager {
             .collect();
         let meshes = start.elapsed();
         let stats = renderer.set_compiled_lighting(mode, &maps, &blocks);
+        renderer.set_player_light_shafts(effect_shafts(&world.effect_sprites));
         let lighting = start.elapsed();
         log::info!(
             "player view: compiled lighting {} ({} lightmaps, {} dropped, atlas {} x {} x {}, {} MB)",
@@ -571,6 +573,74 @@ pub(crate) fn detail_tint(light: [f32; 3]) -> [f32; 4] {
         if l <= 0.003_130_8 { l * 12.92 } else { 1.055 * l.powf(1.0 / 2.4) - 0.055 }
     };
     [srgb(light[0]), srgb(light[1]), srgb(light[2]), 1.0]
+}
+
+fn sprite_size(model: &str) -> Option<(f32, f32, bool)> {
+    let name = model.rsplit('/').next()?.trim_end_matches(".vmt").to_ascii_lowercase();
+    Some(match name.as_str() {
+        "shaft_1" => (128.0, 128.0, false),
+        "shaft_2" => (64.0, 128.0, false),
+        "shaft_4" => (64.0, 256.0, false),
+        "shaft_8" => (32.0, 256.0, false),
+        "spot_cone" => (128.0, 256.0, true),
+        _ => return None,
+    })
+}
+
+pub(crate) fn effect_shafts(sprites: &[hp_vmf::Entity]) -> Option<hp_render::light_shafts::LightShafts> {
+    use hp_render::light_shafts::{GlowHalo, LightShafts, ShaftVertex};
+    let mut out = LightShafts::default();
+    let nums = |e: &hp_vmf::Entity, k: &str| -> Vec<f32> {
+        e.props
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(k))
+            .map_or_else(Vec::new, |(_, v)| v.split_whitespace().filter_map(|x| x.parse().ok()).collect())
+    };
+    for e in sprites {
+        let origin = nums(e, "origin");
+        if origin.len() < 3 {
+            continue;
+        }
+        let center = glam::Vec3::new(origin[0], origin[1], origin[2]);
+        let scale = nums(e, "scale").first().copied().unwrap_or(1.0);
+        let c = nums(e, "rendercolor");
+        let color = if c.len() >= 3 { [c[0] / 255.0, c[1] / 255.0, c[2] / 255.0] } else { [1.0; 3] };
+        let model = e.props.iter().find(|(k, _)| k.eq_ignore_ascii_case("model")).map_or("", |(_, v)| v.as_str());
+        if e.classname.eq_ignore_ascii_case("env_sprite") {
+            if model.to_ascii_lowercase().ends_with("glow.vmt") {
+                out.glows.push(GlowHalo { center: center.to_array(), size: scale * 64.0, color, pad: 0.0 });
+            }
+            continue;
+        }
+        let Some((tw, th, cone)) = sprite_size(model) else { continue };
+        let a = nums(e, "angles");
+        if a.len() < 3 {
+            continue;
+        }
+        let (sp, cp) = a[0].to_radians().sin_cos();
+        let (sy, cy) = a[1].to_radians().sin_cos();
+        let (sr, cr) = a[2].to_radians().sin_cos();
+        let right = glam::Vec3::new(-sr * sp * cy + cr * sy, -sr * sp * sy - cr * cy, -sr * cp);
+        let up = glam::Vec3::new(cr * sp * cy + sr * sy, cr * sp * sy - sr * cy, cr * cp);
+        let alpha = nums(e, "renderamt").first().copied().unwrap_or(255.0) / 255.0;
+        let (hw, hh) = (tw * scale * 0.5, th * scale * 0.5);
+        let top = center + up * hh;
+        let bottom = center - up * hh;
+        let (wt, wb) = if cone { (hw * 0.1, hw) } else { (hw, hw) };
+        let base = out.vertices.len() as u32;
+        let ct = [color[0], color[1], color[2], alpha];
+        let cb = [color[0], color[1], color[2], 0.0];
+        for (p, uv, col) in [
+            (top - right * wt, [0.0, 0.0], ct),
+            (top + right * wt, [1.0, 0.0], ct),
+            (bottom + right * wb, [1.0, 1.0], cb),
+            (bottom - right * wb, [0.0, 1.0], cb),
+        ] {
+            out.vertices.push(ShaftVertex { pos: p.to_array(), uv, color: col });
+        }
+        out.indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+    }
+    (!out.is_empty()).then_some(out)
 }
 
 fn static_prop_matrix(p: &hp_editor::limits::world::StaticPropPlacement) -> glam::DMat4 {
@@ -1198,6 +1268,39 @@ fn disp_normals(verts: &[hp_editor::limits::world::WorldVertex], tris: &[u32], f
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn compiled_light_shaft_sprites_become_shaft_quads() {
+        let ent = |class: &str, pairs: &[(&str, &str)]| hp_vmf::Entity {
+            classname: class.to_owned(),
+            props: pairs.iter().map(|(k, v)| ((*k).to_owned(), (*v).to_owned())).collect(),
+            ..hp_vmf::Entity::default()
+        };
+        let sprites = [
+            ent(
+                "env_sprite_oriented",
+                &[
+                    ("origin", "0 0 100"),
+                    ("angles", "0 0 0"),
+                    ("model", "materials/hammerpro/raytrace/shaft_4.vmt"),
+                    ("scale", "1"),
+                    ("renderamt", "90"),
+                    ("rendercolor", "255 200 100"),
+                ],
+            ),
+            ent(
+                "env_sprite",
+                &[("origin", "10 0 0"), ("model", "materials/hammerpro/raytrace/glow.vmt"), ("scale", "0.5")],
+            ),
+        ];
+        let s = super::effect_shafts(&sprites).expect("shafts");
+        assert_eq!((s.vertices.len(), s.indices.len(), s.glows.len()), (4, 6, 1));
+        let top = s.vertices[0].pos[2];
+        assert!((top - 228.0).abs() < 1e-3, "{top}");
+        assert!((s.vertices[0].color[3] - 90.0 / 255.0).abs() < 1e-4);
+        assert_eq!(s.vertices[2].color[3], 0.0);
+        assert_eq!(s.glows[0].size, 32.0);
+    }
     use super::*;
 
     #[test]

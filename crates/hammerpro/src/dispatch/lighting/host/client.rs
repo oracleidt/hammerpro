@@ -40,11 +40,20 @@ struct Local {
 pub(crate) struct Link {
     process: Option<Process>,
     local: Option<Box<Local>>,
+    paced: Option<bool>,
 }
+
+pub(crate) static RAY_VRAM_MB: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub(crate) const LOW_MEMORY_RAY_VRAM_MB: u64 = 256;
 
 impl Link {
     pub(crate) fn spawn(exe: &Path, threads: usize) -> std::io::Result<Link> {
         let mut cmd = Command::new(exe);
+        let vram = RAY_VRAM_MB.load(std::sync::atomic::Ordering::Relaxed);
+        if vram > 0 {
+            cmd.env("HAMMERPRO_VRAM_BUDGET_MB", vram.to_string());
+        }
         cmd.arg(super::super::child::LIGHT_ARG)
             .arg(super::SERVE_ARG)
             .arg(threads.max(1).to_string())
@@ -72,7 +81,7 @@ impl Link {
         log::info!("lighting preview: the lighting process {} started", child.id());
         let priority = hp_app::settings::BakePriority::BelowNormal;
         let process = Process { child, input, replies, started: Instant::now(), priority };
-        Ok(Link { process: Some(process), local: None })
+        Ok(Link { process: Some(process), local: None, paced: None })
     }
 
     pub(crate) fn local() -> Link {
@@ -83,7 +92,7 @@ impl Link {
                 q.push_back((reply, blob));
             }
         });
-        Link { process: None, local: Some(Box::new(Local { engine: Engine::default(), queue, out })) }
+        Link { process: None, local: Some(Box::new(Local { engine: Engine::default(), queue, out })), paced: None }
     }
 
     pub(crate) fn is_process(&self) -> bool {
@@ -151,6 +160,16 @@ impl Link {
         match &self.local {
             Some(local) => Ok(local.queue.lock().ok().and_then(|mut q| q.pop_front())),
             None => Err(Gone::Exited),
+        }
+    }
+
+    pub(crate) fn pace(&mut self, interactive: bool, camera: Option<[f32; 3]>) {
+        if self.paced == Some(interactive) {
+            return;
+        }
+        let never = || false;
+        if self.send(Request::Pace { interactive, camera }, &[], &never).is_ok() {
+            self.paced = Some(interactive);
         }
     }
 

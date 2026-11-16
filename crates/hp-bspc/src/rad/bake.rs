@@ -383,7 +383,7 @@ impl Ctx<'_> {
         Sample { pos: pos.as_vec3a(), normals, cluster: self.map.vis_cluster_at(pos) }
     }
 
-    fn candidates(&self, f: &LitFace, clusters: &[i32]) -> (Vec<(usize, usize)>, Vec<u8>) {
+    pub(crate) fn candidates(&self, f: &LitFace, clusters: &[i32]) -> (Vec<(usize, usize)>, Vec<u8>) {
         let (lo, hi) = (f.bounds.0.as_vec3a(), f.bounds.1.as_vec3a());
         let d = f.poly.first().map_or(0.0, |p| p.dot(f.normal));
         let mut styles = vec![0u8];
@@ -737,7 +737,7 @@ impl Ctx<'_> {
         (n > 0.0).then(|| sum / n)
     }
 
-    fn reaches(&self, f: &LitFace, from: DVec2, to: DVec2) -> bool {
+    pub(crate) fn reaches(&self, f: &LitFace, from: DVec2, to: DVec2) -> bool {
         let a = f.plane_point(from.x, from.y) + f.normal;
         let b = f.plane_point(to.x, to.y) + f.normal;
         if !(a.is_finite() && b.is_finite()) {

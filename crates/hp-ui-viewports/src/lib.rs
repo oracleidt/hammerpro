@@ -2450,7 +2450,7 @@ fn prop_model_keys(state: &AppState, class: &str) -> Vec<(&'static str, String)>
     }
 }
 
-pub(crate) const RENDER_MODES: [(RenderModeSetting, Action); 10] = [
+pub(crate) const RENDER_MODES: [(RenderModeSetting, Action); 11] = [
     (RenderModeSetting::Textured, Action::RenderTextured),
     (RenderModeSetting::Unshaded, Action::RenderUnshaded),
     (RenderModeSetting::Flat, Action::RenderFlat),
@@ -2461,6 +2461,7 @@ pub(crate) const RENDER_MODES: [(RenderModeSetting, Action); 10] = [
     (RenderModeSetting::Baked, Action::RenderBaked),
     (RenderModeSetting::LightmapGrid, Action::RenderLightmapGrid),
     (RenderModeSetting::ColorCorrected, Action::RenderColorCorrected),
+    (RenderModeSetting::RayTraced, Action::RenderRayTraced),
 ];
 
 pub fn tool_takes_right_click(tool: ToolId, kind: ViewKind, modifiers: egui::Modifiers) -> bool {

@@ -1309,6 +1309,7 @@ fn the_render_mode_menu_lists_every_mode_once() {
         M::Baked,
         M::LightmapGrid,
         M::ColorCorrected,
+        M::RayTraced,
     ];
     for m in all {
         match m {
@@ -1321,13 +1322,15 @@ fn the_render_mode_menu_lists_every_mode_once() {
             | M::SmoothingGroups
             | M::Baked
             | M::LightmapGrid
-            | M::ColorCorrected => {}
+            | M::ColorCorrected
+            | M::RayTraced => {}
         }
         assert_eq!(crate::RENDER_MODES.iter().filter(|(x, _)| *x == m).count(), 1, "{m:?}");
     }
     assert_eq!(crate::RENDER_MODES.len(), all.len());
     assert!(crate::RENDER_MODES.contains(&(M::Baked, hp_app::actions::Action::RenderBaked)));
     assert!(crate::RENDER_MODES.contains(&(M::LightmapGrid, hp_app::actions::Action::RenderLightmapGrid)));
+    assert!(crate::RENDER_MODES.contains(&(M::RayTraced, hp_app::actions::Action::RenderRayTraced)));
 }
 
 fn texts(h: &Harness) -> Vec<String> {

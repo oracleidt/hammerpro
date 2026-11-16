@@ -266,6 +266,7 @@ fn job(doc: &Document, gfx: &Gfx, fs: Option<hp_fs::GameFs>, around: Option<(DVe
         exact: false,
         quiet: false,
         priority: hp_app::settings::BakePriority::BelowNormal,
+        raytracing: None,
     }
 }
 

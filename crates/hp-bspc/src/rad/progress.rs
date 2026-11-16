@@ -124,6 +124,10 @@ impl Work {
         self.stage.store(usize::MAX, Ordering::Release);
     }
 
+    pub fn set(&self, n: u64) {
+        self.done.store(n, Ordering::Relaxed);
+    }
+
     pub fn add(&self, n: u64) {
         self.done.fetch_add(n, Ordering::Relaxed);
     }

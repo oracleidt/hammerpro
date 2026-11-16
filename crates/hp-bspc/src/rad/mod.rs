@@ -8,6 +8,7 @@ mod lights;
 mod output;
 pub mod progress;
 mod props;
+pub mod raytrace;
 pub mod session;
 mod sky;
 mod surface;
@@ -26,8 +27,10 @@ use crate::emit::lump;
 use crate::materials::{contents, surf};
 pub use ambient::ProbeOptions;
 pub use ao::AoOptions;
+pub use hp_raytrace::{DevicePreference as RtDevice, Quality as RtQuality};
 pub use output::check_lighting;
 pub use props::PropOptions;
+pub use raytrace::{Effects as RtEffects, RayTracing, ShaftSource};
 pub use texlights::{LightFile, LightFileData, TexLight, TexLightOptions};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -64,6 +67,7 @@ pub struct RadOptions {
     pub probes: Option<ProbeOptions>,
     pub ao: Option<AoOptions>,
     pub limits: hp_bsp::limits::LimitSet,
+    pub raytracing: Option<RayTracing>,
 }
 
 impl Default for RadOptions {
@@ -91,6 +95,7 @@ impl Default for RadOptions {
             probes: None,
             ao: None,
             limits: hp_bsp::limits::LimitSet::Gmod,
+            raytracing: None,
         }
     }
 }
@@ -138,6 +143,13 @@ fn light_bsp_with_report(
     if !opts.hdr && !opts.ldr {
         return Err("nothing to light: neither LDR nor HDR asked".to_owned());
     }
+    let tuned;
+    let opts = if opts.raytracing.is_some() {
+        tuned = raytrace::tuned_options(opts);
+        &tuned
+    } else {
+        opts
+    };
     let pool = match opts.threads {
         Some(n) => Some(
             rayon::ThreadPoolBuilder::new()
@@ -234,6 +246,7 @@ fn run_with(
     if !(19..=21).contains(&src.version()) {
         return Err(format!("BSP version {} is not supported", src.version()));
     }
+    let src = raytrace::fit_lightmaps(src, opts, log)?;
     let map = data::MapData::read(&src)?;
     let with_pak = props::MapPak { pak: src.pakfile().ok().filter(|p| !p.is_empty()), inner: models };
     let models: &dyn crate::props::ModelSource = &with_pak;
@@ -247,12 +260,27 @@ fn run_with(
         lights.sun_extent = opts.soft_sun.to_radians().sin().max(0.0);
     }
     let t = Instant::now();
-    let tables = passes
+    let mut tables = passes
         .iter()
         .map(|&hdr| texlights::LightFileData::read(&opts.texlights.files, hdr, log))
         .collect::<Result<Vec<_>, _>>()?;
-    let mut emission =
-        texlights::emitters(&src, &map, &tables, &opts.texlights, opts.bounces > 0 && !opts.texlights.fast);
+    let rt_materials = opts.raytracing.as_ref().map(|_| {
+        let read = |p: &str| models.read_file(p);
+        raytrace::bake::world_materials(&src, &read)
+    });
+    if let Some(m) = &rt_materials {
+        let added = raytrace::add_selfillum(&mut tables, &src, m);
+        if added > 0 {
+            log(&format!("ray tracing: {added} self illuminated materials ($selfillum) light the map"));
+        }
+    }
+    let mut emission = texlights::emitters(
+        &src,
+        &map,
+        &tables,
+        &opts.texlights,
+        (opts.bounces > 0 || opts.raytracing.is_some()) && !opts.texlights.fast,
+    );
     if !opts.texlights.files.is_empty() {
         log(&format!(
             "{} texture light faces: {} surface lights in {} ms",
@@ -327,6 +355,7 @@ fn run_with(
     } else if no_shadow_disps > 0 {
         log(&format!("{no_shadow_disps} displacement(s) cast no shadow (their cast shadows option is off)"));
     }
+    let rt_prop_tris = if opts.raytracing.is_some() { prop_tris.clone() } else { Vec::new() };
     let (shadow, _) = runner.par(|| surface::shadow_scene(&map, &all, prop_tris, !opts.no_disp_shadows));
     phases.mark("shadow tree");
     work.add(1);
@@ -364,10 +393,12 @@ fn run_with(
     let detail_objects = detail::count(&src);
     let prop_lighting = opts.props.lighting && static_props.len() > 0;
     let mut plan = vec![Stage::Scene, Stage::Direct];
-    if opts.bounces > 0 {
+    if opts.raytracing.is_some() {
+        plan.push(Stage::Bounces);
+    } else if opts.bounces > 0 {
         plan.extend([Stage::BounceRays, Stage::Bounces]);
     }
-    if opts.ao.is_some() {
+    if opts.ao.is_some() && opts.raytracing.is_none() {
         plan.push(Stage::AmbientOcclusion);
     }
     plan.push(Stage::LeafAmbient);
@@ -402,50 +433,35 @@ fn run_with(
         water: &water,
         water_reflectivity,
         dispchop: disp::chop_or_default(opts.texlights.dispchop),
-        ao: opts.ao.as_ref().map(|o| ao::Ao::new(o, opts.quality, &map)),
+        ao: match &opts.raytracing {
+            None => opts.ao.as_ref().map(|o| ao::Ao::new(o, opts.quality, &map)),
+            Some(rt) => raytrace::prop_ao(rt).map(|o| ao::Ao::new(&o, opts.quality, &map)),
+        },
     };
     let t = Instant::now();
-    work.begin(Stage::Direct, luxels as u64);
-    let mut light: Vec<bake::FaceLight> = runner.par(|| {
-        faces
-            .par_iter()
-            .map(|f| {
-                let l = ctx.direct(f);
-                work.add(f.luxels() as u64);
-                l
-            })
-            .collect()
-    });
-    runner.par(|| bake::fill_dark(&faces, &mut light));
-    phases.mark("direct light");
-    runner.par(|| disp::radial(&ctx, &mut light));
-    phases.mark("displacement blend");
-    log(&format!("direct light in {} ms", ms(t)));
-    stage(report, "direct light", t);
-    let t = Instant::now();
-    {
-        let unbounced = (opts.bounces > 0).then(|| runner.par(|| disp::before_bounce(&ctx, &light))).flatten();
-        phases.mark("displacement bounce blend");
-        let mut lines = Vec::new();
-        let (gather, _) = runner.par(|| ctx.bounce(&mut light, opts.bounces, &mut |l| lines.push(l.to_owned())))?;
-        if opts.bounces > 0 {
-            phases.split("bounce rays", gather, "bounce passes");
-        }
-        for l in &lines {
-            log(l);
-        }
-        report.bounces = lines.iter().filter(|l| l.starts_with("Bounce #")).count() as u32;
-        if let Some(saved) = unbounced {
-            runner.par(|| disp::after_bounce(&ctx, &mut light, saved));
-            phases.mark("displacement bounce blend");
-        }
-    }
-    if opts.bounces > 0 {
-        log(&format!("bounced light in {} ms", ms(t)));
-        stage(report, "bounced light", t);
-    }
-
-    if let Some(occlusion) = &ctx.ao {
+    let mut fx_out = raytrace::effects::EffectOutput::default();
+    let mut light: Vec<bake::FaceLight> = if let Some(rt) = &opts.raytracing {
+        let (l, fx) = raytrace::bake_lightmaps(
+            &ctx,
+            &faces,
+            &rt_prop_tris,
+            &occluders,
+            &src,
+            rt_materials.unwrap_or_default(),
+            rt,
+            opts,
+            &entities,
+            log,
+        )?;
+        fx_out = fx;
+        drop(rt_prop_tris);
+        phases.mark("ray tracing");
+        stage(report, "ray tracing", t);
+        l
+    } else {
+        classic_light(&ctx, &faces, opts, runner, log, report, &mut phases, luxels)?
+    };
+    if let Some(occlusion) = ctx.ao.as_ref().filter(|_| opts.raytracing.is_none()) {
         let t = Instant::now();
         work.begin(Stage::AmbientOcclusion, luxels as u64);
         let terms = runner.par(|| ao::face_terms(&ctx, occlusion, &faces));
@@ -531,6 +547,8 @@ fn run_with(
     } else {
         Vec::new()
     };
+    let mut prop_files = prop_files;
+    prop_files.extend(std::mem::take(&mut fx_out.files));
     let pak = if prop_files.is_empty() { None } else { Some(props::add_to_pak(&src, prop_files)?) };
     let map_flags = props::map_flags(
         &src.lump(lump::MAP_FLAGS).map(|c| c.into_owned()).unwrap_or_default(),
@@ -625,8 +643,10 @@ fn run_with(
         edit.replace_lump_with_version(idx_i, index, 0).map_err(fail)?;
         edit.replace_lump_with_version(amb_i, samples, 1).map_err(fail)?;
     }
-    if styled {
-        edit.set_entities(&entities).map_err(fail)?;
+    if styled || !fx_out.entities.is_empty() {
+        let mut all = entities.clone();
+        all.extend(std::mem::take(&mut fx_out.entities));
+        edit.set_entities(&all).map_err(fail)?;
     }
     if let Some((games, _)) = detail {
         edit.set_game_lumps(games);
@@ -647,7 +667,80 @@ fn run_with(
     phases.mark("write");
     log(&phases.line());
     log(&format!("lighting: {} bytes per pass, done in {} ms", layout.size, ms(start)));
+    if opts.raytracing.is_some() {
+        let most = hp_bsp::limits::LIGHTING.max_in(opts.limits);
+        log(&format!(
+            "lighting lump: {} KB per pass, {:.3}% of the engine limit ({} MB){}",
+            layout.size / 1024,
+            layout.size as f64 * 100.0 / most as f64,
+            most >> 20,
+            if opts.raytracing.as_ref().is_some_and(|r| r.quality == RtQuality::Optimal) {
+                format!(
+                    ", {:.0}% of the Optimal budget ({} MB)",
+                    layout.size as f64 * 100.0 / raytrace::OPTIMAL_LIGHTING_BUDGET as f64,
+                    raytrace::OPTIMAL_LIGHTING_BUDGET >> 20
+                )
+            } else {
+                String::new()
+            }
+        ));
+    }
     Ok(out)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn classic_light(
+    ctx: &bake::Ctx<'_>,
+    faces: &[surface::LitFace],
+    opts: &RadOptions,
+    runner: &Runner<'_>,
+    log: &mut dyn FnMut(&str),
+    report: &mut crate::stats::RadReport,
+    phases: &mut Phases,
+    luxels: usize,
+) -> Result<Vec<bake::FaceLight>, String> {
+    let work = ctx.work;
+    work.begin(progress::Stage::Direct, luxels as u64);
+    let t = Instant::now();
+    let mut light: Vec<bake::FaceLight> = runner.par(|| {
+        faces
+            .par_iter()
+            .map(|f| {
+                let l = ctx.direct(f);
+                work.add(f.luxels() as u64);
+                l
+            })
+            .collect()
+    });
+    runner.par(|| bake::fill_dark(faces, &mut light));
+    phases.mark("direct light");
+    runner.par(|| disp::radial(ctx, &mut light));
+    phases.mark("displacement blend");
+    log(&format!("direct light in {} ms", ms(t)));
+    stage(report, "direct light", t);
+    let t = Instant::now();
+    {
+        let unbounced = (opts.bounces > 0).then(|| runner.par(|| disp::before_bounce(ctx, &light))).flatten();
+        phases.mark("displacement bounce blend");
+        let mut lines = Vec::new();
+        let (gather, _) = runner.par(|| ctx.bounce(&mut light, opts.bounces, &mut |l| lines.push(l.to_owned())))?;
+        if opts.bounces > 0 {
+            phases.split("bounce rays", gather, "bounce passes");
+        }
+        for l in &lines {
+            log(l);
+        }
+        report.bounces = lines.iter().filter(|l| l.starts_with("Bounce #")).count() as u32;
+        if let Some(saved) = unbounced {
+            runner.par(|| disp::after_bounce(ctx, &mut light, saved));
+            phases.mark("displacement bounce blend");
+        }
+    }
+    if opts.bounces > 0 {
+        log(&format!("bounced light in {} ms", ms(t)));
+        stage(report, "bounced light", t);
+    }
+    Ok(light)
 }
 
 fn lightmap_room(size: u64, most: u64) -> Result<(), String> {

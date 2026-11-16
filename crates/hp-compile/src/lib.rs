@@ -14,6 +14,7 @@ mod plan;
 mod pointfile;
 pub mod power;
 mod progress;
+pub mod raytracing;
 mod runner;
 pub mod sandbox;
 pub mod stable_hash;
@@ -39,6 +40,7 @@ pub use plan::{
 };
 pub use pointfile::{find_pointfile, parse_pointfile, read_pointfile};
 pub use progress::{LightProgress, parse_light_progress};
+pub use raytracing::RayTracingOptions;
 pub use runner::{CompileEvent, CompileHandle, start, start_with_waker};
 pub use tools::{BSPC_ARG, RAD_ARG, ToolPaths, default_threads, pack_files_from_dir};
 

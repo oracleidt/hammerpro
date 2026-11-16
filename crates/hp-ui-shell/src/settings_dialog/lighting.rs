@@ -113,6 +113,14 @@ impl SettingsPage for LightingPage {
                 .changed();
             ui.end_row();
         });
+        heading(ui, t!("raytracing.settings_heading"));
+        ui.label(egui::RichText::new(t!("shell.lighting.rt_note")).weak());
+        if state.settings.view.render_mode == hp_app::settings::RenderModeSetting::RayTraced {
+            hp_app::raytracing_ui::status(ui, &state.runtime.lighting.raytracing);
+        } else if ui.button(hp_app::Action::RenderRayTraced.label()).clicked() {
+            state.request(hp_app::Action::RenderRayTraced);
+        }
+        let s = &mut state.settings.lighting;
         heading(ui, t!("shell.lighting.budget_heading"));
         changed |= ui.checkbox(&mut s.show_budget, t!("shell.lighting.show_budget")).changed();
         super::form_grid(ui, "hp_shell_lighting_budget").show(ui, |ui| {
@@ -142,6 +150,11 @@ impl SettingsPage for LightingPage {
 
 pub(crate) const TR: TrTable = &[
     ("shell.lighting.page", "Lighting", "Éclairage"),
+    (
+        "shell.lighting.rt_note",
+        "It uses the Ray tracing settings of the compile options (configuration, quality, parameters, effects, device), shown in the Lighting tab while the mode is on, so the preview looks like the game after a compile with Ray Tracing",
+        "Il utilise les réglages Ray tracing des options de compilation (configuration, qualité, paramètres, effets, périphérique), affichés dans l'onglet Éclairage quand le mode est actif, donc l'aperçu ressemble au jeu après une compilation avec Ray Tracing",
+    ),
     ("shell.lighting.baking", "Baked lighting preview", "Aperçu de l'éclairage précalculé"),
     ("shell.lighting.auto_bake", "Bake when the preview is turned on", "Précalculer à l'activation de l'aperçu"),
     (

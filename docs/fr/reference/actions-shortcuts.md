@@ -168,6 +168,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Mode de rendu 3D > Grille de lightmap | `render_lightmap_grid` | `Alt+8` |  |  |
 | Mode de rendu 3D > 3D Correction colorimétrique | `render_color_corrected` | `Alt+9` |  |  |
 | Mode de rendu 3D > Aperçu de l'éclairage précalculé | `render_baked` | `Ctrl+F5` |  |  |
+| Mode de rendu 3D > Aperçu de l'éclairage en ray tracing | `render_ray_traced` | `Ctrl+Shift+F5` |  |  |
 | Afficher les modèles | `toggle_models` |  |  |  |
 | Afficher les aides et sprites | `toggle_helpers` |  |  |  |
 | Afficher les textures outils | `toggle_tool_textures` |  |  | `Ctrl+Maj+F2` |

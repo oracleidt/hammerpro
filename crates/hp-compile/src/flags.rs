@@ -31,6 +31,12 @@ const fn info(step: StepKind, flag: &'static str, value: bool, english: &'static
 }
 
 pub const FLAGS: &[FlagInfo] = &[
+    info(
+        StepKind::Bsp,
+        "-rtautocubemaps",
+        false,
+        "Hammer Pro option written by the ray tracing automatic cubemaps: when the map has no env_cubemap, env_cubemap entities are placed and sized in the compiled map (never in the VMF), and the automatic cubemap sizing is on.",
+    ),
     info(StepKind::Bsp, "-vis", false, "Compute the full visibility: the map renders fast in game."),
     info(StepKind::Bsp, "-fastvis", false, "Quick coarse visibility: much faster to compile, slower to render."),
     info(
@@ -261,6 +267,151 @@ pub const FLAGS: &[FlagInfo] = &[
         false,
         "Hammer Pro option: named (switchable) lights light only what they see directly, like Valve's VRAD. Without it their light also bounces, in their own light style, and switches with them.",
     ),
+    info(
+        StepKind::Rad,
+        "-raytracing",
+        false,
+        "Hammer Pro option: bake the lighting with the physically based path tracer (GPU with a CPU fallback) instead of the classic radiosity. Optional value: draft, normal (default), final or optimal.",
+    ),
+    info(
+        StepKind::Rad,
+        "-rtquality",
+        true,
+        "Ray tracing quality: draft, normal (default), final or optimal (the compiler picks the best balance for the map and this computer).",
+    ),
+    info(
+        StepKind::Rad,
+        "-rtdevice",
+        true,
+        "Ray tracing device: auto (default, the GPU when there is one), gpu or cpu.",
+    ),
+    info(StepKind::Rad, "-rtseed", true, "Ray tracing random seed (default 0): the same seed gives the same result."),
+    info(
+        StepKind::Rad,
+        "-rtsamples",
+        true,
+        "Ray tracing: smallest number of samples per luxel (default from the quality: 16, 64, 256).",
+    ),
+    info(
+        StepKind::Rad,
+        "-rtmaxsamples",
+        true,
+        "Ray tracing: largest number of samples per luxel where the noise stays high (default from the quality: 64, 256, 1024).",
+    ),
+    info(
+        StepKind::Rad,
+        "-rtbounces",
+        true,
+        "Ray tracing: number of light bounces (default from the quality: 3, 6, 12).",
+    ),
+    info(
+        StepKind::Rad,
+        "-rtthreshold",
+        true,
+        "Ray tracing: noise level under which a luxel stops taking samples (default from the quality: 0.08, 0.04, 0.02).",
+    ),
+    info(
+        StepKind::Rad,
+        "-rtlightsize",
+        true,
+        "Ray tracing: scale of the light sizes, bigger gives softer shadows (default 1).",
+    ),
+    info(
+        StepKind::Rad,
+        "-rtsunangle",
+        true,
+        "Ray tracing: angular size of the sun in degrees for soft sun shadows (default: the light_environment value).",
+    ),
+    info(
+        StepKind::Rad,
+        "-rtskysamples",
+        true,
+        "Ray tracing: sky dome samples per bounce (default from the quality: 1, 1, 2).",
+    ),
+    info(
+        StepKind::Rad,
+        "-rtdenoise",
+        true,
+        "Ray tracing: strength of the edge aware denoiser, 0 (off) to 4 (default 1).",
+    ),
+    info(
+        StepKind::Rad,
+        "-rtsupersample",
+        true,
+        "Ray tracing: sample points per luxel side, 1 to 8 (default from the quality: 2, 3, 4).",
+    ),
+    info(
+        StepKind::Rad,
+        "-rtnobump",
+        false,
+        "Ray tracing: no bumped lightmaps on normal mapped surfaces (smaller, flatter).",
+    ),
+    info(
+        StepKind::Rad,
+        "-rtpropsamples",
+        true,
+        "Ray tracing: rays per vertex for the static prop vertex lighting (default from the quality).",
+    ),
+    info(
+        StepKind::Rad,
+        "-rtchunk",
+        true,
+        "Ray tracing: luxels per GPU batch (default 0: automatic, sized so the driver never times out).",
+    ),
+    info(
+        StepKind::Rad,
+        "-rtlang",
+        true,
+        "Ray tracing: language of the messages in the log (en, fr, ru). Hammer Pro passes the language of the editor.",
+    ),
+    info(
+        StepKind::Rad,
+        "-rtao",
+        false,
+        "Ray tracing: bake ambient occlusion (default on): contact shadows in corners, under and at the base of static props, also in the prop vertex lighting.",
+    ),
+    info(StepKind::Rad, "-rtnoao", false, "Ray tracing: no baked ambient occlusion."),
+    info(StepKind::Rad, "-rtaostrength", true, "Ray tracing: ambient occlusion strength, 0 to 1 (default 0.5)."),
+    info(StepKind::Rad, "-rtaoradius", true, "Ray tracing: ambient occlusion radius in units, 4 to 1024 (default 48)."),
+    info(
+        StepKind::Rad,
+        "-rtshafts",
+        false,
+        "Ray tracing: bake light shafts (default on): additive volumetric looking beams where the sun and strong spot cones pass through windows, doors and holes. No collision, no shadow, they fade with distance and view angle.",
+    ),
+    info(StepKind::Rad, "-rtnoshafts", false, "Ray tracing: no light shafts."),
+    info(StepKind::Rad, "-rtshaftintensity", true, "Ray tracing: light shaft brightness, 0 to 8 (default 1)."),
+    info(StepKind::Rad, "-rtshaftlength", true, "Ray tracing: light shaft length multiplier, 0.1 to 8 (default 1)."),
+    info(StepKind::Rad, "-rtshaftsoftness", true, "Ray tracing: light shaft edge softness, 0 to 4 (default 1)."),
+    info(StepKind::Rad, "-rtshaftwhite", false, "Ray tracing: white light shafts instead of the color of their light."),
+    info(
+        StepKind::Rad,
+        "-rtshaftsource",
+        true,
+        "Ray tracing: lights that make shafts: sun or sun_and_spots (default, the sun and strong spot lights).",
+    ),
+    info(StepKind::Rad, "-rtshaftdust", false, "Ray tracing: dust motes drifting in the light shafts."),
+    info(StepKind::Rad, "-rtglow", false, "Ray tracing: glow halos around strong lights (default off)."),
+    info(StepKind::Rad, "-rtglowintensity", true, "Ray tracing: glow halo brightness, 0 to 8 (default 1)."),
+    info(
+        StepKind::Rad,
+        "-rtnocubemaps",
+        false,
+        "Ray tracing: no automatic cubemap placement (by default env_cubemap entities are placed and sized for the new lighting when the map has none).",
+    ),
+    info(
+        StepKind::Rad,
+        "-rtgpushare",
+        true,
+        "Ray tracing: share of the graphics card the ray traced editor preview keeps, auto or 0.1 to 1 (auto: 0.6). A compile ignores it and uses the whole graphics card.",
+    ),
+    info(
+        StepKind::Rad,
+        "-rtnotonemap",
+        false,
+        "Ray tracing: no automatic tonemap hints (by default an env_tonemap_controller with sensible bloom and exposure for HDR is added when the map has none).",
+    ),
+    info(StepKind::Rad, "-rtcolorcorrection", false, "Ray tracing: subtle automatic color correction (default off)."),
     info(StepKind::Rad, "-threads", true, "Number of processor threads to use."),
     info(
         StepKind::Rad,
@@ -389,6 +540,7 @@ pub enum FlagGroup {
     Debug,
     Occlusion,
     Optimization,
+    RayTracing,
 }
 
 pub const OPTIMIZATION_FLAGS: &[(StepKind, &str)] = &[
@@ -405,8 +557,9 @@ pub const OPTIMIZATION_FLAGS: &[(StepKind, &str)] = &[
 ];
 
 impl FlagGroup {
-    pub const ALL: [FlagGroup; 12] = [
+    pub const ALL: [FlagGroup; 13] = [
         FlagGroup::Quality,
+        FlagGroup::RayTracing,
         FlagGroup::Occlusion,
         FlagGroup::Speed,
         FlagGroup::Geometry,
@@ -434,6 +587,7 @@ impl FlagGroup {
             FlagGroup::Debug => "debug",
             FlagGroup::Occlusion => "occlusion",
             FlagGroup::Optimization => "optimization",
+            FlagGroup::RayTracing => "raytracing",
         }
     }
 }
@@ -447,6 +601,7 @@ pub enum ManagedBy {
     Lighting,
     Game,
     StaticPropShadows,
+    RayTracing,
 }
 
 impl ManagedBy {
@@ -459,6 +614,7 @@ impl ManagedBy {
             ManagedBy::Lighting => "lighting",
             ManagedBy::Game => "the game configuration (Settings > Game)",
             ManagedBy::StaticPropShadows => "static_prop_shadows",
+            ManagedBy::RayTracing => "raytracing and the rt_ options",
         }
     }
 
@@ -471,6 +627,7 @@ impl ManagedBy {
             ManagedBy::Lighting => "lighting",
             ManagedBy::Game => "game",
             ManagedBy::StaticPropShadows => "static_prop_shadows",
+            ManagedBy::RayTracing => "raytracing",
         }
     }
 }
@@ -488,11 +645,18 @@ pub fn managed_by(step: StepKind, flag: &str) -> Option<ManagedBy> {
         (StepKind::Bsp, "-leaktest") => Some(ManagedBy::StopOnLeak),
         (StepKind::Rad, "-ldr" | "-hdr" | "-both") => Some(ManagedBy::Lighting),
         (StepKind::Rad, "-nostaticpropshadows") => Some(ManagedBy::StaticPropShadows),
+        (StepKind::Rad, f) if crate::raytracing::is_raytracing_flag(f) => Some(ManagedBy::RayTracing),
+        (StepKind::Bsp, "-rtautocubemaps") => Some(ManagedBy::RayTracing),
         _ => None,
     })
 }
 
 pub fn flag_group(step: StepKind, flag: &str) -> FlagGroup {
+    if (step == StepKind::Rad && crate::raytracing::is_raytracing_flag(flag))
+        || (step == StepKind::Bsp && flag.eq_ignore_ascii_case(crate::raytracing::BSP_AUTO_CUBEMAPS))
+    {
+        return FlagGroup::RayTracing;
+    }
     if managed_by(step, flag).is_some() {
         return FlagGroup::Managed;
     }
@@ -755,6 +919,15 @@ mod tests {
         let info = flag_info(StepKind::Rad, NO_STATIC_PROP_SHADOWS).expect("explained");
         assert_eq!(info.group(), FlagGroup::Managed);
         assert_eq!(flag_info(StepKind::Bsp, "-trace").map(FlagInfo::value_count), Some(2));
+        for (f, value) in crate::raytracing::RT_FLAGS {
+            let info = flag_info(StepKind::Rad, f).expect("ray tracing flag explained");
+            assert_eq!((info.value, info.group()), (*value, FlagGroup::RayTracing), "{f}");
+            assert_eq!(info.managed_by(), Some(ManagedBy::RayTracing), "{f}");
+            assert!(flag_info(StepKind::Bsp, f).is_none(), "{f}");
+        }
+        assert_eq!(managed_by(StepKind::Bsp, "-raytracing"), None);
+        let cube = flag_info(StepKind::Bsp, "-rtautocubemaps").expect("explained");
+        assert_eq!((cube.managed_by(), cube.group()), (Some(ManagedBy::RayTracing), FlagGroup::RayTracing));
     }
 
     fn choice(flag: &str, on: bool, value: &str) -> FlagChoice {

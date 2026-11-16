@@ -41,6 +41,7 @@ const VISIBLE_FIRST_SOLIDS: usize = 6000;
 const VISIBLE_FIRST_RADIUS: f64 = 2048.0;
 const VISIBLE_FIRST_REACH: f64 = 32768.0;
 const VISIBLE_FIRST_SHARE: f64 = 0.6;
+const INTERACTIVE_AFTER: f64 = 0.3;
 const SLOW_UPLOAD: std::time::Duration = std::time::Duration::from_millis(12);
 
 #[derive(Default)]
@@ -62,6 +63,8 @@ pub(crate) struct State {
     prepare_changed: f64,
     prepare_started: Option<f64>,
     rebake_after_reset: bool,
+    last_cam: Option<(DVec3, f64, f64)>,
+    cam_moved_at: f64,
 }
 
 impl State {
@@ -83,6 +86,11 @@ fn rad_quality(q: LightingQuality) -> hp_bspc::rad::RadQuality {
         LightingQuality::Normal => hp_bspc::rad::RadQuality::Normal,
         LightingQuality::Final => hp_bspc::rad::RadQuality::Final,
     }
+}
+
+pub(crate) fn ray_options(state: &AppState) -> Option<host::RayOptions> {
+    (state.settings.view.render_mode == RenderModeSetting::RayTraced)
+        .then(|| host::RayOptions { args: hp_ui_mapping::raytracing_preview_args(&state.settings.compile) })
 }
 
 pub(crate) fn primitive_resource_stamp(state: &State) -> u64 {
@@ -164,7 +172,7 @@ fn paused(state: &AppState) -> bool {
 
 fn display_of(mode: RenderModeSetting) -> LightmapDisplay {
     match mode {
-        RenderModeSetting::Baked => LightmapDisplay::Baked,
+        RenderModeSetting::Baked | RenderModeSetting::RayTraced => LightmapDisplay::Baked,
         RenderModeSetting::LightmapGrid => LightmapDisplay::Grid,
         _ => LightmapDisplay::Off,
     }
@@ -313,6 +321,7 @@ pub(crate) fn scene_synced(app: &mut HammerProApp) {
 
 const HANDLED: &[Action] = &[
     Action::RenderBaked,
+    Action::RenderRayTraced,
     Action::RenderLightmapGrid,
     Action::BakeLighting,
     Action::BakeAroundCamera,
@@ -396,7 +405,7 @@ impl Lighting {
         if current == mode {
             return;
         }
-        if !matches!(current, RenderModeSetting::Baked | RenderModeSetting::LightmapGrid) {
+        if !current.shows_bake() && current != RenderModeSetting::LightmapGrid {
             app.pkg.lighting.previous_mode = Some(current);
         }
         app.state.settings.view.render_mode = mode;
@@ -410,6 +419,26 @@ impl Lighting {
             app.state.settings_dirty = true;
         } else {
             Self::set_mode(app, mode);
+        }
+    }
+
+    fn show_bake(app: &mut HammerProApp, ctx: &egui::Context, mode: RenderModeSetting) {
+        let before = app.state.settings.view.render_mode;
+        Self::toggle_mode(app, mode);
+        let now = app.state.settings.view.render_mode;
+        if !now.shows_bake() {
+            app.state.runtime.lighting.raytracing.active = false;
+            return;
+        }
+        let has_bake = app
+            .pkg
+            .lighting
+            .preview
+            .as_ref()
+            .is_some_and(|p| p.has_bake || !p.uploads.is_empty() || p.running.as_ref().is_some_and(|r| !r.lit));
+        let switched = before.shows_bake() && before != now;
+        if app.state.settings.lighting.auto_bake && (!has_bake || switched) {
+            Self::start_bake(app, ctx, false, true);
         }
     }
 
@@ -436,7 +465,9 @@ impl Lighting {
     }
 
     fn start_bake(app: &mut HammerProApp, ctx: &egui::Context, around: bool, automatic: bool) {
-        Self::set_mode(app, RenderModeSetting::Baked);
+        if !app.state.settings.view.render_mode.shows_bake() {
+            Self::set_mode(app, RenderModeSetting::Baked);
+        }
         let radius = f64::from(app.state.doc.light_plus().bake_dist);
         let center = app.state.cameras.cam3d.pos;
         if Self::preview(app, ctx).is_none() {
@@ -673,6 +704,7 @@ pub(crate) fn forget_for_new_device(app: &mut HammerProApp) {
 fn forget(app: &mut HammerProApp) {
     if let Some(gfx) = app.state.gfx.as_mut() {
         gfx.renderer.clear_lightmaps();
+        gfx.renderer.set_light_shafts(None);
     }
     app.pkg.lighting.grid.forget();
     app.pkg.lighting.lightmap_changes.clear();
@@ -707,6 +739,7 @@ fn forget(app: &mut HammerProApp) {
     rt.no_lights = false;
     rt.stats = PreviewStats::default();
     rt.budget = None;
+    rt.raytracing.active = false;
     app.pkg.lighting.budget_revision = 0;
     app.pkg.lighting.cc_applied = None;
     app.pkg.lighting.cc_job = None;
@@ -719,17 +752,8 @@ impl Package for Lighting {
 
     fn handle(&self, app: &mut HammerProApp, ctx: &egui::Context, action: Action) -> bool {
         match action {
-            Action::RenderBaked => {
-                let was_baked = app.state.settings.view.render_mode == RenderModeSetting::Baked;
-                Self::toggle_mode(app, RenderModeSetting::Baked);
-                let has_bake =
-                    app.pkg.lighting.preview.as_ref().is_some_and(|p| {
-                        p.has_bake || !p.uploads.is_empty() || p.running.as_ref().is_some_and(|r| !r.lit)
-                    });
-                if !was_baked && app.state.settings.lighting.auto_bake && !has_bake {
-                    Self::start_bake(app, ctx, false, true);
-                }
-            }
+            Action::RenderBaked => Self::show_bake(app, ctx, RenderModeSetting::Baked),
+            Action::RenderRayTraced => Self::show_bake(app, ctx, RenderModeSetting::RayTraced),
             Action::RenderLightmapGrid => Self::toggle_mode(app, RenderModeSetting::LightmapGrid),
             Action::BakeLighting => Self::start_bake(app, ctx, false, false),
             Action::BakeAroundCamera => Self::start_bake(app, ctx, true, false),
@@ -787,6 +811,27 @@ impl Package for Lighting {
             app.pkg.lighting.note_lightmap_changes(gfx.renderer.take_lightmap_changes());
         }
         let lit_wanted = mode == RenderModeSetting::Lit && app.state.settings.render.lit_indirect;
+        let cam = &app.state.cameras.cam3d;
+        let key = (cam.pos, cam.yaw_deg, cam.pitch_deg);
+        if app.pkg.lighting.last_cam != Some(key) {
+            app.pkg.lighting.last_cam = Some(key);
+            app.pkg.lighting.cam_moved_at = now;
+        }
+        let held = ctx.input(|i| i.pointer.any_down() || !i.keys_down.is_empty());
+        bake::set_interactive(
+            mode == RenderModeSetting::RayTraced && (held || now - app.pkg.lighting.cam_moved_at < INTERACTIVE_AFTER),
+            cam.pos.as_vec3().to_array(),
+        );
+        let vram = if app.state.runtime.gpu.tier.low() { host::client::LOW_MEMORY_RAY_VRAM_MB } else { 0 };
+        host::client::RAY_VRAM_MB.store(vram, std::sync::atomic::Ordering::Relaxed);
+        if mode != RenderModeSetting::RayTraced {
+            app.state.runtime.lighting.raytracing.active = false;
+            if let Some(gfx) = app.state.gfx.as_mut()
+                && gfx.renderer.light_shafts().is_some()
+            {
+                gfx.renderer.set_light_shafts(None);
+            }
+        }
         let paused = paused(&app.state);
         let rules = &app.state.settings.lighting;
         bake::set_pause_rules(rules.pause_minimized, rules.pause_unfocused);
@@ -1203,6 +1248,7 @@ mod tests {
     #[test]
     fn modes() {
         assert_eq!(display_of(RenderModeSetting::Baked), LightmapDisplay::Baked);
+        assert_eq!(display_of(RenderModeSetting::RayTraced), LightmapDisplay::Baked);
         assert_eq!(display_of(RenderModeSetting::LightmapGrid), LightmapDisplay::Grid);
         assert_eq!(display_of(RenderModeSetting::Lit), LightmapDisplay::Off);
     }
@@ -1320,6 +1366,7 @@ mod tests {
             held: false,
             started: false,
             blocks_added: 0,
+            paced: false,
         }
     }
 

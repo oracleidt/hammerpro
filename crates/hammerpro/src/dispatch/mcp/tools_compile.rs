@@ -21,13 +21,16 @@ domain! { "compile and play";
         lighting steps (bsp_options, rad_options: the flags forced on or off in the options menu of the compile \
         settings, the flags of the extra arguments, the flags the preset adds and the resulting command_flags), \
         cordon compile, smart pipeline, packing, cubemaps, threads, copy to the maps folder and its folder, \
-        starting the game, expert mode and its profiles, and the compiler chosen for the game (compiler: \
-        Hammer Pro's own by default, see list_compilers). set_compile_options changes them.",
+        starting the game, expert mode and its profiles, the compiler chosen for the game (compiler: \
+        Hammer Pro's own by default, see list_compilers), and the ray tracing options (raytracing, \
+        raytracing_quality, the rt_ parameters with null for automatic, and rt_defaults: the values the quality \
+        gives them). set_compile_options changes them.",
         {}, [];
     compile_with_options: Editor, "Compile with options",
         "Compile the saved map with options for this compile only (the settings are put back): preset, steps, \
         modes (entities only, fast vis, final rad...), lighting, cordon only, smart pipeline, hidden objects, \
-        threads, an expert profile, or another compiler (compiler: an id or name of list_compilers, builtin for \
+        threads, an expert profile, ray tracing (raytracing, raytracing_quality, raytracing_optimal and the rt_ \
+        parameters), or another compiler (compiler: an id or name of list_compilers, builtin for \
         Hammer Pro's own). Never starts the game (compile_map does with launch_game). Poll get_compile_status \
         and get_compile_log.",
         {
@@ -62,6 +65,41 @@ domain! { "compile and play";
             "copy_to_maps": boolean("Copy the BSP to the game's maps folder after this compile."),
             "bsp_beside_vmf": boolean("Save the final BSP beside the source VMF and keep intermediate files in Hammer Pro's cache. The source VMF is preserved."),
             "compiler": string("Compiler for this compile only: an id or name of list_compilers (builtin: Hammer Pro's own)."),
+            "raytracing": super::tools_compile_rt::schema("raytracing"),
+            "raytracing_quality": super::tools_compile_rt::schema("raytracing_quality"),
+            "raytracing_optimal": super::tools_compile_rt::schema("raytracing_optimal"),
+            "rt_samples": super::tools_compile_rt::schema("rt_samples"),
+            "rt_max_samples": super::tools_compile_rt::schema("rt_max_samples"),
+            "rt_bounces": super::tools_compile_rt::schema("rt_bounces"),
+            "rt_threshold": super::tools_compile_rt::schema("rt_threshold"),
+            "rt_light_size": super::tools_compile_rt::schema("rt_light_size"),
+            "rt_sun_angle": super::tools_compile_rt::schema("rt_sun_angle"),
+            "rt_sky_samples": super::tools_compile_rt::schema("rt_sky_samples"),
+            "rt_denoise": super::tools_compile_rt::schema("rt_denoise"),
+            "rt_supersample": super::tools_compile_rt::schema("rt_supersample"),
+            "rt_bump": super::tools_compile_rt::schema("rt_bump"),
+            "rt_prop_samples": super::tools_compile_rt::schema("rt_prop_samples"),
+            "rt_device": super::tools_compile_rt::schema("rt_device"),
+            "rt_chunk": super::tools_compile_rt::schema("rt_chunk"),
+            "rt_seed": super::tools_compile_rt::schema("rt_seed"),
+            "rt_config": super::tools_compile_rt::schema("rt_config"),
+            "rt_reset": super::tools_compile_rt::schema("rt_reset"),
+            "rt_gpu_share": super::tools_compile_rt::schema("rt_gpu_share"),
+            "rt_ao": super::tools_compile_rt::schema("rt_ao"),
+            "rt_ao_strength": super::tools_compile_rt::schema("rt_ao_strength"),
+            "rt_ao_radius": super::tools_compile_rt::schema("rt_ao_radius"),
+            "rt_shafts": super::tools_compile_rt::schema("rt_shafts"),
+            "rt_shaft_intensity": super::tools_compile_rt::schema("rt_shaft_intensity"),
+            "rt_shaft_length": super::tools_compile_rt::schema("rt_shaft_length"),
+            "rt_shaft_softness": super::tools_compile_rt::schema("rt_shaft_softness"),
+            "rt_shaft_light_color": super::tools_compile_rt::schema("rt_shaft_light_color"),
+            "rt_shaft_source": super::tools_compile_rt::schema("rt_shaft_source"),
+            "rt_shaft_dust": super::tools_compile_rt::schema("rt_shaft_dust"),
+            "rt_glow": super::tools_compile_rt::schema("rt_glow"),
+            "rt_glow_intensity": super::tools_compile_rt::schema("rt_glow_intensity"),
+            "rt_cubemaps": super::tools_compile_rt::schema("rt_cubemaps"),
+            "rt_tonemap": super::tools_compile_rt::schema("rt_tonemap"),
+            "rt_color_correction": super::tools_compile_rt::schema("rt_color_correction"),
         }, [];
     set_compile_options: Editor, "Change the compile settings",
         "Change the saved compile settings (the compile window and the toolbar use them): preset, steps, modes, \
@@ -76,7 +114,15 @@ domain! { "compile and play";
         (rad_options: final, fast, bounce, \
         StaticPropLighting, StaticPropPolys, textureshadows, lights, chop, smooth, softsun, extrasky, the baked \
         ambient occlusion ao, aoradius, aoscale, aofacesamples, aopropsamples, aodebug...): each \
-        flag forced on (true or a value), forced off (false) or following the preset (null). Starting the game \
+        flag forced on (true or a value), forced off (false) or following the preset (null). Ray tracing (off by \
+        default): raytracing, raytracing_quality, raytracing_optimal (the Optimal button) and every parameter \
+        rt_samples, rt_max_samples, rt_bounces, rt_threshold, rt_light_size, rt_sun_angle, rt_sky_samples, \
+        rt_denoise, rt_supersample, rt_bump, rt_prop_samples, rt_device, rt_chunk, rt_seed (null: automatic; \
+        any rt_ value turns ray tracing on), the configuration rt_config (default, optimal, custom; any other rt_ \
+        change makes it custom) and rt_reset, and the effects rt_ao, rt_ao_strength, rt_ao_radius, rt_shafts, \
+        rt_shaft_intensity, rt_shaft_length, rt_shaft_softness, rt_shaft_light_color, rt_shaft_source, \
+        rt_shaft_dust, rt_glow, rt_glow_intensity, rt_cubemaps, rt_tonemap, rt_color_correction, and rt_gpu_share \
+        (auto or 0.1 to 1: the share of the graphics card the ray traced editor preview keeps; never on the compile). Starting the game \
         after compiles and the maps folder need confirm: true (only when the user asked). Answers the settings \
         like get_compile_options.",
         {
@@ -130,6 +176,41 @@ domain! { "compile and play";
                 the map folder). nostaticpropshadows is static_prop_shadows. Baked ambient occlusion: ao true \
                 (off by default, even in the final preset), aoradius (units, default 32), aoscale (0 to 1, default \
                 0.5), aofacesamples, aopropsamples (rays, default 32, 16 with fast, 64 with final), aodebug."),
+            "raytracing": super::tools_compile_rt::schema("raytracing"),
+            "raytracing_quality": super::tools_compile_rt::schema("raytracing_quality"),
+            "raytracing_optimal": super::tools_compile_rt::schema("raytracing_optimal"),
+            "rt_samples": super::tools_compile_rt::schema("rt_samples"),
+            "rt_max_samples": super::tools_compile_rt::schema("rt_max_samples"),
+            "rt_bounces": super::tools_compile_rt::schema("rt_bounces"),
+            "rt_threshold": super::tools_compile_rt::schema("rt_threshold"),
+            "rt_light_size": super::tools_compile_rt::schema("rt_light_size"),
+            "rt_sun_angle": super::tools_compile_rt::schema("rt_sun_angle"),
+            "rt_sky_samples": super::tools_compile_rt::schema("rt_sky_samples"),
+            "rt_denoise": super::tools_compile_rt::schema("rt_denoise"),
+            "rt_supersample": super::tools_compile_rt::schema("rt_supersample"),
+            "rt_bump": super::tools_compile_rt::schema("rt_bump"),
+            "rt_prop_samples": super::tools_compile_rt::schema("rt_prop_samples"),
+            "rt_device": super::tools_compile_rt::schema("rt_device"),
+            "rt_chunk": super::tools_compile_rt::schema("rt_chunk"),
+            "rt_seed": super::tools_compile_rt::schema("rt_seed"),
+            "rt_config": super::tools_compile_rt::schema("rt_config"),
+            "rt_reset": super::tools_compile_rt::schema("rt_reset"),
+            "rt_gpu_share": super::tools_compile_rt::schema("rt_gpu_share"),
+            "rt_ao": super::tools_compile_rt::schema("rt_ao"),
+            "rt_ao_strength": super::tools_compile_rt::schema("rt_ao_strength"),
+            "rt_ao_radius": super::tools_compile_rt::schema("rt_ao_radius"),
+            "rt_shafts": super::tools_compile_rt::schema("rt_shafts"),
+            "rt_shaft_intensity": super::tools_compile_rt::schema("rt_shaft_intensity"),
+            "rt_shaft_length": super::tools_compile_rt::schema("rt_shaft_length"),
+            "rt_shaft_softness": super::tools_compile_rt::schema("rt_shaft_softness"),
+            "rt_shaft_light_color": super::tools_compile_rt::schema("rt_shaft_light_color"),
+            "rt_shaft_source": super::tools_compile_rt::schema("rt_shaft_source"),
+            "rt_shaft_dust": super::tools_compile_rt::schema("rt_shaft_dust"),
+            "rt_glow": super::tools_compile_rt::schema("rt_glow"),
+            "rt_glow_intensity": super::tools_compile_rt::schema("rt_glow_intensity"),
+            "rt_cubemaps": super::tools_compile_rt::schema("rt_cubemaps"),
+            "rt_tonemap": super::tools_compile_rt::schema("rt_tonemap"),
+            "rt_color_correction": super::tools_compile_rt::schema("rt_color_correction"),
             "confirm": boolean("The user asked for this (needed to start the game after compiles or to set the maps folder)."),
         }, [];
     cancel_compile: Editor, "Cancel the compile",
@@ -244,7 +325,7 @@ domain! { "compile and play";
             "unmute_all": boolean("Bring every muted light back."),
         }, [];
     get_lighting_status: Read, "Lighting preview status",
-        "The lighting bake: options (the map's lighting preview options, see set_lighting_options), quality, progress, last result (time, faces, luxels, density), preview statistics (with \
+        "The lighting bake: options (the map's lighting preview options, see set_lighting_options), quality, render_mode (baked or ray_traced while a baked preview is shown), raytracing (the Ray traced preview of set_render_mode ray_traced: shown, active, device and gpu (the graphics card the lighting process traces on, false when it falls back to the processor: No GPU detected, compiling with Ray Tracing will take longer), config, quality and device (the Ray tracing options of the compile, which the preview always uses: change them with set_compile_options raytracing_quality, raytracing_optimal and the rt_ parameters and effects, the compile toggle raytracing not needed), args (the -raytracing flags the preview lights with, the same a compile passes), pass (refinement passes so far), progress, samples and target_samples per luxel, light_shaft_triangles and glow_halos (the baked light shafts and the glow halos of the compile effects drawn in the preview), fraction, converged, denoised, seconds and relit_faces of the last update), progress, last result (time, faces, luxels, density), preview statistics (with \
         what lights the props: the world lights, the static props and those with baked vertex lighting), tone \
         (the HDR tone mapping of the focused 3D view: mode, the exposure scale now, its range, the bloom amount, \
         what the env_tonemap_controller of the map sets and the luminance histogram the auto exposure reads), the \
@@ -482,6 +563,9 @@ fn compile_options_json(state: &AppState) -> Value {
         "extra_bsp_args": s.extra_bsp_args,
         "extra_rad_args": s.extra_rad_args,
     });
+    if let (Value::Object(m), Value::Object(r)) = (&mut out, super::tools_compile_rt::json(s)) {
+        m.extend(r);
+    }
     let rest = json!({
         "cordon_only": s.compile_cordon_only,
         "cordon_material": state.settings.visibility.cordon_material,
@@ -618,6 +702,7 @@ fn apply_options(state: &AppState, s: &mut CompileSettings, a: &Args<'_>, like_w
     if let Some(v) = a.opt_bool("bsp_beside_vmf")? {
         s.bsp_beside_vmf = v;
     }
+    super::tools_compile_rt::apply(s, a)?;
     Ok(())
 }
 
@@ -923,6 +1008,7 @@ fn get_compile_log(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
             "leak_pointfile": v.leak_file.map(|p| p.display().to_string()),
             "result": v.result.map(|(ok, cancelled, leaked, ms)| json!({ "success": ok, "cancelled": cancelled, "leaked": leaked, "total_ms": ms })),
             "problems": summary,
+            "no_gpu": v.no_gpu,
             "total_lines": v.total_lines,
             "lines": v.lines.iter().map(|l| line_json(l.severity, l.step, &l.text, l.location.as_ref(), l.knowledge)).collect::<Vec<_>>(),
         }))
@@ -1275,6 +1361,34 @@ fn prop_shadows_name(p: hp_app::settings::StaticPropShadows) -> &'static str {
     }
 }
 
+fn raytracing_json(state: &AppState) -> Value {
+    let rt = &state.runtime.lighting.raytracing;
+    let s = &state.settings.compile.raytracing;
+    json!({
+        "shown": state.settings.view.render_mode == hp_app::settings::RenderModeSetting::RayTraced,
+        "active": rt.active,
+        "device": (!rt.device.is_empty()).then(|| rt.device.clone()),
+        "gpu": (!rt.device.is_empty()).then_some(rt.gpu),
+        "fallback_notice": (!rt.device.is_empty() && !rt.gpu)
+            .then_some("No GPU detected, compiling with Ray Tracing will take longer"),
+        "config": s.config.name(),
+        "quality": s.quality.name(),
+        "device_setting": s.device.name(),
+        "args": hp_ui_mapping::raytracing_preview_args(&state.settings.compile),
+        "pass": rt.pass,
+        "progress": rt.progress,
+        "samples": rt.samples,
+        "target_samples": rt.target_samples,
+        "fraction": rt.fraction(),
+        "converged": rt.converged,
+        "denoised": rt.denoised,
+        "seconds": rt.seconds,
+        "relit_faces": rt.relit_faces,
+        "light_shaft_triangles": rt.shaft_triangles,
+        "glow_halos": rt.glow_halos,
+    })
+}
+
 fn get_lighting_status(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     if a.opt_bool("costs")? == Some(true) {
         state.runtime.lighting.costs = None;
@@ -1287,7 +1401,13 @@ fn get_lighting_status(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     Ok(ToolResult::json(json!({
         "options": lighting_options(&state.doc.light_plus()),
         "quality": quality_name(state.settings.lighting.quality),
-        "shown": state.settings.view.render_mode == hp_app::settings::RenderModeSetting::Baked,
+        "shown": state.settings.view.render_mode.shows_bake(),
+        "render_mode": match state.settings.view.render_mode {
+            hp_app::settings::RenderModeSetting::RayTraced => Some("ray_traced"),
+            hp_app::settings::RenderModeSetting::Baked => Some("baked"),
+            _ => None,
+        },
+        "raytracing": raytracing_json(state),
         "baking": l.progress.as_ref().map(|p| json!({
             "kind": lower(format!("{:?}", p.kind)), "phase": lower(format!("{:?}", p.phase)),
             "fraction": p.fraction, "elapsed_s": p.elapsed_s, "faces": p.faces,
@@ -1754,6 +1874,29 @@ mod tests {
         err(&mut s, "bake_lighting", json!({ "action": "stop", "quality": "normal" }));
         let st = ok(&mut s, "get_lighting_status", json!({}));
         assert_eq!(st["quality"], "draft");
+        assert_eq!(
+            (st["raytracing"]["config"].as_str(), st["raytracing"]["quality"].as_str()),
+            (Some("default"), Some("normal"))
+        );
+        assert_eq!(st["raytracing"]["args"][0], "-raytracing");
+        assert_eq!(st["raytracing"]["shown"], false);
+        assert!(st["raytracing"]["device"].is_null());
+        s.settings.view.render_mode = hp_app::settings::RenderModeSetting::RayTraced;
+        s.runtime.lighting.raytracing.device = "Processor".into();
+        s.runtime.lighting.raytracing.samples = 64;
+        s.runtime.lighting.raytracing.target_samples = 256;
+        let st = ok(&mut s, "get_lighting_status", json!({}));
+        assert_eq!((st["render_mode"].as_str(), st["shown"].as_bool()), (Some("ray_traced"), Some(true)));
+        assert_eq!(st["raytracing"]["gpu"], false);
+        assert!(st["raytracing"]["fallback_notice"].as_str().is_some_and(|n| n.starts_with("No GPU detected")));
+        assert_eq!(st["raytracing"]["fraction"], 0.25);
+        s.settings.compile.raytracing.make_optimal();
+        s.settings.compile.raytracing.on = false;
+        let rt = ok(&mut s, "get_lighting_status", json!({}))["raytracing"].clone();
+        assert_eq!((rt["config"].as_str(), rt["quality"].as_str()), (Some("optimal"), Some("optimal")));
+        let args: Vec<&str> = rt["args"].as_array().unwrap().iter().filter_map(|a| a.as_str()).collect();
+        assert!(args.windows(2).any(|w| w == ["-rtquality", "optimal"]), "{args:?}");
+        s.settings.view.render_mode = hp_app::settings::RenderModeSetting::Textured;
         assert_eq!(st["options"]["ambient_samples"], 40, "the Hammer++ defaults");
         let o =
             ok(&mut s, "set_lighting_options", json!({ "ambient_samples": 80, "supersample": true, "sun_samples": 3 }));

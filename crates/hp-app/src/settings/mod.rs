@@ -42,7 +42,8 @@ pub use brush::{
 };
 pub use compile::{
     BspModeSetting, CompilePresetSetting, CompileProfile, CompileSettings, FlagChoiceSetting, LightingSetting,
-    PackPolicy, ProfileStep, RadModeSetting, StaticPropShadows, VisModeSetting, WindowPlacement,
+    PackPolicy, ProfileStep, RadModeSetting, RayConfigSetting, RayDeviceSetting, RayQualitySetting,
+    RayShaftSourceSetting, RayTracingSettings, StaticPropShadows, VisModeSetting, WindowPlacement,
     background_precompile_default, background_precompile_supported,
 };
 pub use compilers::{CompilerProfile, CompilerStep, CompilerStepKind};

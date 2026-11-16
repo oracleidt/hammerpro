@@ -92,6 +92,7 @@ impl LightingTab {
         ui.horizontal_wrapped(|ui| {
             for (m, action) in [
                 (RenderModeSetting::Baked, Action::RenderBaked),
+                (RenderModeSetting::RayTraced, Action::RenderRayTraced),
                 (RenderModeSetting::LightmapGrid, Action::RenderLightmapGrid),
             ] {
                 if ui.add(egui::Button::selectable(mode == m, action.label())).clicked() {
@@ -115,7 +116,11 @@ impl LightingTab {
                 state.request(Action::StopBake);
             }
         });
-        quality_row(ui, state);
+        if mode == RenderModeSetting::RayTraced {
+            raytracing_section(ui, state);
+        } else {
+            quality_row(ui, state);
+        }
         let rt = &state.runtime.lighting;
         if let Some(p) = rt.progress {
             let kind = match p.kind {
@@ -367,6 +372,16 @@ fn quality_row(ui: &mut Ui, state: &mut AppState) {
         };
         ui.label(RichText::new(range).weak()).on_hover_text(tip);
     });
+}
+
+fn raytracing_section(ui: &mut Ui, state: &mut AppState) {
+    let before = state.settings.compile.raytracing.clone();
+    let flags = state.settings.compile.bsp_flag_choices.clone();
+    crate::compile::raytracing_preview_section(ui, &mut state.settings.compile, "hp_lighting_rt");
+    if state.settings.compile.raytracing != before || state.settings.compile.bsp_flag_choices != flags {
+        state.settings_dirty = true;
+    }
+    hp_app::raytracing_ui::status(ui, &state.runtime.lighting.raytracing);
 }
 
 fn entity_lookups(state: &AppState) -> ColorCorrectionPlus {

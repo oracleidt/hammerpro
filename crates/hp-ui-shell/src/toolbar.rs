@@ -620,7 +620,7 @@ fn toolbar_hint(action: Action) -> Option<&'static str> {
     }
 }
 
-pub const RENDER_MODES: [(RenderModeSetting, Action); 10] = [
+pub const RENDER_MODES: [(RenderModeSetting, Action); 11] = [
     (RenderModeSetting::Textured, Action::RenderTextured),
     (RenderModeSetting::Unshaded, Action::RenderUnshaded),
     (RenderModeSetting::Flat, Action::RenderFlat),
@@ -631,6 +631,7 @@ pub const RENDER_MODES: [(RenderModeSetting, Action); 10] = [
     (RenderModeSetting::Baked, Action::RenderBaked),
     (RenderModeSetting::LightmapGrid, Action::RenderLightmapGrid),
     (RenderModeSetting::ColorCorrected, Action::RenderColorCorrected),
+    (RenderModeSetting::RayTraced, Action::RenderRayTraced),
 ];
 
 pub const SELECT_MODES: [(SelectModeSetting, Action); 3] = [
@@ -1386,6 +1387,7 @@ mod tests {
             RenderModeSetting::Baked,
             RenderModeSetting::LightmapGrid,
             RenderModeSetting::ColorCorrected,
+            RenderModeSetting::RayTraced,
         ] {
             match m {
                 RenderModeSetting::Textured
@@ -1397,7 +1399,8 @@ mod tests {
                 | RenderModeSetting::SmoothingGroups
                 | RenderModeSetting::Baked
                 | RenderModeSetting::LightmapGrid
-                | RenderModeSetting::ColorCorrected => assert_eq!(listed(m), 1, "{m:?}"),
+                | RenderModeSetting::ColorCorrected
+                | RenderModeSetting::RayTraced => assert_eq!(listed(m), 1, "{m:?}"),
             }
         }
         let actions: std::collections::HashSet<_> = RENDER_MODES.iter().map(|(_, a)| *a).collect();

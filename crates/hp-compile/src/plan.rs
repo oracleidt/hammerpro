@@ -258,6 +258,7 @@ pub struct PlanOptions {
     pub static_prop_lighting: bool,
     pub static_prop_shadows: bool,
     pub target: Option<String>,
+    pub raytracing: Option<crate::raytracing::RayTracingOptions>,
 }
 
 impl Default for PlanOptions {
@@ -283,6 +284,7 @@ impl Default for PlanOptions {
             static_prop_lighting: true,
             static_prop_shadows: true,
             target: None,
+            raytracing: None,
         }
     }
 }
@@ -365,6 +367,7 @@ impl CompilePlan {
                 &split_args(&opts.extra_bsp_args),
             );
             args.extend(flags);
+            args.extend(crate::raytracing::bsp_args(opts.raytracing.as_ref()));
             args.extend(threads.iter().cloned());
             args.extend(extra);
             push_content_args(&mut args, &opts.content_args);
@@ -539,6 +542,9 @@ pub fn rad_step_flags(mode: RadMode, opts: &PlanOptions) -> (Vec<String>, Vec<St
     if !opts.static_prop_shadows {
         extra.retain(|a| !a.eq_ignore_ascii_case(flags::NO_STATIC_PROP_SHADOWS));
         flags.push(flags::NO_STATIC_PROP_SHADOWS.to_owned());
+    }
+    if let Some(rt) = &opts.raytracing {
+        flags.extend(rt.args());
     }
     (flags, extra)
 }

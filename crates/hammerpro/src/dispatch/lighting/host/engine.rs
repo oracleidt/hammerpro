@@ -16,11 +16,11 @@ pub(crate) type Shared = Arc<dyn Fn(Reply, Vec<u8>) + Send + Sync>;
 pub(crate) type Out<'a> = &'a (dyn Fn(Reply, Vec<u8>) + Sync);
 pub(crate) type Cancelled<'a> = &'a (dyn Fn() -> bool + Sync);
 
-struct Geometry {
-    key: u64,
+pub(super) struct Geometry {
+    pub(super) key: u64,
     map: hp_vmf::Map,
-    bsp: Vec<u8>,
-    entities: Vec<hp_bsp::Entity>,
+    pub(super) bsp: Vec<u8>,
+    pub(super) entities: Vec<hp_bsp::Entity>,
 }
 
 struct Warm {
@@ -34,14 +34,15 @@ pub(crate) struct Engine {
     fs: Option<hp_fs::GameFs>,
     threads: usize,
     light_files: Option<(Option<String>, Vec<hp_bspc::rad::LightFile>)>,
-    geometry: Option<Geometry>,
+    pub(super) geometry: Option<Geometry>,
     warm: Option<Warm>,
     models: Option<Arc<AtomicBool>>,
     carry: Option<hp_bspc::rad::session::Carry>,
+    pub(super) ray: Option<super::raytrace::RayWarm>,
 }
 
-struct RadModels<'a> {
-    fs: &'a hp_fs::GameFs,
+pub(super) struct RadModels<'a> {
+    pub(super) fs: &'a hp_fs::GameFs,
 }
 
 impl hp_bspc::props::ModelSource for RadModels<'_> {
@@ -60,7 +61,7 @@ impl hp_bspc::props::ModelSource for RadModels<'_> {
     }
 }
 
-fn phase_code(p: Phase) -> u8 {
+pub(super) fn phase_code(p: Phase) -> u8 {
     match p {
         Phase::Scene => PHASE_SCENE,
         Phase::Direct => PHASE_DIRECT,
@@ -133,14 +134,14 @@ pub(crate) fn texels_of(f: &FaceOut, on: &[bool; 256], patterns: &HashMap<u8, St
     }
 }
 
-fn convert(faces: &[FaceOut], entities: &[hp_bsp::Entity], hdr: bool) -> Vec<FaceTexels> {
+pub(super) fn convert(faces: &[FaceOut], entities: &[hp_bsp::Entity], hdr: bool) -> Vec<FaceTexels> {
     use rayon::prelude::*;
     let on = bsp::styles_on(entities);
     let patterns = style_maps::patterns_of(entities);
     faces.par_iter().map(|f| texels_of(f, &on, &patterns, hdr)).collect()
 }
 
-fn say(out: Out<'_>, line: &str) {
+pub(super) fn say(out: Out<'_>, line: &str) {
     out(Reply::Log { line: line.to_owned() }, Vec::new());
 }
 
@@ -149,7 +150,7 @@ fn mb(bytes: usize) -> u64 {
 }
 
 impl Engine {
-    fn fs(&self) -> hp_fs::GameFs {
+    pub(super) fn fs(&self) -> hp_fs::GameFs {
         self.fs.clone().unwrap_or_else(hp_fs::GameFs::empty)
     }
 
@@ -160,7 +161,10 @@ impl Engine {
     }
 
     pub(crate) fn handle(&mut self, req: Request, blob: Vec<u8>, shared: &Shared, cancelled: Cancelled<'_>) {
-        if !matches!(req, Request::Costs { .. } | Request::Cancel { .. } | Request::Geometry { .. }) {
+        if !matches!(
+            req,
+            Request::Costs { .. } | Request::Cancel { .. } | Request::Geometry { .. } | Request::Pace { .. }
+        ) {
             self.stop_models();
         }
         let out: Out<'_> = &**shared;
@@ -213,6 +217,9 @@ impl Engine {
                 self.compile(job, key, factor, threads, &blob, out, cancelled)
             }
             Request::Relight { job, removed, options, focus, stream, all, exact } => {
+                if options.raytracing.is_some() {
+                    return self.relight_ray(job, &removed, &blob, &options, focus, out, cancelled);
+                }
                 if exact && let Some(warm) = self.warm.as_mut() {
                     warm.session.forget_lighting();
                 }
@@ -246,8 +253,13 @@ impl Engine {
                 Ok(())
             }
             Request::Cancel { .. } => Ok(()),
+            Request::Pace { interactive, camera } => {
+                super::server::pace(interactive, camera);
+                Ok(())
+            }
             Request::Release => {
                 self.warm = None;
+                self.ray = None;
                 self.geometry = None;
                 self.carry = None;
                 Ok(())
@@ -272,6 +284,7 @@ impl Engine {
         let mut map = hp_vmf::parse(&text).map_err(|e| e.to_string())?;
         drop(text);
         self.carry = self.warm.take().and_then(|w| w.session.into_carry());
+        self.ray = None;
         self.geometry = None;
         super::super::bake::coarsen(&mut map, factor);
         super::super::bake::strip_hidden(&mut map);
@@ -317,7 +330,7 @@ impl Engine {
         Ok(())
     }
 
-    fn apply_entities(&mut self, removed: &[u32], blob: &[u8]) -> Result<(), Stop> {
+    pub(super) fn apply_entities(&mut self, removed: &[u32], blob: &[u8]) -> Result<(), Stop> {
         if removed.is_empty() && blob.is_empty() {
             return Ok(());
         }
@@ -367,7 +380,7 @@ impl Engine {
         Ok(())
     }
 
-    fn rad_options(&mut self, o: &LightOptions) -> hp_bspc::rad::RadOptions {
+    pub(super) fn rad_options(&mut self, o: &LightOptions) -> hp_bspc::rad::RadOptions {
         let tuning = child::Tuning::parse(&o.tuning);
         let mut opts = child::options(
             o.hdr,
@@ -426,7 +439,7 @@ impl Engine {
         let entities_now = geometry.entities.clone();
         let partial = |faces: Vec<FaceOut>| {
             let converted = convert(&faces, &entities_now, hdr);
-            out(Reply::Partial { job }, super::encode_faces(&converted));
+            out(Reply::Partial { job, pass: 0 }, super::encode_faces(&converted));
         };
         let ctl = Control {
             cancelled,
@@ -478,8 +491,14 @@ impl Engine {
     ) -> Result<(), Stop> {
         let out: Out<'_> = &**shared;
         let started = Instant::now();
-        let opts = self.rad_options(options);
+        let mut opts = self.rad_options(options);
         let fs = self.fs();
+        if let Some(ray) = options.raytracing.as_ref() {
+            opts.raytracing = Some(super::raytrace::settings_of(ray)?);
+            let warm = self.ray.as_ref().ok_or_else(|| Stop::Failed("no ray traced lighting".into()))?;
+            let snapshot = warm.progressive.models_job();
+            return self.spawn_models(job, opts, fs, snapshot, shared, started);
+        }
         let warm = self.warm.as_mut().ok_or_else(|| Stop::Failed("no lighting session".into()))?;
         let last = Mutex::new(Instant::now());
         let progress = |phase: Phase, fraction: f32| {
@@ -495,9 +514,21 @@ impl Engine {
         if !settled.faces.is_empty() {
             let styled = warm.session.styled_entities().map(<[hp_bsp::Entity]>::to_vec).unwrap_or_default();
             let converted = convert(&settled.faces, &styled, options.hdr);
-            out(Reply::Partial { job }, super::encode_faces(&converted));
+            out(Reply::Partial { job, pass: 0 }, super::encode_faces(&converted));
         }
         let snapshot = warm.session.models_job().ok_or_else(|| Stop::Failed("no lighting to write".into()))?;
+        self.spawn_models(job, opts, fs, snapshot, shared, started)
+    }
+
+    fn spawn_models(
+        &mut self,
+        job: u64,
+        opts: hp_bspc::rad::RadOptions,
+        fs: hp_fs::GameFs,
+        snapshot: hp_bspc::rad::session::ModelsJob,
+        shared: &Shared,
+        started: Instant,
+    ) -> Result<(), Stop> {
         let flag = Arc::new(AtomicBool::new(false));
         self.models = Some(flag.clone());
         let shared = shared.clone();

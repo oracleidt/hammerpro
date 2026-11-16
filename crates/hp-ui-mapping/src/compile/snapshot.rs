@@ -236,6 +236,9 @@ fn context_hash(
         stamp_text(&tools.compiler),
         stamp_text(&game_dir.join("gameinfo.txt")),
     ];
+    if s.raytracing.on {
+        parts.push(format!("raytracing {:?}", s.raytracing));
+    }
     let mut staged: Vec<String> = staged.iter().map(|p| stamp_text(p)).collect();
     staged.sort_unstable();
     parts.extend(staged);

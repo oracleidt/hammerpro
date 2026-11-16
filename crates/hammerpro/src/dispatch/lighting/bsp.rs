@@ -229,6 +229,36 @@ fn polygon(l: &Lumps<'_>, f: usize) -> Option<Vec<DVec3>> {
     Some(poly)
 }
 
+pub(crate) fn face_centers(bsp: &hp_bsp::Bsp) -> Vec<Vec3> {
+    let get = |i: usize| bsp.lump(i).unwrap_or(std::borrow::Cow::Borrowed(&[] as &[u8]));
+    let (vertexes, edges, surfedges, faces) =
+        (get(lump::VERTEXES), get(lump::EDGES), get(lump::SURFEDGES), get(lump::FACES));
+    let empty: &[u8] = &[];
+    let l = Lumps {
+        planes: empty,
+        vertexes: &vertexes,
+        edges: &edges,
+        surfedges: &surfedges,
+        faces: &faces,
+        texinfo: empty,
+        texdata: empty,
+        string_table: empty,
+        string_data: empty,
+        models: empty,
+        dispinfo: empty,
+        disp_verts: empty,
+        faceids: empty,
+    };
+    (0..faces.len() / FACE_SIZE)
+        .map(|f| {
+            polygon(&l, f * FACE_SIZE).map_or(Vec3::splat(f32::MAX), |poly| {
+                let sum: DVec3 = poly.iter().copied().sum();
+                (sum / poly.len() as f64).as_vec3()
+            })
+        })
+        .collect()
+}
+
 type Bound<'s> = (u32, SolidInfo, Option<&'s Arc<[u32]>>);
 
 fn bind<'s>(

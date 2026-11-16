@@ -6,5 +6,6 @@ pub(crate) fn hooks(_renderer: &Renderer) -> Vec<Box<dyn PassHook>> {
         Box::new(crate::lightmap::LightmapPass),
         Box::new(crate::compiled_light::CompiledLightPass),
         Box::new(crate::lightmap::post::PostPass::default()),
+        Box::new(crate::light_shafts::ShaftPass::default()),
     ]
 }

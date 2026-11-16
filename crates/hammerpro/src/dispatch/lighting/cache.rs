@@ -75,11 +75,14 @@ fn settings_fingerprint(state: &AppState, lit: bool) -> u64 {
     } else {
         uses_hdr(state.settings.compile.lighting)
     };
+    let ray = if lit { None } else { super::ray_options(state) };
+    let quality = if ray.is_some() { None } else { Some(s.quality) };
     hash_debug(
         &mut hash,
         &(
             lit,
-            s.quality,
+            quality,
+            ray,
             s.max_luxels_millions,
             hdr,
             state.settings.compile.static_prop_shadows,

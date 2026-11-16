@@ -385,11 +385,28 @@ fn read_world(bsp: &hp_bsp::Bsp, vis: Option<&BspVis>, leaf_version: u32) -> Opt
     ids.dedup();
     w.entity_ids = ids;
     w.rope_entities = rope_entities(&entities);
+    w.effect_sprites = effect_sprites(&entities);
     w.particle_entities = particle_entities(&entities);
     w.particle_volumes = hp_assets::particle_volumes::read(bsp, &entities);
     let sky = w.faces.iter().filter(|f| f.sky).map(|f| w.bounds_of(f)).collect();
     w.light.props = read_prop_lighting(bsp, sky, vis, mode, &scales, &planes, &leafs, leaf_version, &models);
     Some(w)
+}
+
+fn effect_sprites(entities: &[hp_bsp::entities::Entity]) -> Vec<hp_vmf::Entity> {
+    entities
+        .iter()
+        .filter(|e| {
+            let c = e.classname().trim();
+            (c.eq_ignore_ascii_case("env_sprite") || c.eq_ignore_ascii_case("env_sprite_oriented"))
+                && e.get("model").is_some_and(|m| m.to_ascii_lowercase().starts_with("materials/hammerpro/raytrace/"))
+        })
+        .map(|e| hp_vmf::Entity {
+            classname: e.classname().to_owned(),
+            props: e.pairs.iter().filter(|(k, _)| !k.eq_ignore_ascii_case("classname")).cloned().collect(),
+            ..hp_vmf::Entity::default()
+        })
+        .collect()
 }
 
 fn rope_entities(entities: &[hp_bsp::entities::Entity]) -> Vec<hp_vmf::Entity> {

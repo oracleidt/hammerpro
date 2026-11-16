@@ -26,6 +26,7 @@ pub struct CompileRunView {
     pub errors: usize,
     pub leak_file: Option<PathBuf>,
     pub result: Option<(bool, bool, bool, u64)>,
+    pub no_gpu: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -57,6 +58,10 @@ impl CompileDialog {
 
     pub fn mcp_settle_preset(s: &mut hp_app::settings::CompileSettings) {
         super::settings_ui::settle_preset(s);
+    }
+
+    pub fn mcp_raytracing_optimal(s: &mut hp_app::settings::CompileSettings) {
+        super::raytrace_ui::apply_optimal(s);
     }
 
     pub fn mcp_view(&self, tail: usize, problems_only: bool, contains: Option<&str>) -> Option<CompileRunView> {
@@ -105,6 +110,7 @@ impl CompileDialog {
             errors: run.errors,
             leak_file: run.leak_file.clone(),
             result: run.summary.as_ref().map(|s| (s.success, s.cancelled, s.leaked, s.total_ms)),
+            no_gpu: run.no_gpu,
         })
     }
 }

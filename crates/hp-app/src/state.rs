@@ -811,7 +811,7 @@ impl AppState {
             RenderModeSetting::Lit => hp_render::RenderMode::Lit,
             RenderModeSetting::Unshaded => hp_render::RenderMode::Unshaded,
             RenderModeSetting::SmoothingGroups => hp_render::RenderMode::SmoothingGroups,
-            RenderModeSetting::Baked => hp_render::RenderMode::Lit,
+            RenderModeSetting::Baked | RenderModeSetting::RayTraced => hp_render::RenderMode::Lit,
             RenderModeSetting::LightmapGrid => hp_render::RenderMode::Flat,
             RenderModeSetting::ColorCorrected => hp_render::RenderMode::Textured,
         }
@@ -829,7 +829,10 @@ impl AppState {
             show_tool_textures: self.settings.view.show_tool_textures
                 && !(self.runtime.lab.player.active && self.runtime.lab.player.hide_tools),
             lighting_preview: self.runtime.lab.player.active
-                || matches!(self.settings.view.render_mode, RenderModeSetting::Lit | RenderModeSetting::Baked),
+                || matches!(
+                    self.settings.view.render_mode,
+                    RenderModeSetting::Lit | RenderModeSetting::Baked | RenderModeSetting::RayTraced
+                ),
             model_lods: self.settings.render.model_lods,
         }
     }

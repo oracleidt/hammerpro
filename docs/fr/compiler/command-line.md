@@ -64,6 +64,7 @@ Géométrie et visibilité. Les valeurs par défaut sont celles de la ligne de c
 | `-autolightmapscale` | | Échelle de lightmap plus grossière sur les faces jamais vues de près, voir [Options de compilation](compile-options.md#optimisation). | désactivé |
 | `-cleanpak` | | Retire les fichiers inutilisés du pakfile et le compresse en LZMA. | désactivé |
 | `-autocubemaps` | | Dimensionne les cubemaps de taille par défaut selon la zone qu'ils reflètent et retire ceux qui ne servent pas. | désactivé |
+| `-rtautocubemaps` | | Hammer Pro, écrit par les cubemaps automatiques du ray tracing : quand la map n'a pas d'`env_cubemap`, en place là où les surfaces réfléchissantes en ont besoin (tailles de l'analyse des cubemaps) dans la map compilée seulement, puis active `-autocubemaps`. Avec ses propres cubemaps, seulement `-autocubemaps`. | désactivé |
 | `-embed` | dossier | Empaquette un dossier entier dans le BSP (compilations complètes seulement, refusé avec `-onlyents`/`-onlyprops`). | aucun |
 | `-dxlevel` | niveau | Retire les entités exclues par leur `mindxlevel`/`maxdxlevel`. | aucun |
 | `-radius_override` | unités | Rayon de visibilité. | `farz` du brouillard, sinon aucun |
@@ -127,6 +128,39 @@ Sans contenu de jeu (Garry's Mod introuvable et pas de `-game`), les matériaux 
 | `-nostaticpropshadows` | | Hammer Pro : aucune ombre de prop statique. | désactivé |
 | `-nodispshadows` | | Hammer Pro : aucune ombre de displacement. | désactivé |
 | `-nostylebounce` | | Hammer Pro : les lumières nommées (commutables) ne rebondissent pas, comme dans VRAD. | désactivé |
+| `-raytracing` | qualité (facultatif) | Hammer Pro : calcule l'éclairage avec le path tracer (GPU, CPU à défaut) au lieu de la radiosité. Le mot facultatif est `draft`, `normal`, `final` ou `optimal`. Toute option `-rt` ci-dessous l'active aussi. Voir [Ray tracing](compile-options.md#ray-tracing). | désactivé |
+| `-rtquality` | `draft`, `normal`, `final`, `optimal` | Niveau de qualité du ray tracing. | `normal` |
+| `-rtdevice` | `auto`, `gpu`, `cpu` | Où tourne le path tracer. `auto` utilise le GPU s'il y en a un. | `auto` |
+| `-rtseed` | nombre | Graine aléatoire : la même graine et les mêmes réglages donnent les mêmes lightmaps. | 0 |
+| `-rtsamples` | 1 à 65536 | Nombre minimal d'échantillons par luxel. | 16, 64, 256 (draft, normal, final) |
+| `-rtmaxsamples` | 1 à 65536 | Nombre maximal d'échantillons par luxel, là où le bruit reste fort. | 64, 256, 1024 |
+| `-rtbounces` | 0 à 64 | Nombre maximal de rebonds de la lumière. | 3, 6, 12 |
+| `-rtthreshold` | 0 à 1 | Échantillonnage adaptatif : niveau de bruit sous lequel un luxel s'arrête. | 0.08, 0.04, 0.02 |
+| `-rtlightsize` | 0 à 64 | Échelle de la taille des lumières (ombres douces ; 0 : nettes). | 1 |
+| `-rtsunangle` | 0 à 45 degrés | Taille angulaire du soleil. | la `light_environment` |
+| `-rtskysamples` | 1 à 64 | Échantillons du ciel par rebond. | 1, 1, 2 |
+| `-rtdenoise` | 0 à 4 | Force du débruiteur qui respecte les contours, 0 le désactive. | 1 |
+| `-rtsupersample` | 1 à 8 | Points d'échantillonnage par côté de luxel. | 2, 3, 4 |
+| `-rtnobump` | | Pas de lightmaps bumpées sur les surfaces avec normal map. | bumpées |
+| `-rtpropsamples` | 1 à 4096 | Rayons par sommet pour l'éclairage par sommet des props statiques. | selon la qualité |
+| `-rtchunk` | luxels | Luxels par lot GPU ; 0 est automatique. | automatique |
+| `-rtlang` | `en`, `fr`, `ru` | Langue des messages du ray tracing dans le journal. L'éditeur passe sa propre langue. | `en` |
+| `-rtgpushare` | `auto`, 0.1 à 1 | Part de la carte graphique que garde l'aperçu en ray tracing de l'éditeur ; une compilation l'ignore et utilise toute la carte graphique. | `auto` (0.6) |
+| `-rtnoao` / `-rtao` | | Ray tracing : occlusion ambiante précalculée désactivée / activée (ombres de contact dans les coins, sous et à la base des props statiques, aussi dans l'éclairage par sommet des props). | activée |
+| `-rtaostrength` | 0 à 1 | Force de l'occlusion ambiante. | 0.5 |
+| `-rtaoradius` | 4 à 1024 unités | Rayon de l'occlusion ambiante. | 48 |
+| `-rtnoshafts` / `-rtshafts` | | Rayons de lumière désactivés / activés : faisceaux additifs d'aspect volumétrique là où le soleil et les cônes de spots puissants passent par les fenêtres, portes et trous (sans collision ni ombre, ils s'estompent avec la distance et l'angle de vue). | activés |
+| `-rtshaftintensity` | 0 à 8 | Luminosité des rayons. | 1 |
+| `-rtshaftlength` | 0.1 à 8 | Multiplicateur de longueur des rayons. | 1 |
+| `-rtshaftsoftness` | 0 à 4 | Douceur des bords des rayons. | 1 |
+| `-rtshaftwhite` | | Rayons blancs au lieu de la couleur de leur lumière. | couleur de la lumière |
+| `-rtshaftsource` | `sun`, `sun_and_spots` | Lumières qui font des rayons. | `sun_and_spots` |
+| `-rtshaftdust` | | Poussières dans les rayons. | désactivé |
+| `-rtglow` | | Halos lumineux autour des lumières puissantes. | désactivé |
+| `-rtglowintensity` | 0 à 8 | Luminosité des halos. | 1 |
+| `-rtnocubemaps` | | Pas de placement automatique des cubemaps (fait seulement quand la map n'a pas d'`env_cubemap`). | placés |
+| `-rtnotonemap` | | Pas d'`env_tonemap_controller` automatique (ajouté seulement quand la map n'en a pas). | ajouté |
+| `-rtcolorcorrection` | | Correction colorimétrique automatique discrète. | désactivé |
 | `-ao` / `-ambientocclusion` | | Occlusion ambiante précalculée, comme dans VRAD++ (`-ao 0`, `-noao` : désactivée). Voir [Occlusion ambiante](compile-options.md#ambient-occlusion). | désactivé |
 | `-aoradius` | unités | Rayon de l'occlusion ambiante (divisé par l'échelle du `sky_camera` dans la skybox 3D). | 32 |
 | `-aoscale` | 0 à 1 | Force de l'occlusion ambiante (`-aostrength` est lue pareil). | 0,5 |

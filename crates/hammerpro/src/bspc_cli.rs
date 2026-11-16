@@ -363,6 +363,7 @@ pub(crate) struct BspcArgs {
     pub(crate) fast: bool,
     pub(crate) notes: Vec<String>,
     pub(crate) optimize: crate::bspc_optimize::OptimizeArgs,
+    pub(crate) rt_auto_cubemaps: bool,
 }
 
 pub(crate) fn app_ids_arg(value: &str) -> Result<Vec<u32>, String> {
@@ -518,6 +519,10 @@ pub(crate) fn parse_bspc_args(args: &[String]) -> Result<BspcArgs, String> {
             "-cleanpak" => a.clean_pak = true,
             "-autolightmapscale" => a.opts.auto_lightmap_scale = true,
             "-autocubemaps" => a.opts.auto_cubemaps = true,
+            "-rtautocubemaps" => {
+                a.opts.auto_cubemaps = true;
+                a.rt_auto_cubemaps = true;
+            }
             "-dxlevel" => {
                 a.dx_level = Some(number(i, arg)? as i32);
                 i += 1;
@@ -582,6 +587,53 @@ pub(crate) fn parse_bspc_args(args: &[String]) -> Result<BspcArgs, String> {
         a.opts.vis = hp_bspc::VisLevel::Fast;
     }
     Ok(a)
+}
+
+pub(crate) fn rt_place_cubemaps(map: &mut hp_vmf::Map, fs: &hp_fs::GameFs) -> String {
+    let existing = map.entities.iter().filter(|e| e.classname.eq_ignore_ascii_case("env_cubemap")).count();
+    if existing > 0 {
+        return format!(
+            "Ray tracing automatic cubemaps: the map already has {existing} env_cubemap, kept (automatic cubemap sizing on)"
+        );
+    }
+    let doc = hp_editor::Document::from_map(map.clone());
+    let fs = Some(fs);
+    let class = |m: &str| crate::dispatch::health::cubemaps::material_class(fs, m);
+    let strength = |m: &str| crate::dispatch::health::cubemaps::material_strength(fs, m);
+    let k = hp_editor::optimize::cubemaps::CubemapKnowledge { material: &class, strength: &strength };
+    let report = hp_editor::optimize::cubemaps::analyze(&doc, &k, None);
+    let idx = hp_editor::optimize::SolidIndex::new(&doc, true);
+    let dirs =
+        [glam::DVec3::X, glam::DVec3::NEG_X, glam::DVec3::Y, glam::DVec3::NEG_Y, glam::DVec3::Z, glam::DVec3::NEG_Z];
+    let enclosed =
+        |p: glam::DVec3| idx.contains(p).is_none() && dirs.iter().all(|d| idx.ray_hit(p, *d, 65536.0).is_some());
+    let new: Vec<_> =
+        report.suggestions.iter().filter(|s| s.is_new() && s.origin.is_finite() && enclosed(s.origin)).collect();
+    if new.is_empty() {
+        return format!(
+            "Ray tracing automatic cubemaps: no env_cubemap placed ({} reflective faces need none)",
+            report.reflective
+        );
+    }
+    let first = map.entities.iter().map(|e| e.id).chain([map.world.id]).max().unwrap_or(0) + 1;
+    let rooms = new.iter().filter_map(|s| s.room).collect::<std::collections::BTreeSet<_>>().len();
+    for (id, sug) in (first..).zip(&new) {
+        let o = sug.origin.round();
+        let mut e = hp_vmf::Entity { id, classname: "env_cubemap".to_owned(), ..Default::default() };
+        e.set("origin", format!("{} {} {}", o.x, o.y, o.z));
+        e.set("cubemapsize", sug.size.clamp(0, 12).to_string());
+        let sides = sug.sides.iter().map(u32::to_string).collect::<Vec<_>>().join(" ");
+        if !sides.is_empty() {
+            e.set("sides", sides);
+        }
+        map.entities.push(e);
+    }
+    format!(
+        "Ray tracing automatic cubemaps: placed {} env_cubemap in {} rooms with {} reflective faces (the map has none; sizes from the 2.0.6 cubemap analysis, the VMF on disk is not changed; run buildcubemaps in game to render them)",
+        new.len(),
+        rooms.max(1),
+        report.reflective
+    )
 }
 
 pub(crate) fn material_substitutions(game: Option<&Path>, map_name: &str) -> Option<Vec<(String, String)>> {
@@ -823,6 +875,9 @@ fn run_compile(a: &BspcArgs, map: &Path) -> i32 {
         if n > 0 {
             say(&format!("{n} entities left out by their mindxlevel/maxdxlevel"));
         }
+    }
+    if a.rt_auto_cubemaps && !a.only_ents && !a.only_props {
+        say(&rt_place_cubemaps(&mut parsed, &fs));
     }
     let models = GameModels { fs: &fs, allow_dynamic: a.allow_dynamic };
     let materials = GameMaterials { fs: fs.clone(), opts: a.materials };
@@ -1084,6 +1139,7 @@ pub(crate) fn parse_rad_args(args: &[String]) -> Result<RadArgs, String> {
     let opts = &mut r.opts;
     let mut ao_on: Option<bool> = None;
     let mut ao_options = hp_bspc::rad::AoOptions::default();
+    let mut rt: Option<hp_bspc::rad::RayTracing> = None;
     let mut i = 0;
     while i < args.len() {
         let a = args[i].as_str();
@@ -1155,6 +1211,22 @@ pub(crate) fn parse_rad_args(args: &[String]) -> Result<RadArgs, String> {
             "-nostaticpropshadows" => opts.props.shadows = false,
             "-nodispshadows" => opts.no_disp_shadows = true,
             "-nostylebounce" => opts.no_style_bounce = true,
+            "-raytracing" => {
+                let quality = args.get(i + 1).and_then(|v| hp_bspc::rad::RtQuality::parse(v));
+                let on = rt.get_or_insert_with(hp_bspc::rad::RayTracing::default);
+                if let Some(q) = quality {
+                    on.quality = q;
+                    i += 1;
+                }
+            }
+            low if hp_compile::raytracing::RT_FLAGS.iter().any(|(f, value)| !value && *f == low) => {
+                rt_switch(rt.get_or_insert_with(hp_bspc::rad::RayTracing::default), low);
+            }
+            low if hp_compile::raytracing::is_raytracing_flag(low) => {
+                let on = rt.get_or_insert_with(hp_bspc::rad::RayTracing::default);
+                rt_option(on, low, args.get(i + 1).map(String::as_str))?;
+                i += 1;
+            }
             "-ao" | "-ambientocclusion" | "-aodebug" => {
                 let switch = args.get(i + 1).and_then(|v| v.trim().parse::<f32>().ok());
                 if switch.is_some() {
@@ -1248,12 +1320,90 @@ pub(crate) fn parse_rad_args(args: &[String]) -> Result<RadArgs, String> {
         }
         i += 1;
     }
+    r.opts.raytracing = rt;
     if ao_on == Some(true) {
         r.opts.ao = Some(ao_options);
     } else if ao_options != hp_bspc::rad::AoOptions::default() {
         r.notes.push("Note: the ambient occlusion options are ignored without -ao".to_owned());
     }
     Ok(r)
+}
+
+fn rt_switch(rt: &mut hp_bspc::rad::RayTracing, flag: &str) {
+    let e = &mut rt.effects;
+    match flag {
+        "-rtnobump" => rt.bump = false,
+        "-rtao" => e.ao = true,
+        "-rtnoao" => e.ao = false,
+        "-rtshafts" => e.shafts = true,
+        "-rtnoshafts" => e.shafts = false,
+        "-rtshaftwhite" => e.shaft_light_color = false,
+        "-rtshaftdust" => e.shaft_dust = true,
+        "-rtglow" => e.glow = true,
+        "-rtnocubemaps" => e.auto_cubemaps = false,
+        "-rtnotonemap" => e.tonemap = false,
+        "-rtcolorcorrection" => e.color_correction = true,
+        _ => {}
+    }
+}
+
+fn rt_option(rt: &mut hp_bspc::rad::RayTracing, flag: &str, value: Option<&str>) -> Result<(), String> {
+    let text = value.map(str::trim).unwrap_or_default();
+    let int = |min: u32, max: u32| -> Result<u32, String> {
+        text.parse::<u32>()
+            .ok()
+            .filter(|v| (min..=max).contains(v))
+            .ok_or_else(|| format!("expected a whole number from {min} to {max} after '{flag}'"))
+    };
+    let real = |min: f32, max: f32| -> Result<f32, String> {
+        text.parse::<f32>()
+            .ok()
+            .filter(|v| v.is_finite() && (min..=max).contains(v))
+            .ok_or_else(|| format!("expected a number from {min} to {max} after '{flag}'"))
+    };
+    match flag {
+        "-rtquality" => {
+            rt.quality = hp_bspc::rad::RtQuality::parse(text)
+                .ok_or_else(|| format!("expected draft, normal, final or optimal after '{flag}'"))?;
+        }
+        "-rtdevice" => {
+            rt.device = hp_bspc::rad::RtDevice::parse(text)
+                .ok_or_else(|| format!("expected auto, gpu or cpu after '{flag}'"))?;
+        }
+        "-rtseed" => rt.seed = int(0, u32::MAX)?,
+        "-rtsamples" => rt.min_samples = Some(int(1, 65536)?),
+        "-rtmaxsamples" => rt.max_samples = Some(int(1, 65536)?),
+        "-rtbounces" => rt.bounces = Some(int(0, 64)?),
+        "-rtthreshold" => rt.adaptive_threshold = Some(real(0.0, 1.0)?),
+        "-rtlightsize" => rt.light_size_scale = Some(real(0.0, 64.0)?),
+        "-rtsunangle" => rt.sun_angle = Some(real(0.0, 45.0)?),
+        "-rtskysamples" => rt.sky_samples = Some(int(1, 64)?),
+        "-rtdenoise" => rt.denoise = Some(real(0.0, 4.0)?),
+        "-rtsupersample" => rt.supersample = Some(int(1, 8)?),
+        "-rtpropsamples" => rt.prop_samples = Some(int(1, 4096)?),
+        "-rtchunk" => rt.chunk_luxels = Some(int(0, u32::MAX)?).filter(|n| *n > 0),
+        "-rtaostrength" => rt.effects.ao_strength = real(0.0, 1.0)?,
+        "-rtaoradius" => rt.effects.ao_radius = real(4.0, 1024.0)?,
+        "-rtshaftintensity" => rt.effects.shaft_intensity = real(0.0, 8.0)?,
+        "-rtshaftlength" => rt.effects.shaft_length = real(0.1, 8.0)?,
+        "-rtshaftsoftness" => rt.effects.shaft_softness = real(0.0, 4.0)?,
+        "-rtglowintensity" => rt.effects.glow_intensity = real(0.0, 8.0)?,
+        "-rtshaftsource" => {
+            rt.effects.shaft_source = hp_bspc::rad::ShaftSource::parse(text)
+                .ok_or_else(|| format!("expected sun or sun_and_spots after '{flag}'"))?;
+        }
+        "-rtgpushare" => {
+            rt.gpu_share = if text.eq_ignore_ascii_case("auto") { None } else { Some(real(0.1, 1.0)?) };
+        }
+        "-rtlang" => {
+            if text.is_empty() || text.starts_with('-') {
+                return Err(format!("expected a language code (en, fr, ru) after '{flag}'"));
+            }
+            rt.lang = text.to_ascii_lowercase();
+        }
+        _ => return Err(format!("unknown ray tracing option '{flag}'")),
+    }
+    Ok(())
 }
 
 pub fn run_rad(args: &[String]) -> i32 {
@@ -1545,11 +1695,104 @@ mod tests {
         assert!(!r.mount.mount_addons && !r.mount.mount_workshop);
         assert!(parse_rad_args(&args("-insert_search_path")).is_err());
         for f in hp_compile::flags::FLAGS.iter().filter(|f| f.step == hp_compile::StepKind::Rad) {
-            let line = if f.value { format!("{} 2 map", f.flag) } else { format!("{} map", f.flag) };
+            let value = match f.flag {
+                "-rtdevice" => "gpu",
+                "-rtshaftsource" => "sun",
+                "-rtaoradius" => "48",
+                rt if rt.starts_with("-rt") => "1",
+                _ => "2",
+            };
+            let line = if f.value { format!("{} {value} map", f.flag) } else { format!("{} map", f.flag) };
             let r = parse_rad_args(&args(&line)).expect("parsed");
             assert!(r.ignored.is_empty(), "{}", f.flag);
             assert_eq!(r.map.as_deref(), Some(Path::new("map")), "{}", f.flag);
         }
+    }
+
+    #[test]
+    fn ray_tracing_options() {
+        use hp_bspc::rad::{RtDevice, RtQuality};
+        assert!(parse_rad_args(&args("-both -final map")).expect("parsed").opts.raytracing.is_none(), "off by default");
+        let r = parse_rad_args(&args("-ldr -RayTracing map")).expect("parsed");
+        let rt = r.opts.raytracing.expect("on");
+        assert_eq!((rt.quality, rt.device, rt.seed, rt.bump), (RtQuality::Normal, RtDevice::Auto, 0, true));
+        assert_eq!(r.map.as_deref(), Some(Path::new("map")));
+        assert!(r.ignored.is_empty());
+        let r = parse_rad_args(&args("-raytracing final map")).expect("parsed");
+        assert_eq!(r.opts.raytracing.map(|rt| rt.quality), Some(RtQuality::Final));
+        assert_eq!(r.map.as_deref(), Some(Path::new("map")));
+        let line = "-both -rtquality optimal -rtdevice cpu -rtseed 7 -rtsamples 32 -rtmaxsamples 512 -rtbounces 8 \
+            -rtthreshold 0.025 -rtlightsize 1.5 -rtsunangle 0.5 -rtskysamples 3 -rtdenoise 0 -rtsupersample 4 \
+            -rtnobump -rtpropsamples 64 -rtchunk 65536 -rtlang FR map";
+        let r = parse_rad_args(&args(line)).expect("parsed");
+        let rt = r.opts.raytracing.clone().expect("any -rt flag turns it on");
+        assert_eq!((rt.quality, rt.device, rt.seed), (RtQuality::Optimal, RtDevice::Cpu, 7));
+        assert_eq!((rt.min_samples, rt.max_samples, rt.bounces), (Some(32), Some(512), Some(8)));
+        assert_eq!((rt.adaptive_threshold, rt.light_size_scale, rt.sun_angle), (Some(0.025), Some(1.5), Some(0.5)));
+        assert_eq!((rt.sky_samples, rt.denoise, rt.supersample), (Some(3), Some(0.0), Some(4)));
+        assert_eq!((rt.bump, rt.prop_samples, rt.chunk_luxels, rt.lang.as_str()), (false, Some(64), Some(65536), "fr"));
+        assert_eq!(rt.no_gpu_message(), hp_bspc::rad::raytrace::no_gpu_message("fr"));
+        assert!(r.ignored.is_empty() && r.notes.is_empty(), "{:?} {:?}", r.ignored, r.notes);
+        assert_eq!(r.map.as_deref(), Some(Path::new("map")));
+        assert_eq!(rt.effects, hp_bspc::rad::RtEffects::default(), "the default effects");
+        let r = parse_rad_args(&args(
+            "-rtnoao -rtaostrength 0.75 -rtaoradius 64 -rtnoshafts -rtshaftintensity 2 -rtshaftlength 1.5 \
+             -rtshaftsoftness 0.5 -rtshaftwhite -rtshaftsource sun_and_spots -rtshaftdust -rtglow -rtglowintensity 3 \
+             -rtnocubemaps -rtnotonemap -rtcolorcorrection map",
+        ))
+        .expect("parsed");
+        let e = r.opts.raytracing.expect("effect flags turn it on").effects;
+        assert!(!e.ao && !e.shafts && !e.shaft_light_color && e.shaft_dust && e.glow);
+        assert!(!e.auto_cubemaps && !e.tonemap && e.color_correction);
+        assert_eq!((e.ao_strength, e.ao_radius, e.shaft_intensity), (0.75, 64.0, 2.0));
+        assert_eq!((e.shaft_length, e.shaft_softness, e.glow_intensity), (1.5, 0.5, 3.0));
+        assert_eq!(e.shaft_source, hp_bspc::rad::ShaftSource::SunAndSpots);
+        assert_eq!(r.map.as_deref(), Some(Path::new("map")));
+        let r = parse_rad_args(&args("-rtnoshafts -rtshafts map")).expect("parsed");
+        assert!(r.opts.raytracing.expect("on").effects.shafts);
+        for bad in ["-rtaostrength 2 map", "-rtaoradius 1 map", "-rtshaftlength 0 map", "-rtshaftsource moon map"] {
+            assert!(parse_rad_args(&args(bad)).is_err(), "{bad}");
+        }
+        let mut opts = hp_compile::RayTracingOptions::default();
+        opts.effects.glow = true;
+        opts.effects.ao = false;
+        let mut line = vec!["map".to_owned()];
+        line.splice(0..0, opts.args());
+        let e = parse_rad_args(&line).expect("parsed").opts.raytracing.expect("on").effects;
+        assert!(e.glow && !e.ao && e.shafts, "the plan arguments read back");
+        let r = parse_rad_args(&args("-rtgpushare 0.3 map")).expect("parsed");
+        assert_eq!(r.opts.raytracing.and_then(|rt| rt.gpu_share), Some(0.3));
+        let r = parse_rad_args(&args("-rtgpushare 0.3 -rtgpushare AUTO map")).expect("parsed");
+        assert_eq!(r.opts.raytracing.map(|rt| rt.gpu_share), Some(None), "auto");
+        assert!(parse_rad_args(&args("-rtgpushare 0.05 map")).is_err());
+        assert!(parse_rad_args(&args("-rtgpushare fast map")).is_err());
+        assert!(
+            parse_rad_args(&args("-raytracing map"))
+                .expect("parsed")
+                .opts
+                .raytracing
+                .is_some_and(|rt| rt.gpu_share.is_none())
+        );
+        let r = parse_rad_args(&args("-rtchunk 0 map")).expect("parsed");
+        assert_eq!(r.opts.raytracing.and_then(|rt| rt.chunk_luxels), None, "0 is automatic");
+        for bad in [
+            "-rtquality best map",
+            "-rtdevice tpu map",
+            "-rtsamples 0 map",
+            "-rtbounces x map",
+            "-rtdenoise 5 map",
+            "-rtsupersample 9 map",
+            "-rtthreshold -1 map",
+            "-rtsunangle 90 map",
+            "-rtlang",
+            "-rtseed",
+        ] {
+            assert!(parse_rad_args(&args(bad)).is_err(), "{bad}");
+        }
+        let mut plan_args = args("--rad -ldr -raytracing -rtbounces 4 map");
+        hp_compile::raytracing::add_lang(&mut plan_args, "ru");
+        let r = parse_rad_args(&plan_args[1..]).expect("parsed");
+        assert_eq!(r.opts.raytracing.map(|rt| (rt.lang, rt.bounces)), Some(("ru".to_owned(), Some(4))));
     }
 
     #[test]
@@ -1639,6 +1882,41 @@ mod tests {
         b[0..4].copy_from_slice(b"VBSP");
         b[4..8].copy_from_slice(&20i32.to_le_bytes());
         b
+    }
+
+    #[test]
+    fn ray_tracing_cubemaps_are_placed_only_without_cubemaps() {
+        let a = parse_bspc_args(&args("-vis -rtautocubemaps map")).unwrap();
+        assert!(a.rt_auto_cubemaps && a.opts.auto_cubemaps && a.notes.is_empty(), "{:?}", a.notes);
+        let a = parse_bspc_args(&args("-vis -autocubemaps map")).unwrap();
+        assert!(!a.rt_auto_cubemaps && a.opts.auto_cubemaps);
+        let fs = hp_fs::GameFs::empty();
+        let mut map = hp_vmf::parse(&room_of("METAL/METALFLOOR001A", "METAL/METALWALL001A")).expect("room");
+        let before = map.entities.len();
+        let line = rt_place_cubemaps(&mut map, &fs);
+        let placed: Vec<hp_vmf::Entity> =
+            map.entities.iter().filter(|e| e.classname == "env_cubemap").cloned().collect();
+        assert!(!placed.is_empty(), "{line}");
+        assert_eq!(map.entities.len(), before + placed.len());
+        assert!(line.contains(&format!("placed {}", placed.len())), "{line}");
+        for e in &placed {
+            let o = e.origin().expect("origin");
+            assert!(o.x.abs() < 128.0 && o.y.abs() < 128.0 && o.z > 0.0 && o.z < 256.0, "inside the room: {o}");
+            assert!(e.get("cubemapsize").is_some());
+        }
+        let mut ids: Vec<_> = map.entities.iter().map(|e| e.id).chain([map.world.id]).collect();
+        let n = ids.len();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), n, "new ids are unique");
+        let again = rt_place_cubemaps(&mut map, &fs);
+        assert!(again.contains(&format!("already has {}", placed.len())), "{again}");
+        assert_eq!(map.entities.iter().filter(|e| e.classname == "env_cubemap").count(), placed.len());
+        let mut plain =
+            hp_vmf::parse(&room_of("CONCRETE/CONCRETEFLOOR001A", "CONCRETE/CONCRETEWALL001A")).expect("room");
+        let line = rt_place_cubemaps(&mut plain, &fs);
+        assert!(line.contains("no env_cubemap placed"), "{line}");
+        assert!(!plain.entities.iter().any(|e| e.classname == "env_cubemap"));
     }
 
     #[test]

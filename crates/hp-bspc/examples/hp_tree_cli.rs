@@ -177,6 +177,24 @@ mod bspc_instances {
     }
 }
 
+#[allow(dead_code)]
+mod dispatch {
+    pub(crate) mod health {
+        pub(crate) mod cubemaps {
+            pub(crate) fn material_class(
+                _fs: Option<&hp_fs::GameFs>,
+                name: &str,
+            ) -> Option<hp_editor::optimize::cubemaps::MaterialClass> {
+                hp_editor::optimize::cubemaps::class_by_name(name)
+            }
+
+            pub(crate) fn material_strength(_fs: Option<&hp_fs::GameFs>, _name: &str) -> f64 {
+                1.0
+            }
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     std::process::exit(bspc_cli::run(&args));

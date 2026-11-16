@@ -175,6 +175,7 @@
 | Режим 3D-рендеринга > Сетка Lightmap | `render_lightmap_grid` | `Alt+8` |  |  |
 | Режим 3D-рендеринга > 3D-коррекция цвета | `render_color_corrected` | `Alt+9` |  |  |
 | Режим 3D-рендеринга > Предварительный просмотр запеченного освещения | `render_baked` | `Ctrl+F5` |  |  |
+| Режим 3D-рендеринга > Предпросмотр освещения с трассировкой лучей | `render_ray_traced` | `Ctrl+Shift+F5` |  |  |
 | Показать модели | `toggle_models` |  |  |  |
 | Показать помощники и спрайты | `toggle_helpers` |  |  |  |
 | Показать текстуры инструментов | `toggle_tool_textures` |  |  | `Ctrl+Shift+F2` |

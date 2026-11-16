@@ -23,7 +23,7 @@ mod scatter;
 pub use compile::{
     CompileDialog, bsp_compile_args, compile_content_args, compile_export_of, compile_options_ui, compiler_commands,
     compiler_list, compiler_name, compiler_problems, compiler_tools, compilers_settings_ui, effective_step_flags,
-    valve_flag_text, valve_group_text, valve_managed_text, viewport_id as compile_viewport_id,
+    raytracing_preview_args, valve_flag_text, valve_group_text, valve_managed_text, viewport_id as compile_viewport_id,
 };
 pub use dialogs::{MapDialogs, go_to_leak_start};
 pub use outliner::Outliner;

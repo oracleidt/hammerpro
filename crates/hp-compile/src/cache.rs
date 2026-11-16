@@ -156,7 +156,7 @@ pub fn key_args(args: &[String], map_arg: &str, game_dir: &str) -> Vec<String> {
         let lower = a.to_ascii_lowercase();
         match lower.as_str() {
             "-low" | "-leaktest" => {}
-            "-threads" | VIS_CACHE_ARG => i += 1,
+            "-threads" | "-rtlang" | "-rtchunk" | "-rtgpushare" | VIS_CACHE_ARG => i += 1,
             _ if a == map_arg => out.push("$map".to_owned()),
             _ if a == game_dir => out.push("$game".to_owned()),
             _ => out.push(a.clone()),
@@ -248,5 +248,14 @@ mod tests {
         assert_eq!(stage_key(1, exe, &b), stage_key(1, exe, &b));
         assert_ne!(stage_key(1, exe, &b), stage_key(2, exe, &b));
         assert_ne!(stage_key(1, exe, &b), stage_key(1, exe, &a));
+        let words = |t: &str| t.split(' ').map(str::to_owned).collect::<Vec<_>>();
+        let fr = key_args(&words("-raytracing -rtlang fr -rtchunk 4096 -rtbounces 4 m"), "m", "g");
+        assert_eq!(fr, key_args(&words("-raytracing -rtlang ru -rtbounces 4 m"), "m", "g"));
+        assert_eq!(fr, ["-raytracing", "-rtbounces", "4", "$map"]);
+        let effects = key_args(&words("-raytracing -rtnoshafts -rtaoradius 64 -rtbounces 4 m"), "m", "g");
+        assert_ne!(fr, effects, "the effects change the BSP");
+        let share = key_args(&words("-raytracing -rtgpushare 0.3 -rtlang fr -rtbounces 4 m"), "m", "g");
+        assert_eq!(share, fr, "the preview GPU share does not change the lighting");
+        assert!(effects.contains(&"-rtnoshafts".to_owned()) && effects.contains(&"64".to_owned()));
     }
 }

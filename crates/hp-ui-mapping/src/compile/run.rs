@@ -69,6 +69,7 @@ pub(crate) struct RunState {
     pub restored: Vec<usize>,
     pub portalclusters: Option<u32>,
     pub numportals: Option<u32>,
+    pub no_gpu: bool,
     truncated: bool,
 }
 
@@ -89,6 +90,7 @@ impl RunState {
             restored: Vec::new(),
             portalclusters: None,
             numportals: None,
+            no_gpu: false,
             truncated: false,
         }
     }
@@ -117,6 +119,12 @@ impl RunState {
         text: String,
         location: Option<LogLocation>,
     ) {
+        let severity = if super::raytrace_ui::is_no_gpu_line(&text) {
+            self.no_gpu = true;
+            LogSeverity::Warning
+        } else {
+            severity
+        };
         match severity {
             LogSeverity::Warning => self.warnings += 1,
             LogSeverity::Error => self.errors += 1,

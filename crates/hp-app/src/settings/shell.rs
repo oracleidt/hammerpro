@@ -20,6 +20,13 @@ pub enum RenderModeSetting {
     Baked,
     LightmapGrid,
     ColorCorrected,
+    RayTraced,
+}
+
+impl RenderModeSetting {
+    pub fn shows_bake(self) -> bool {
+        matches!(self, RenderModeSetting::Baked | RenderModeSetting::RayTraced)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

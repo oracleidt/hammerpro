@@ -86,6 +86,7 @@ fn job(id: u64, map: Option<hp_vmf::Map>, solids: HashMap<u32, SolidInfo>) -> Jo
         exact: false,
         quiet: false,
         priority: BakePriority::BelowNormal,
+        raytracing: None,
     }
 }
 

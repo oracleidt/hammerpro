@@ -17,6 +17,7 @@ pub mod model_compiler;
 pub mod native_window;
 pub mod os;
 pub mod pick;
+pub mod raytracing_ui;
 pub mod runtime;
 pub mod scatter;
 pub mod settings;

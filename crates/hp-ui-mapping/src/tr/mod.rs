@@ -23,6 +23,7 @@ pub mod portals;
 pub mod prefabs;
 pub mod problems;
 pub mod propper;
+pub mod raytrace;
 pub mod release;
 pub mod scatter;
 pub mod target;
@@ -60,4 +61,5 @@ pub const TABLES: &[(&str, TrTable)] = &[
     ("mapassets", mapassets::TR),
     ("target", target::TR),
     ("valveflags", valve_flags::TR),
+    ("raytrace", raytrace::TR),
 ];

@@ -187,6 +187,7 @@ pub(crate) fn plan_options(
         static_prop_lighting: s.static_prop_lighting,
         static_prop_shadows: s.static_prop_shadows,
         target,
+        raytracing: super::raytrace_ui::plan_options(s),
     }
 }
 

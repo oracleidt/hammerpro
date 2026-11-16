@@ -14,6 +14,18 @@ pub(crate) fn idle_priority() {
     super::super::memory::lower_thread_memory_priority();
 }
 
+pub(crate) static INTERACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub(crate) static CAMERA: Mutex<Option<[f32; 3]>> = Mutex::new(None);
+
+pub(crate) fn pace(interactive: bool, camera: Option<[f32; 3]>) {
+    if let Some(c) = camera
+        && let Ok(mut slot) = CAMERA.lock()
+    {
+        *slot = Some(c);
+    }
+    INTERACTIVE.store(interactive, Ordering::Release);
+}
+
 pub(crate) fn run(args: &[String]) -> i32 {
     let threads = args.first().and_then(|t| t.parse::<usize>().ok()).filter(|t| *t > 0);
     super::super::memory::lower_process_memory_priority();
@@ -34,6 +46,9 @@ pub(crate) fn run(args: &[String]) -> i32 {
                 Ok(Some((Request::Cancel { job }, _))) => {
                     flag.fetch_max(job, Ordering::AcqRel);
                 }
+                Ok(Some((Request::Pace { interactive, camera }, _))) => {
+                    pace(interactive, camera);
+                }
                 Ok(Some(frame)) => {
                     if let Request::Compile { job, .. } | Request::Relight { job, .. } = &frame.0 {
                         newest.fetch_max(*job, Ordering::AcqRel);
@@ -42,7 +57,11 @@ pub(crate) fn run(args: &[String]) -> i32 {
                         break;
                     }
                 }
-                Ok(None) | Err(_) => break,
+                Ok(None) | Err(_) => {
+                    flag.store(u64::MAX, Ordering::Release);
+                    INTERACTIVE.store(false, Ordering::Release);
+                    break;
+                }
             }
         }
     });
@@ -93,6 +112,7 @@ pub(crate) fn run(args: &[String]) -> i32 {
                     Request::Models { .. } => "models",
                     Request::Costs { .. } => "costs",
                     Request::Cancel { .. } => "cancel",
+                    Request::Pace { .. } => "pace",
                     Request::Release => "release",
                 };
                 let started = std::time::Instant::now();

@@ -179,6 +179,7 @@
 | `history` | `true` | Сохраняйте историю времени для каждой карты. |
 | `static_prop_lighting` | `true` | Разрешите `-StaticPropLighting`, когда этого требует качество. |
 | `static_prop_shadows` | `true` | Статические пропы отбрасывают тени (отключены добавления `-nostaticpropshadows`). |
+| `raytracing` | `on = false`, `quality = "Normal"`, `device = "Auto"`, `seed = 0`, `bump = true` | Трассировка лучей этапа освещения (`[compile.raytracing]`): `on`, `quality` (`Draft`, `Normal`, `Final`, `Optimal`), `device` (`Auto`, `Gpu`, `Cpu`), `seed`, `bump` `config` (`Default`, `Optimal`, `Custom`), эффекты `ao`, `ao_strength`, `ao_radius`, `shafts`, `shaft_intensity`, `shaft_length`, `shaft_softness`, `shaft_light_color`, `shaft_source` (`Sun`, `SunAndSpots`), `shaft_dust`, `glow`, `glow_intensity`, `auto_cubemaps`, `tonemap`, `color_correction`, `preview_gpu_share` (доля видеокарты предпросмотра трассировки лучей, 0: авто, иначе от 0.1 до 1; никогда не попадает в компиляцию) и параметры `min_samples`, `max_samples`, `bounces`, `threshold`, `light_size`, `sun_angle`, `sky_samples`, `denoise`, `supersample`, `prop_samples`, `chunk` (отсутствует: автоматически, значение уровня качества). См. [Трассировка лучей](../compiler/compile-options.md#трассировка-лучей). |
 | `expert` | `false` | Экспертный режим: запустить выбранный профиль вместо предустановленного. |
 | `profiles` | `[]` | Экспертные профили: `name` и `steps` (`enabled`, `action`, `program`, `args`, `continue_on_error`). |
 | `active_profile` | `0` | Индекс выбранного профиля. |

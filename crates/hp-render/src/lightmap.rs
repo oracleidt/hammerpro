@@ -335,6 +335,14 @@ impl Lightmaps {
         self.display
     }
 
+    pub(crate) fn exposure(&self) -> f32 {
+        self.exposure
+    }
+
+    pub(crate) fn ldr(&self) -> bool {
+        self.ldr
+    }
+
     fn generation(&self, object: ObjectId) -> u64 {
         self.generations.get(&object).copied().unwrap_or(0)
     }

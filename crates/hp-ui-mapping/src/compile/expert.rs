@@ -235,7 +235,11 @@ pub(crate) fn plan_of(profile: &CompileProfile, target: &Target, tools: &ToolPat
         };
         let mut st = match action {
             "bsp" => Step::new(StepKind::Bsp, &tools.compiler, compiler_args(BSPC_ARG)),
-            "rad" => Step::new(StepKind::Rad, &tools.compiler, compiler_args(RAD_ARG)),
+            "rad" => {
+                let mut rad = compiler_args(RAD_ARG);
+                hp_compile::raytracing::add_lang(&mut rad, hp_app::i18n::lang().code());
+                Step::new(StepKind::Rad, &tools.compiler, rad)
+            }
             "vis" => {
                 if !s.enabled {
                     continue;

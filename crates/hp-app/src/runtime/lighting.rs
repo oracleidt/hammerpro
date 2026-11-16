@@ -169,4 +169,37 @@ pub struct LightingRuntime {
     pub no_lights: bool,
     pub indirect: IndirectStatus,
     pub paused: bool,
+    pub raytracing: RayTracingStatus,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct RayTracingStatus {
+    pub active: bool,
+    pub device: String,
+    pub gpu: bool,
+    pub fallback_noticed: bool,
+    pub pass: u32,
+    pub progress: f32,
+    pub samples: u32,
+    pub target_samples: u32,
+    pub denoised: bool,
+    pub converged: bool,
+    pub seconds: f32,
+    pub relit_faces: usize,
+    pub shaft_triangles: usize,
+    pub glow_halos: usize,
+}
+
+impl RayTracingStatus {
+    pub fn fraction(&self) -> f32 {
+        if self.converged {
+            1.0
+        } else if self.progress > 0.0 {
+            self.progress.clamp(0.0, 1.0)
+        } else if self.target_samples == 0 {
+            0.0
+        } else {
+            (self.samples as f32 / self.target_samples as f32).clamp(0.0, 1.0)
+        }
+    }
 }

@@ -295,7 +295,7 @@ impl LightFileData {
     }
 }
 
-fn texdata(src: &hp_bsp::Bsp) -> Vec<(String, i32, i32)> {
+pub(crate) fn texdata(src: &hp_bsp::Bsp) -> Vec<(String, i32, i32)> {
     let get = |i: usize| src.lump(i).map(|c| c.into_owned()).unwrap_or_default();
     let (data, table, strings) = (get(lump::TEXDATA), get(lump::TEXDATA_STRING_TABLE), get(lump::TEXDATA_STRING_DATA));
     (0..data.len() / 32)

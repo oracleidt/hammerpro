@@ -40,6 +40,7 @@ pub(super) struct Running {
     pub hdr: bool,
     pub submitted: f64,
     pub background: bool,
+    pub raytraced: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -63,6 +64,7 @@ pub(super) struct Upload {
     pub held: bool,
     pub started: bool,
     pub blocks_added: usize,
+    pub paced: bool,
 }
 
 pub(super) struct Preview {
@@ -105,6 +107,25 @@ pub(super) struct Preview {
     pub drag_seen: Option<(u64, f64)>,
     pub drag_wait: bool,
     pub models_again: bool,
+}
+
+pub(super) const PACED_SHARE: usize = 8;
+pub(super) const PACED_FLOOR: usize = 1 << 15;
+
+pub(super) fn paced_budget(full: usize) -> usize {
+    (full / PACED_SHARE).max(PACED_FLOOR).min(full.max(1))
+}
+
+pub(super) fn superseded(uploads: &mut VecDeque<Upload>, serial: u64, newer: &bake::Baked) {
+    let ids: HashSet<u32> = newer.faces.iter().map(|f| f.id).collect();
+    uploads.retain(|u| {
+        let stale = u.partial
+            && !u.started
+            && u.baked.patch
+            && u.serial == serial
+            && u.baked.faces.iter().all(|f| ids.contains(&f.id));
+        !stale
+    });
 }
 
 pub(super) fn region_of(scope: &Scope) -> Option<[[f64; 3]; 2]> {
@@ -532,7 +553,10 @@ impl Preview {
             .then(|| state.gfx.as_ref().map(|gfx| gfx.renderer.snapshot_baked_lights()))
             .flatten();
         let first = !relight && kind != BakeKind::Refine;
-        let quick = !lit && if relight && kind != BakeKind::Refine { self.host_quick.unwrap_or(true) } else { first };
+        let raytracing = if lit { None } else { super::ray_options(state) };
+        let quick = !lit
+            && raytracing.is_none()
+            && if relight && kind != BakeKind::Refine { self.host_quick.unwrap_or(true) } else { first };
         if first && !lit {
             self.refine = None;
         }
@@ -639,7 +663,15 @@ impl Preview {
             exact: relight && (!options.keep_bake || kind == BakeKind::Full),
             quiet: background,
             priority,
+            raytracing: raytracing.clone(),
         });
+        if raytracing.is_some() {
+            let rt = &mut state.runtime.lighting.raytracing;
+            rt.active = true;
+            rt.converged = false;
+            rt.pass = 0;
+            rt.samples = 0;
+        }
         log::info!(
             "lighting preview: bake {id} ({kind:?}{}{}{}) started, prepared in {} ms",
             if relight { ", lights only" } else { "" },
@@ -661,6 +693,7 @@ impl Preview {
             hdr,
             submitted: state.frame.time,
             background,
+            raytraced: raytracing.is_some(),
         });
         if !lit {
             self.last_scope = Some(scope);
@@ -708,6 +741,7 @@ impl Preview {
                 prop_lighting: state.settings.compile.static_prop_lighting,
                 tuning: tuning.arg(),
                 threads: super::bake_threads(s.threads).1,
+                raytracing: None,
             },
         );
     }
@@ -740,6 +774,7 @@ impl Preview {
                                 partial: true,
                                 submitted: state.frame.time,
                                 held: false,
+                                paced: false,
                             });
                         }
                         continue;
@@ -747,6 +782,10 @@ impl Preview {
                     if r.lit {
                         continue;
                     }
+                    if r.raytraced && baked.patch && baked.pass > 1 {
+                        superseded(&mut self.uploads, r.serial, &baked);
+                    }
+                    let baked_patch = baked.patch;
                     self.uploads.push_back(Upload {
                         baked,
                         kind: r.kind,
@@ -761,11 +800,53 @@ impl Preview {
                         partial: true,
                         submitted: r.submitted,
                         held: r.background,
+                        paced: r.raytraced && baked_patch,
                     });
                 }
                 bake::Msg::Done { job, outcome } => {
                     let Some(r) = self.running.take_if(|r| r.id == job) else { continue };
+                    if r.raytraced
+                        && let bake::Outcome::Baked(b) = &outcome
+                        && b.patch
+                    {
+                        superseded(&mut self.uploads, r.serial, b);
+                    }
+                    state.runtime.lighting.raytracing.active = false;
                     self.done(state, r, outcome);
+                }
+                bake::Msg::Shafts { job, shafts } => {
+                    if self.running.as_ref().is_none_or(|r| r.id != job || !r.raytraced) {
+                        continue;
+                    }
+                    let count = shafts.indices.len() / 3;
+                    let halos = shafts.glows.len();
+                    if let Some(gfx) = state.gfx.as_mut() {
+                        gfx.renderer.set_light_shafts((!shafts.is_empty()).then_some(*shafts));
+                    }
+                    state.runtime.lighting.raytracing.shaft_triangles = count;
+                    state.runtime.lighting.raytracing.glow_halos = halos;
+                }
+                bake::Msg::Raytrace { job, report } => {
+                    if self.running.as_ref().is_none_or(|r| r.id != job) {
+                        continue;
+                    }
+                    let rt = &mut state.runtime.lighting.raytracing;
+                    let notice = !report.gpu && !report.device.is_empty() && !rt.fallback_noticed;
+                    rt.active = !report.converged;
+                    rt.device = report.device;
+                    rt.gpu = report.gpu;
+                    rt.pass = report.pass;
+                    rt.progress = report.progress;
+                    rt.samples = report.samples;
+                    rt.target_samples = report.target_samples;
+                    rt.denoised = report.denoised;
+                    rt.converged = report.converged;
+                    rt.seconds = report.seconds;
+                    rt.relit_faces = report.faces;
+                    if notice {
+                        rt.fallback_noticed = true;
+                        state.notify(Severity::Warning, hp_app::t!("raytracing.no_gpu"));
+                    }
                 }
                 bake::Msg::Models { job, models } => self.models(state, job, *models),
                 bake::Msg::Costs { job, costs } => {
@@ -869,6 +950,7 @@ impl Preview {
                 if !r.background {
                     self.models_for = Some((r.id, r.scope.clone(), false, r.serial));
                 }
+                let paced = r.raytraced && baked.patch;
                 self.uploads.push_back(Upload {
                     baked,
                     kind: r.kind,
@@ -883,6 +965,7 @@ impl Preview {
                     partial: false,
                     submitted: r.submitted,
                     held: r.background,
+                    paced,
                 });
             }
             _ if r.background => {
@@ -990,7 +1073,9 @@ impl Preview {
     }
 
     pub(super) fn upload(&mut self, state: &mut AppState) {
-        let mut budget = upload_budget(state);
+        let full = upload_budget(state);
+        let paced = self.uploads.front().is_some_and(|u| u.paced);
+        let mut budget = if paced { paced_budget(full) } else { full };
         while budget > 0 {
             if self.hold && self.uploads.front().is_some_and(|u| u.held) {
                 return;
@@ -1296,6 +1381,14 @@ impl Preview {
 mod budget_tests {
     use super::*;
     use hp_app::runtime::MemoryTier;
+
+    #[test]
+    fn ray_traced_passes_are_spread_over_more_frames() {
+        let full = 4 * TEXELS_PER_MB;
+        assert_eq!(paced_budget(full), full / PACED_SHARE);
+        assert_eq!(paced_budget(TEXELS_PER_MB / 4), PACED_FLOOR, "never under the floor");
+        assert_eq!(paced_budget(100), 100, "never over the setting");
+    }
 
     #[test]
     fn low_memory_caps_the_luxels_to_the_lightmap_layers_it_may_use() {

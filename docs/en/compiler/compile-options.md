@@ -44,6 +44,7 @@ The options menus show these under **Written from other settings** but do not ch
 | `-gmod <folder>` | both | Garry's Mod folder whose content the compiler mounts. | the game configuration |
 | `-ldr`, `-hdr`, `-both` | lighting | Standard range only (fastest), high range only, or both (two passes, needed for release). | **Dynamic range** |
 | `-nostaticpropshadows` | lighting | Static props cast no shadow at all (see below). | **Static prop shadows** off |
+| `-raytracing`, `-rtquality`, `-rt...` | lighting | Ray tracing and each of its parameters (see [Ray tracing](#ray-tracing)). Only for Hammer Pro's compiler: Valve's vrad never gets them. | **Ray tracing** row and the **Ray tracing** options |
 
 ## Geometry
 
@@ -136,6 +137,54 @@ Menu group **Quality** (lighting step).
 | `-centersamples` | Accepted like VRAD: luxels are always sampled at their middle when it is open. | always |
 | `-nodispshadows` | Hammer Pro option: displacements cast no shadow at all (they are still lit). One displacement can also be kept from casting shadows with the **Cast shadows** option of the [displacement tool](../features/displacement-tool.md). | off |
 | `-nostylebounce` | Hammer Pro option: named (switchable) lights light only what they see directly, like Valve's VRAD. Without it their light also bounces, in their own light style, and switches with them. Their direct light always keeps its place among the 4 styles of a face: a bounce layer only takes a free slot. | off |
+
+## Ray tracing
+
+Menu group **Ray tracing** (lighting step), and the **Ray tracing** row and options of the [Compile and run window](compile-window.md). Off by default, in every preset.
+
+Ray tracing replaces the classic radiosity of the lighting step with a physically based path tracer. It writes the same lightmap formats, so the map loads in the same games and looks right in game and in the [player view](../features/player-view.md).
+
+**What it computes.** Unbiased Monte Carlo global illumination: light paths bounce many times (paths on dark surfaces stop early by Russian roulette, without bias). Direct light is next event estimation toward every Source light type, sampled many times per luxel: `light`, `light_spot` with its cones and exponent, `light_environment` with the sun given an angular size for soft shadows and the sky dome ambient light, texture lights from `lights.rad` and self illuminated surfaces (`$selfillum` materials become area lights, from their glowing color). At every bounce the path reads that converged direct light from the lightmap it hits (static props and unlit faces sample one light by next event estimation), so many bounces stay noise free. The falloff follows VRAD's rules (`_constant_attn`, `_linear_attn`, `_quadratic_attn`, `_fifty_percent_distance`, `_zero_percent_distance`, `_hardfalloff`) so a light is as bright as with VRAD. Alpha tested and translucent surfaces, glass tinting, water, the 3D skybox, func_detail, displacements and static prop shadows from their real meshes are all traced. Bounced light takes the color of the surfaces it leaves, from the average of their base texture like VRAD's reflectivity.
+
+**Sampling.** Stratified low discrepancy samples; adaptive sample counts, so luxels in penumbras and dark corners take more samples than plain lit walls; several sample points per luxel, placed inside the open part of the luxel, so no light leaks under walls and there is no shadow acne; an edge aware denoiser that keeps shadow edges sharp; seams between faces are stitched.
+
+**Outputs.** On gm_construct (750,000 luxels, RTX 3060 Ti) the Normal quality takes about 35 s with static prop lighting, against 10 s for the classic lighting; its lightmaps are within 2% of Valve's VRAD in median brightness. LDR and HDR lightmaps, bumped lightmaps for normal mapped surfaces, light styles (switchable lights), ambient cubes for models, static prop vertex lighting and displacements.
+
+**GPU and CPU.** On the GPU it runs as wgpu compute shaders over a BVH built on the CPU with the surface area heuristic. On large scenes (300,000 triangles and more) and cards with hardware ray queries, it times both on a test batch and keeps the faster one (the log says which); otherwise the BVH is traversed in compute. Sample points stay on the card when they fit, the scene is checked against the VRAM budget, and very large maps get fewer sample points per luxel so memory stays bounded (at most 24 million points). The work goes in batches so the graphics driver never times out, and it respects the VRAM budget (setting `render.vram_budget_mb`, or the environment variable `HAMMERPRO_VRAM_BUDGET_MB`). Progress and cancel work like the other stages. The ray traced preview of the editor uses the same engine in short slices of about 8 ms on the card, three in flight, sized from the card's own timings, and leaves the editor its GPU share (Preview GPU share), so navigation keeps its frame rate. Without a usable GPU it runs the same algorithm on the CPU at below normal priority, and the log says `No GPU detected, compiling with Ray Tracing will take longer.` (in the editor's language); the compile window shows that line as a warning.
+
+**Quality levels.** **Draft** for quick previews, **Normal** for everyday compiles, **Final** for release, **Optimal** where the compiler picks the best balance between quality, map size and compile time for this map and this computer and writes in the log what it chose and why: samples and bounces from the luxel count and from GPU or CPU, 3, 2 or 1 sample points per luxel side up to 1.5 and 5 million luxels, and a lightmap budget of 48 MB per pass (the luxel density is lowered when the lightmaps would not fit). The log ends with the lighting lump size against the engine limit. The same seed with the same settings gives the same result.
+
+The **Optimal** button of the **Ray tracing** options sets the quality to Optimal, puts every parameter back to automatic and turns on `-autolightmapscale` of the geometry step (finer lightmaps near walkable areas and lights, coarser elsewhere). The engine limits are never exceeded.
+
+| Flag | Option in the window | Effect | Default (draft, normal, final) |
+|---|---|---|---|
+| `-raytracing [quality]` | **Use ray tracing** | Turns ray tracing on. | off |
+| `-rtquality <q>` | **Quality** | `draft`, `normal`, `final` or `optimal`. | `normal` |
+| `-rtsamples <n>` | **Samples per luxel (min)** | Samples every luxel takes at least. | 16, 64, 256 |
+| `-rtmaxsamples <n>` | **Samples per luxel (max)** | Most samples a luxel takes where the noise stays high. | 64, 256, 1024 |
+| `-rtbounces <n>` | **Bounces** | Most light bounces. | 3, 6, 12 |
+| `-rtthreshold <f>` | **Noise threshold** | A luxel stops taking samples when its noise is below this level. | 0.08, 0.04, 0.02 |
+| `-rtlightsize <f>` | **Light size scale** | Scale of the size of every light: point and spot lights are 2 units wide by default (soft contact of shadows), the sun uses its `SunSpreadAngle`. 0 gives VRAD's hard shadows. | 1 |
+| `-rtsunangle <degrees>` | **Sun angular size** | Width of the sun for soft sun shadows. | the `light_environment` |
+| `-rtskysamples <n>` | **Sky samples** | Sky dome directions per direct light sample. | 1, 1, 2 |
+| `-rtdenoise <0 to 4>` | **Denoiser strength** | Edge aware denoiser, 0 is off. | 1 |
+| `-rtsupersample <1 to 8>` | **Supersampling** | Sample points per luxel side. | 2, 3, 4 |
+| `-rtnobump` | **Bumped lightmaps** off | No bumped lightmaps (smaller, flatter). | bumped |
+| `-rtpropsamples <n>` | **Prop lighting samples** | Rays per static prop vertex, with static prop lighting. | from the quality |
+| `-rtdevice <auto, gpu, cpu>` | **Device** | Where the path tracer runs. | `auto` |
+| `-rtchunk <luxels>` | **GPU batch size** | Luxels per GPU batch. | automatic |
+| `-rtseed <n>` | **Seed** | Random seed. | 0 |
+| `-rtgpushare <auto, 0.1 to 1>` | **Preview GPU share** | Share of the graphics card the [ray traced preview](../features/lighting-preview.md#ray-traced-lighting-preview-ctrlshiftf5) uses while you edit. Auto keeps the editor smooth (60 fps or more); higher converges faster, lower keeps more frame rate for the editor. Only the preview gets it: compiles always use the whole graphics card. | Auto (60%) |
+| `-rtlang <code>` | (the editor's language) | Language of the messages in the log. | `en` |
+| `-rtnoao`, `-rtaostrength <0 to 1>`, `-rtaoradius <units>` | **Ambient occlusion**, **Occlusion strength**, **Occlusion radius** | Baked contact shadows in corners, under and at the base of static props, also in the prop vertex lighting. | on, 0.5, 48 |
+| `-rtnoshafts`, `-rtshaftintensity`, `-rtshaftlength`, `-rtshaftsoftness` | **Light shafts**, **Shaft brightness**, **Shaft length**, **Shaft softness** | Beams baked as additive, volumetric looking meshes where the sun (and strong spot cones with `sun_and_spots`) pass through windows, doors and holes. Drawn as a few crossed additive oriented sprites with a soft gradient that fades toward the lit surface, packed in the BSP with their material; no collision, no shadow, at most 96 sprites. The log gives where the largest shafts are. | on, 1, 1, 1 |
+| `-rtshaftwhite`, `-rtshaftsource <sun, sun_and_spots>`, `-rtshaftdust` | **Color of the light**, **Shaft sources**, **Dust motes** | Shaft color, the lights that make shafts, dust motes drifting in them. | light color, `sun_and_spots`, off |
+| `-rtglow`, `-rtglowintensity <0 to 8>` | **Glow halos**, **Glow brightness** | Soft halos around strong lights. | off, 1 |
+| `-rtnocubemaps` | **Automatic cubemaps** off | When the map has no `env_cubemap` of its own, the geometry step places `env_cubemap` entities where reflective surfaces need them, with the sizes of the cubemap analysis (the same as `suggest_cubemaps`), in the compiled map only (the VMF is never changed), and sizes the cubemaps from what they reflect (`-autocubemaps`). A map that has its own cubemaps keeps them, only sized. The log says how many were placed and why. `buildcubemaps` in game still renders them. Written as `-rtautocubemaps` on the geometry step. | on |
+| `-rtnotonemap` | **Tonemap hints** off | An `env_tonemap_controller` with sensible bloom and exposure for HDR, only when the map has none. | on |
+| `-rtcolorcorrection` | **Color correction** | Subtle automatic color correction. | off |
+
+The **Ray tracing** options appear under the lighting options only when **Ray tracing** is ticked. Their **Configuration** is **Default** when ray tracing is turned on (quality Normal, every value automatic, the default effects), **Optimal** (what the **Optimal** button does) or **Custom**, picked by itself as soon as you change a value or choose Draft or Final. **Reset to default** goes back to Default. In the window each parameter has an **Auto** box: ticked, the value comes from the quality level and is shown in grey. The effects change the compiled map only, never the VMF. The lightmap scale, the luxel density and the ambient occlusion keep their own options (`-luxelscale`, `-autolightmapscale`, `-luxeldensity`, `-ao`). The MCP tools `set_compile_options` and `compile_with_options` take the same parameters (`raytracing`, `raytracing_quality`, `raytracing_optimal`, `rt_config`, `rt_reset`, `rt_samples`, `rt_ao`, `rt_shafts`, `rt_glow`...), see [MCP server](../reference/mcp-server.md).
 
 ## Ambient occlusion
 

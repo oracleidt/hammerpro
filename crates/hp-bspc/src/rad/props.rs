@@ -218,6 +218,17 @@ impl Occluders {
         p & INDEX_MASK
     }
 
+    pub(crate) fn alpha_of(&self, payload: u32) -> Option<(usize, [[f32; 2]; 3])> {
+        if payload & SKY_BIT != 0 || payload & PROP_BIT == 0 || payload & ALPHA_BIT == 0 {
+            return None;
+        }
+        self.alpha.get((payload & INDEX_MASK) as usize).map(|a| (a.texture, a.uv))
+    }
+
+    pub(crate) fn alpha_texture(&self, tex: usize) -> Option<hp_raytrace::AlphaTexture> {
+        self.textures.export(tex)
+    }
+
     fn coverage(&self, h: &Hit) -> f32 {
         let Some(a) = self.alpha.get((h.payload & INDEX_MASK) as usize) else { return 0.0 };
         let b = [1.0 - h.u - h.v, h.u, h.v];

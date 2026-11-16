@@ -170,6 +170,7 @@ Mostly on **Settings > Viewports**; the `show_*` toggles are also in the **View*
 | `history` | `true` | Keep a timing history per map. |
 | `static_prop_lighting` | `true` | Allow `-StaticPropLighting` when the quality asks for it. |
 | `static_prop_shadows` | `true` | Static props cast shadows (off adds `-nostaticpropshadows`). |
+| `raytracing` | `on = false`, `quality = "Normal"`, `device = "Auto"`, `seed = 0`, `bump = true` | Ray tracing of the lighting step (`[compile.raytracing]`): `on`, `quality` (`Draft`, `Normal`, `Final`, `Optimal`), `device` (`Auto`, `Gpu`, `Cpu`), `seed`, `bump`, `config` (`Default`, `Optimal`, `Custom`), the effects `ao`, `ao_strength`, `ao_radius`, `shafts`, `shaft_intensity`, `shaft_length`, `shaft_softness`, `shaft_light_color`, `shaft_source` (`Sun`, `SunAndSpots`), `shaft_dust`, `glow`, `glow_intensity`, `auto_cubemaps`, `tonemap`, `color_correction`, `preview_gpu_share` (share of the graphics card of the ray traced preview, 0: auto, else 0.1 to 1; never on the compile), and the parameters `min_samples`, `max_samples`, `bounces`, `threshold`, `light_size`, `sun_angle`, `sky_samples`, `denoise`, `supersample`, `prop_samples`, `chunk` (missing: automatic, the value of the quality). See [Ray tracing](../compiler/compile-options.md#ray-tracing). |
 | `expert` | `false` | Expert mode: run the selected profile instead of the preset. |
 | `profiles` | `[]` | Expert profiles: `name` and `steps` (`enabled`, `action`, `program`, `args`, `continue_on_error`). |
 | `active_profile` | `0` | Index of the selected profile. |

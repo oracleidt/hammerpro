@@ -720,7 +720,7 @@ fn brush_triangles(map: &MapData, b: usize, xf: &dyn Fn(DVec3) -> DVec3, only_no
     }
 }
 
-fn world_brush_triangles(map: &MapData, only_nodraw: bool, out: &mut Vec<Triangle>) {
+pub(crate) fn world_brush_triangles(map: &MapData, only_nodraw: bool, out: &mut Vec<Triangle>) {
     let mut list = Vec::new();
     if let Some(m) = map.models.first() {
         brushes_under(map, m.head, &mut list);
@@ -731,7 +731,7 @@ fn world_brush_triangles(map: &MapData, only_nodraw: bool, out: &mut Vec<Triangl
     }
 }
 
-fn entity_brush_triangles(map: &MapData, out: &mut Vec<Triangle>) {
+pub(crate) fn entity_brush_triangles(map: &MapData, out: &mut Vec<Triangle>) {
     for e in &map.entities {
         let casts = e.get("vrad_brush_cast_shadows").and_then(|v| v.trim().parse::<i32>().ok()).unwrap_or(0) != 0;
         let Some(k) = e.get("model").and_then(|m| m.strip_prefix('*')).and_then(|k| k.parse::<usize>().ok()) else {

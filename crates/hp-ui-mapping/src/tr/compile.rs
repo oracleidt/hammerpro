@@ -1408,4 +1408,182 @@ pub const TR: TrTable = &[
         "Hammer Pro option: big solid walls that hide many props get a func_occluder in the compile (conservative: straight box walls only, at most 16; the VMF is not changed).",
         "Option de Hammer Pro : les grands murs pleins qui cachent beaucoup de props reçoivent un func_occluder dans la compilation (prudent : seulement des murs en boîte droits, 16 au plus ; le VMF n'est pas modifié).",
     ),
+    ("compile.flag_group.raytracing", "Ray tracing", "Ray tracing"),
+    ("compile.managed.raytracing", "set by the Ray tracing options", "réglée par les options Ray tracing"),
+    (
+        "compile.flag.raytracing",
+        "Hammer Pro option: bake the lighting with the physically based path tracer (GPU with a CPU fallback) instead of the classic radiosity. Optional value: draft, normal (default), final or optimal.",
+        "Option de Hammer Pro : calcule l'éclairage avec le path tracer physique (GPU, ou CPU à défaut) au lieu de la radiosité classique. Valeur facultative : draft, normal (par défaut), final ou optimal.",
+    ),
+    (
+        "compile.flag.rtquality",
+        "Ray tracing quality: draft, normal (default), final or optimal (the compiler picks the best balance for the map and this computer).",
+        "Qualité du ray tracing : draft, normal (par défaut), final ou optimal (le compilateur choisit le meilleur équilibre pour la map et cet ordinateur).",
+    ),
+    (
+        "compile.flag.rtdevice",
+        "Ray tracing device: auto (default, the GPU when there is one), gpu or cpu.",
+        "Périphérique du ray tracing : auto (par défaut, le GPU s'il y en a un), gpu ou cpu.",
+    ),
+    (
+        "compile.flag.rtseed",
+        "Ray tracing random seed (default 0): the same seed gives the same result.",
+        "Graine aléatoire du ray tracing (0 par défaut) : la même graine donne le même résultat.",
+    ),
+    (
+        "compile.flag.rtsamples",
+        "Ray tracing: smallest number of samples per luxel (default from the quality: 16, 64, 256).",
+        "Ray tracing : nombre minimal d'échantillons par luxel (par défaut selon la qualité : 16, 64, 256).",
+    ),
+    (
+        "compile.flag.rtmaxsamples",
+        "Ray tracing: largest number of samples per luxel where the noise stays high (default from the quality: 64, 256, 1024).",
+        "Ray tracing : nombre maximal d'échantillons par luxel là où le bruit reste fort (par défaut selon la qualité : 64, 256, 1024).",
+    ),
+    (
+        "compile.flag.rtbounces",
+        "Ray tracing: number of light bounces (default from the quality: 3, 6, 12).",
+        "Ray tracing : nombre de rebonds de la lumière (par défaut selon la qualité : 3, 6, 12).",
+    ),
+    (
+        "compile.flag.rtthreshold",
+        "Ray tracing: noise level under which a luxel stops taking samples (default from the quality: 0.08, 0.04, 0.02).",
+        "Ray tracing : niveau de bruit sous lequel un luxel arrête de prendre des échantillons (par défaut selon la qualité : 0.08, 0.04, 0.02).",
+    ),
+    (
+        "compile.flag.rtlightsize",
+        "Ray tracing: scale of the light sizes, bigger gives softer shadows (default 1).",
+        "Ray tracing : échelle de la taille des lumières, plus grand donne des ombres plus douces (1 par défaut).",
+    ),
+    (
+        "compile.flag.rtsunangle",
+        "Ray tracing: angular size of the sun in degrees for soft sun shadows (default: the light_environment value).",
+        "Ray tracing : taille angulaire du soleil en degrés pour des ombres de soleil douces (par défaut : la valeur de la light_environment).",
+    ),
+    (
+        "compile.flag.rtskysamples",
+        "Ray tracing: sky dome samples per bounce (default from the quality: 1, 1, 2).",
+        "Ray tracing : échantillons du ciel par rebond (par défaut selon la qualité : 1, 1, 2).",
+    ),
+    (
+        "compile.flag.rtdenoise",
+        "Ray tracing: strength of the edge aware denoiser, 0 (off) to 4 (default 1).",
+        "Ray tracing : force du débruiteur qui respecte les contours, de 0 (désactivé) à 4 (1 par défaut).",
+    ),
+    (
+        "compile.flag.rtsupersample",
+        "Ray tracing: sample points per luxel side, 1 to 8 (default from the quality: 2, 3, 4).",
+        "Ray tracing : points d'échantillonnage par côté de luxel, de 1 à 8 (par défaut selon la qualité : 2, 3, 4).",
+    ),
+    (
+        "compile.flag.rtnobump",
+        "Ray tracing: no bumped lightmaps on normal mapped surfaces (smaller, flatter).",
+        "Ray tracing : pas de lightmaps bumpées sur les surfaces avec normal map (plus léger, plus plat).",
+    ),
+    (
+        "compile.flag.rtpropsamples",
+        "Ray tracing: rays per vertex for the static prop vertex lighting (default from the quality).",
+        "Ray tracing : rayons par sommet pour l'éclairage par sommet des props statiques (par défaut selon la qualité).",
+    ),
+    (
+        "compile.flag.rtchunk",
+        "Ray tracing: luxels per GPU batch (default 0: automatic, sized so the driver never times out).",
+        "Ray tracing : luxels par lot GPU (0 par défaut : automatique, dimensionné pour que le pilote n'expire jamais).",
+    ),
+    (
+        "compile.flag.rtlang",
+        "Ray tracing: language of the messages in the log (en, fr, ru). Hammer Pro passes the language of the editor.",
+        "Ray tracing : langue des messages du journal (en, fr, ru). Hammer Pro passe la langue de l'éditeur.",
+    ),
+    (
+        "compile.flag.rtgpushare",
+        "Ray tracing: share of the graphics card the ray traced editor preview keeps, auto or 0.1 to 1 (auto: 0.6). A compile ignores it and uses the whole graphics card.",
+        "Ray tracing : part de la carte graphique que garde l'aperçu en ray tracing de l'éditeur, auto ou de 0.1 à 1 (auto : 0.6). Une compilation l'ignore et utilise toute la carte graphique.",
+    ),
+    (
+        "compile.flag.rtautocubemaps",
+        "Hammer Pro option written by the ray tracing automatic cubemaps: when the map has no env_cubemap, env_cubemap entities are placed and sized in the compiled map (never in the VMF), and the automatic cubemap sizing is on.",
+        "Option de Hammer Pro écrite par les cubemaps automatiques du ray tracing : quand la map n'a pas d'env_cubemap, des env_cubemap sont placés et dimensionnés dans la map compilée (jamais dans le VMF), et le dimensionnement automatique des cubemaps est activé.",
+    ),
+    (
+        "compile.flag.rtao",
+        "Ray tracing: bake ambient occlusion (default on): contact shadows in corners, under and at the base of static props, also in the prop vertex lighting.",
+        "Ray tracing : précalcule l'occlusion ambiante (activée par défaut) : ombres de contact dans les coins, sous et à la base des props statiques, aussi dans l'éclairage par sommet des props.",
+    ),
+    (
+        "compile.flag.rtnoao",
+        "Ray tracing: no baked ambient occlusion.",
+        "Ray tracing : pas d'occlusion ambiante précalculée.",
+    ),
+    (
+        "compile.flag.rtaostrength",
+        "Ray tracing: ambient occlusion strength, 0 to 1 (default 0.5).",
+        "Ray tracing : force de l'occlusion ambiante, de 0 à 1 (0.5 par défaut).",
+    ),
+    (
+        "compile.flag.rtaoradius",
+        "Ray tracing: ambient occlusion radius in units, 4 to 1024 (default 48).",
+        "Ray tracing : rayon de l'occlusion ambiante en unités, de 4 à 1024 (48 par défaut).",
+    ),
+    (
+        "compile.flag.rtshafts",
+        "Ray tracing: bake light shafts (default on): additive volumetric looking beams where the sun and strong spot cones pass through windows, doors and holes. No collision, no shadow, they fade with distance and view angle.",
+        "Ray tracing : précalcule des rayons de lumière (activés par défaut) : des faisceaux additifs d'aspect volumétrique là où le soleil et les cônes de spots puissants passent par les fenêtres, portes et trous. Sans collision ni ombre, ils s'estompent avec la distance et l'angle de vue.",
+    ),
+    ("compile.flag.rtnoshafts", "Ray tracing: no light shafts.", "Ray tracing : pas de rayons de lumière."),
+    (
+        "compile.flag.rtshaftintensity",
+        "Ray tracing: light shaft brightness, 0 to 8 (default 1).",
+        "Ray tracing : luminosité des rayons de lumière, de 0 à 8 (1 par défaut).",
+    ),
+    (
+        "compile.flag.rtshaftlength",
+        "Ray tracing: light shaft length multiplier, 0.1 to 8 (default 1).",
+        "Ray tracing : multiplicateur de longueur des rayons de lumière, de 0.1 à 8 (1 par défaut).",
+    ),
+    (
+        "compile.flag.rtshaftsoftness",
+        "Ray tracing: light shaft edge softness, 0 to 4 (default 1).",
+        "Ray tracing : douceur des bords des rayons de lumière, de 0 à 4 (1 par défaut).",
+    ),
+    (
+        "compile.flag.rtshaftwhite",
+        "Ray tracing: white light shafts instead of the color of their light.",
+        "Ray tracing : rayons de lumière blancs au lieu de la couleur de leur lumière.",
+    ),
+    (
+        "compile.flag.rtshaftsource",
+        "Ray tracing: lights that make shafts: sun or sun_and_spots (default, the sun and strong spot lights).",
+        "Ray tracing : lumières qui font des rayons : sun ou sun_and_spots (par défaut, le soleil et les spots puissants).",
+    ),
+    (
+        "compile.flag.rtshaftdust",
+        "Ray tracing: dust motes drifting in the light shafts.",
+        "Ray tracing : poussières qui flottent dans les rayons de lumière.",
+    ),
+    (
+        "compile.flag.rtglow",
+        "Ray tracing: glow halos around strong lights (default off).",
+        "Ray tracing : halos lumineux autour des lumières puissantes (désactivés par défaut).",
+    ),
+    (
+        "compile.flag.rtglowintensity",
+        "Ray tracing: glow halo brightness, 0 to 8 (default 1).",
+        "Ray tracing : luminosité des halos, de 0 à 8 (1 par défaut).",
+    ),
+    (
+        "compile.flag.rtnocubemaps",
+        "Ray tracing: no automatic cubemap placement (by default env_cubemap entities are placed and sized for the new lighting when the map has none).",
+        "Ray tracing : pas de placement automatique des cubemaps (par défaut des env_cubemap sont placés et dimensionnés pour le nouvel éclairage quand la map n'en a pas).",
+    ),
+    (
+        "compile.flag.rtnotonemap",
+        "Ray tracing: no automatic tonemap hints (by default an env_tonemap_controller with sensible bloom and exposure for HDR is added when the map has none).",
+        "Ray tracing : pas de réglages de tonemap automatiques (par défaut un env_tonemap_controller avec un bloom et une exposition adaptés au HDR est ajouté quand la map n'en a pas).",
+    ),
+    (
+        "compile.flag.rtcolorcorrection",
+        "Ray tracing: subtle automatic color correction (default off).",
+        "Ray tracing : correction colorimétrique automatique discrète (désactivée par défaut).",
+    ),
 ];

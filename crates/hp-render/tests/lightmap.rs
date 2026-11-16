@@ -567,3 +567,58 @@ fn the_baked_view_draws_the_3d_grid() {
     r.set_view_options(0, ViewOptions::default());
     assert_eq!(frame(&mut r), plain);
 }
+
+#[test]
+fn light_shafts_add_their_light_in_the_baked_view_only() {
+    use hp_render::light_shafts::{LightShafts, ShaftVertex};
+    let Some((device, queue)) = gpu() else {
+        eprintln!("no GPU adapter: test skipped");
+        return;
+    };
+    let mut r = Renderer::new(&device, &queue);
+    assert!(r.pass_hook_names().contains(&"light_shafts"));
+    r.set_lightmap_ldr(true);
+    r.set_lightmap_display(LightmapDisplay::Baked, 1.0);
+    let color = [1.0, 0.9, 0.6, 1.0];
+    let v = |x: f32, y: f32, u: f32, w: f32| ShaftVertex { pos: [x, y, 200.0], uv: [u, w], color };
+    let shafts = LightShafts {
+        vertices: vec![
+            v(-60.0, -120.0, 0.0, 0.0),
+            v(60.0, -120.0, 1.0, 0.0),
+            v(60.0, 120.0, 1.0, 1.0),
+            v(-60.0, 120.0, 0.0, 1.0),
+        ],
+        indices: vec![0, 1, 2, 0, 2, 3],
+        glows: Vec::new(),
+    };
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    let dark = pixel(&r, 64, 64);
+    r.set_light_shafts(Some(shafts.clone()));
+    assert!(r.light_shafts().is_some());
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    let lit = pixel(&r, 64, 64);
+    let edge = pixel(&r, 4, 64);
+    assert!(lit[0] > dark[0] + 60 && lit[1] > dark[1] + 50, "the middle of the shaft glows: {dark:?} {lit:?}");
+    assert!(lit[0] >= lit[2], "the shaft keeps its warm color: {lit:?}");
+    assert!(edge[0] <= dark[0] + 2, "outside the shaft nothing changes: {edge:?}");
+    r.set_lightmap_display(LightmapDisplay::Off, 1.0);
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    assert!(pixel(&r, 64, 64)[0] <= dark[0] + 2, "only the baked preview shows the shafts");
+    r.set_lightmap_display(LightmapDisplay::Baked, 1.0);
+    r.set_light_shafts(None);
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    assert!(pixel(&r, 64, 64)[0] <= dark[0] + 2, "cleared shafts are gone");
+    let broken = LightShafts { vertices: shafts.vertices.clone(), indices: vec![0, 1, 9], glows: Vec::new() };
+    r.set_light_shafts(Some(broken));
+    assert!(r.light_shafts().is_none(), "a broken mesh is refused");
+    let halo =
+        hp_render::light_shafts::GlowHalo { center: [0.0, 0.0, 200.0], size: 120.0, color: [1.0, 0.8, 0.5], pad: 0.0 };
+    r.set_light_shafts(Some(LightShafts { glows: vec![halo], ..Default::default() }));
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    let middle = pixel(&r, 64, 64);
+    let rim = pixel(&r, 64, 64 + 40);
+    let far = pixel(&r, 4, 4);
+    assert!(middle[0] > dark[0] + 60, "the halo glows at the light: {middle:?}");
+    assert!(rim[0] < middle[0], "and fades away from it: {middle:?} {rim:?}");
+    assert!(far[0] <= dark[0] + 2, "far from the halo nothing changes: {far:?}");
+}

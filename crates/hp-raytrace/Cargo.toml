@@ -1,0 +1,18 @@
+[package]
+name = "hp-raytrace"
+description = "Hammer Pro path tracing engine: physically based lightmap baking on the GPU (wgpu compute, hardware ray query when available) with a CPU fallback."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+glam.workspace = true
+rayon.workspace = true
+bytemuck.workspace = true
+wgpu.workspace = true
+pollster.workspace = true
+hp-render.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Threading"] }

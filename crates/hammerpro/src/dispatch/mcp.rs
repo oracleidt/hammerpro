@@ -34,6 +34,7 @@ mod tools_assets;
 mod tools_blender;
 mod tools_combine;
 mod tools_compile;
+mod tools_compile_rt;
 mod tools_compilers;
 mod tools_content;
 mod tools_crash;

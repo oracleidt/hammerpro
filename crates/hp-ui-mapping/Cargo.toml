@@ -19,6 +19,7 @@ egui = { workspace = true, features = ["monochrome_emoji_fonts"] }
 glam.workspace = true
 log.workspace = true
 hp-compile.workspace = true
+hp-raytrace = { path = "../hp-raytrace" }
 crossbeam-channel.workspace = true
 hp-fs.workspace = true
 hp-bsp.workspace = true

@@ -1,5 +1,6 @@
 pub(crate) mod client;
 pub(crate) mod engine;
+pub(crate) mod raytrace;
 pub(crate) mod server;
 
 use std::io::{Read, Write};
@@ -30,6 +31,27 @@ pub(crate) struct LightOptions {
     pub prop_lighting: bool,
     pub tuning: String,
     pub threads: usize,
+    #[serde(default)]
+    pub raytracing: Option<RayOptions>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub(crate) struct RayOptions {
+    pub args: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub(crate) struct RayReport {
+    pub device: String,
+    pub gpu: bool,
+    pub pass: u32,
+    pub progress: f32,
+    pub samples: u32,
+    pub target_samples: u32,
+    pub denoised: bool,
+    pub converged: bool,
+    pub seconds: f32,
+    pub faces: usize,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -93,19 +115,61 @@ pub(crate) enum Request {
     Cancel {
         job: u64,
     },
+    Pace {
+        interactive: bool,
+        #[serde(default)]
+        camera: Option<[f32; 3]>,
+    },
     Release,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub(crate) enum Reply {
-    Progress { job: u64, phase: u8, fraction: f32 },
-    Compiled { job: u64, key: u64, leaked: bool, warnings: Vec<String>, seconds: f32, peak_mb: u64 },
-    Partial { job: u64 },
-    Lit { job: u64, stats: LitStats },
-    Models { job: u64, seconds: f32 },
-    Costs { job: u64, costs: Vec<CostEntry> },
-    Failed { job: u64, cancelled: bool, message: String },
-    Log { line: String },
+    Progress {
+        job: u64,
+        phase: u8,
+        fraction: f32,
+    },
+    Compiled {
+        job: u64,
+        key: u64,
+        leaked: bool,
+        warnings: Vec<String>,
+        seconds: f32,
+        peak_mb: u64,
+    },
+    Partial {
+        job: u64,
+        #[serde(default)]
+        pass: u32,
+    },
+    Raytrace {
+        job: u64,
+        report: RayReport,
+    },
+    Shafts {
+        job: u64,
+    },
+    Lit {
+        job: u64,
+        stats: LitStats,
+    },
+    Models {
+        job: u64,
+        seconds: f32,
+    },
+    Costs {
+        job: u64,
+        costs: Vec<CostEntry>,
+    },
+    Failed {
+        job: u64,
+        cancelled: bool,
+        message: String,
+    },
+    Log {
+        line: String,
+    },
 }
 
 impl Reply {
@@ -113,7 +177,9 @@ impl Reply {
         match self {
             Reply::Progress { job, .. }
             | Reply::Compiled { job, .. }
-            | Reply::Partial { job }
+            | Reply::Partial { job, .. }
+            | Reply::Raytrace { job, .. }
+            | Reply::Shafts { job }
             | Reply::Lit { job, .. }
             | Reply::Models { job, .. }
             | Reply::Costs { job, .. }
@@ -225,6 +291,89 @@ pub(crate) fn encode_faces(faces: &[FaceTexels]) -> Vec<u8> {
     out
 }
 
+pub(crate) type GlowRecord = ([f32; 3], [f32; 3], f32);
+
+pub(crate) fn encode_shafts(
+    vertices: &[([f32; 3], [f32; 2], [f32; 4])],
+    indices: &[u32],
+    glows: &[GlowRecord],
+) -> Vec<u8> {
+    let mut out = Vec::with_capacity(8 + vertices.len() * 36 + indices.len() * 4);
+    out.extend_from_slice(&(vertices.len() as u32).to_le_bytes());
+    for (p, uv, c) in vertices {
+        for v in p.iter().chain(uv).chain(c) {
+            out.extend_from_slice(&v.to_le_bytes());
+        }
+    }
+    out.extend_from_slice(&(indices.len() as u32).to_le_bytes());
+    for i in indices {
+        out.extend_from_slice(&i.to_le_bytes());
+    }
+    out.extend_from_slice(&(glows.len() as u32).to_le_bytes());
+    for (p, c, size) in glows {
+        for v in p.iter().chain(c).chain(std::iter::once(size)) {
+            out.extend_from_slice(&v.to_le_bytes());
+        }
+    }
+    out
+}
+
+pub(crate) fn decode_shafts(data: &[u8]) -> Result<hp_render::light_shafts::LightShafts, String> {
+    let word = |at: usize| -> Result<[u8; 4], String> {
+        data.get(at..at + 4).and_then(|b| b.try_into().ok()).ok_or_else(|| "truncated light shafts".to_owned())
+    };
+    let count = u32::from_le_bytes(word(0)?) as usize;
+    if count > data.len() / 36 {
+        return Err("light shafts too large".to_owned());
+    }
+    let mut at = 4;
+    let mut vertices = Vec::with_capacity(count);
+    for _ in 0..count {
+        let mut f = [0f32; 9];
+        for v in &mut f {
+            *v = f32::from_le_bytes(word(at)?);
+            at += 4;
+        }
+        vertices.push(hp_render::light_shafts::ShaftVertex {
+            pos: [f[0], f[1], f[2]],
+            uv: [f[3], f[4]],
+            color: [f[5], f[6], f[7], f[8]],
+        });
+    }
+    let n = u32::from_le_bytes(word(at)?) as usize;
+    at += 4;
+    if n > (data.len() - at) / 4 {
+        return Err("truncated light shafts".to_owned());
+    }
+    let mut indices = Vec::with_capacity(n);
+    for _ in 0..n {
+        indices.push(u32::from_le_bytes(word(at)?));
+        at += 4;
+    }
+    let mut glows = Vec::new();
+    if at < data.len() {
+        let g = u32::from_le_bytes(word(at)?) as usize;
+        at += 4;
+        if g > (data.len() - at) / 28 {
+            return Err("truncated glow halos".to_owned());
+        }
+        for _ in 0..g {
+            let mut f = [0f32; 7];
+            for v in &mut f {
+                *v = f32::from_le_bytes(word(at)?);
+                at += 4;
+            }
+            glows.push(hp_render::light_shafts::GlowHalo {
+                center: [f[0], f[1], f[2]],
+                color: [f[3], f[4], f[5]],
+                size: f[6],
+                pad: 0.0,
+            });
+        }
+    }
+    Ok(hp_render::light_shafts::LightShafts { vertices, indices, glows })
+}
+
 pub(crate) fn decode_faces(data: &[u8]) -> Result<Vec<FaceTexels>, String> {
     struct Cursor<'a>(&'a [u8], usize);
     impl Cursor<'_> {
@@ -298,6 +447,7 @@ mod tests {
                 prop_lighting: false,
                 tuning: "6,40,0,1,0,0,0,0".into(),
                 threads: 4,
+                raytracing: Some(RayOptions { args: vec!["-raytracing".into(), "-rtbounces".into(), "9".into()] }),
             },
             focus: Some([1.0, 2.0, 3.0]),
             stream: true,
@@ -330,6 +480,17 @@ mod tests {
             },
         ];
         assert_eq!(decode_faces(&encode_faces(&faces)).unwrap(), faces);
+        let verts = [([1.0, 2.0, 3.0], [0.0, 1.0], [0.5, 0.4, 0.3, 0.9]); 3];
+        let halo = ([4.0, 5.0, 6.0], [1.0, 0.5, 0.25], 48.0);
+        let shafts = decode_shafts(&encode_shafts(&verts, &[0, 1, 2], &[halo])).unwrap();
+        assert_eq!(shafts.glows.len(), 1);
+        assert_eq!((shafts.glows[0].center, shafts.glows[0].size), ([4.0, 5.0, 6.0], 48.0));
+        assert_eq!(shafts.indices, vec![0, 1, 2]);
+        assert_eq!(shafts.vertices[2].color, [0.5, 0.4, 0.3, 0.9]);
+        assert_eq!(shafts.vertices[0].pos, [1.0, 2.0, 3.0]);
+        assert!(decode_shafts(&encode_shafts(&verts, &[0, 1, 2], &[])[..30]).is_err());
+        assert!(decode_shafts(&encode_shafts(&verts, &[0, 1, 2], &[halo])[..130]).is_err());
+        assert!(decode_shafts(&[255, 255, 255, 255]).is_err());
         assert!(decode_faces(&encode_faces(&faces)[..20]).is_err());
     }
 }

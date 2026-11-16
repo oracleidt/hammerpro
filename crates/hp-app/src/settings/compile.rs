@@ -59,6 +59,225 @@ pub enum StaticPropShadows {
     Mesh,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum RayQualitySetting {
+    Draft,
+    #[default]
+    Normal,
+    Final,
+    Optimal,
+}
+
+impl RayQualitySetting {
+    pub const ALL: [RayQualitySetting; 4] =
+        [RayQualitySetting::Draft, RayQualitySetting::Normal, RayQualitySetting::Final, RayQualitySetting::Optimal];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            RayQualitySetting::Draft => "draft",
+            RayQualitySetting::Normal => "normal",
+            RayQualitySetting::Final => "final",
+            RayQualitySetting::Optimal => "optimal",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<RayQualitySetting> {
+        let t = text.trim();
+        RayQualitySetting::ALL.into_iter().find(|q| q.name().eq_ignore_ascii_case(t))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum RayDeviceSetting {
+    #[default]
+    Auto,
+    Gpu,
+    Cpu,
+}
+
+impl RayDeviceSetting {
+    pub const ALL: [RayDeviceSetting; 3] = [RayDeviceSetting::Auto, RayDeviceSetting::Gpu, RayDeviceSetting::Cpu];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            RayDeviceSetting::Auto => "auto",
+            RayDeviceSetting::Gpu => "gpu",
+            RayDeviceSetting::Cpu => "cpu",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<RayDeviceSetting> {
+        let t = text.trim();
+        RayDeviceSetting::ALL.into_iter().find(|d| d.name().eq_ignore_ascii_case(t))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum RayConfigSetting {
+    #[default]
+    Default,
+    Optimal,
+    Custom,
+}
+
+impl RayConfigSetting {
+    pub const ALL: [RayConfigSetting; 3] =
+        [RayConfigSetting::Default, RayConfigSetting::Optimal, RayConfigSetting::Custom];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            RayConfigSetting::Default => "default",
+            RayConfigSetting::Optimal => "optimal",
+            RayConfigSetting::Custom => "custom",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<RayConfigSetting> {
+        let t = text.trim();
+        RayConfigSetting::ALL.into_iter().find(|c| c.name().eq_ignore_ascii_case(t))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum RayShaftSourceSetting {
+    Sun,
+    #[default]
+    SunAndSpots,
+}
+
+impl RayShaftSourceSetting {
+    pub const ALL: [RayShaftSourceSetting; 2] = [RayShaftSourceSetting::Sun, RayShaftSourceSetting::SunAndSpots];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            RayShaftSourceSetting::Sun => "sun",
+            RayShaftSourceSetting::SunAndSpots => "sun_and_spots",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<RayShaftSourceSetting> {
+        let t = text.trim();
+        RayShaftSourceSetting::ALL.into_iter().find(|c| c.name().eq_ignore_ascii_case(t))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RayTracingSettings {
+    pub on: bool,
+    pub config: RayConfigSetting,
+    pub quality: RayQualitySetting,
+    pub device: RayDeviceSetting,
+    pub seed: u32,
+    pub min_samples: Option<u32>,
+    pub max_samples: Option<u32>,
+    pub bounces: Option<u32>,
+    pub threshold: Option<f32>,
+    pub light_size: Option<f32>,
+    pub sun_angle: Option<f32>,
+    pub sky_samples: Option<u32>,
+    pub denoise: Option<f32>,
+    pub supersample: Option<u32>,
+    pub bump: bool,
+    pub prop_samples: Option<u32>,
+    pub chunk: Option<u32>,
+    pub ao: bool,
+    pub ao_strength: f32,
+    pub ao_radius: f32,
+    pub shafts: bool,
+    pub shaft_intensity: f32,
+    pub shaft_length: f32,
+    pub shaft_softness: f32,
+    pub shaft_light_color: bool,
+    pub shaft_source: RayShaftSourceSetting,
+    pub shaft_dust: bool,
+    pub glow: bool,
+    pub glow_intensity: f32,
+    pub auto_cubemaps: bool,
+    pub tonemap: bool,
+    pub color_correction: bool,
+    pub preview_gpu_share: f32,
+}
+
+impl Default for RayTracingSettings {
+    fn default() -> Self {
+        Self {
+            on: false,
+            config: RayConfigSetting::Default,
+            quality: RayQualitySetting::Normal,
+            device: RayDeviceSetting::Auto,
+            seed: 0,
+            min_samples: None,
+            max_samples: None,
+            bounces: None,
+            threshold: None,
+            light_size: None,
+            sun_angle: None,
+            sky_samples: None,
+            denoise: None,
+            supersample: None,
+            bump: true,
+            prop_samples: None,
+            chunk: None,
+            ao: true,
+            ao_strength: 0.5,
+            ao_radius: 48.0,
+            shafts: true,
+            shaft_intensity: 1.0,
+            shaft_length: 1.0,
+            shaft_softness: 1.0,
+            shaft_light_color: true,
+            shaft_source: RayShaftSourceSetting::SunAndSpots,
+            shaft_dust: false,
+            glow: false,
+            glow_intensity: 1.0,
+            auto_cubemaps: true,
+            tonemap: true,
+            color_correction: false,
+            preview_gpu_share: 0.0,
+        }
+    }
+}
+
+impl RayTracingSettings {
+    pub fn reset_to_default(&mut self) {
+        *self = Self { on: self.on, preview_gpu_share: self.preview_gpu_share, ..Self::default() };
+    }
+
+    pub fn preview_share(&self) -> Option<f32> {
+        let v = self.preview_gpu_share;
+        (v.is_finite() && v > 0.0).then(|| v.clamp(0.1, 1.0))
+    }
+
+    pub fn make_optimal(&mut self) {
+        *self = Self {
+            on: true,
+            config: RayConfigSetting::Optimal,
+            quality: RayQualitySetting::Optimal,
+            device: self.device,
+            seed: self.seed,
+            preview_gpu_share: self.preview_gpu_share,
+            ..Self::default()
+        };
+    }
+
+    pub fn is_default_state(&self) -> bool {
+        *self == Self { on: self.on, config: self.config, preview_gpu_share: self.preview_gpu_share, ..Self::default() }
+    }
+
+    pub fn settle_after_change(&mut self, before: &RayTracingSettings) {
+        let same = |a: &RayTracingSettings| RayTracingSettings {
+            on: false,
+            config: RayConfigSetting::Default,
+            preview_gpu_share: 0.0,
+            ..a.clone()
+        };
+        if same(self) != same(before) {
+            self.config = if self.is_default_state() { RayConfigSetting::Default } else { RayConfigSetting::Custom };
+        }
+    }
+}
+
 fn is_flag(token: &str, name: &str) -> bool {
     token.trim().trim_start_matches('-').eq_ignore_ascii_case(name)
 }
@@ -140,6 +359,7 @@ pub struct CompileSettings {
     pub history: bool,
     pub static_prop_lighting: bool,
     pub static_prop_shadows: bool,
+    pub raytracing: RayTracingSettings,
     pub bsp_flag_choices: BTreeMap<String, FlagChoiceSetting>,
     pub rad_flag_choices: BTreeMap<String, FlagChoiceSetting>,
     pub expert: bool,
@@ -206,6 +426,7 @@ impl Default for CompileSettings {
             history: true,
             static_prop_lighting: true,
             static_prop_shadows: true,
+            raytracing: RayTracingSettings::default(),
             bsp_flag_choices: BTreeMap::new(),
             rad_flag_choices: BTreeMap::new(),
             expert: false,
@@ -364,6 +585,84 @@ preset = \"Draft\"
         let file = crate::settings::Settings { compile: s.clone(), ..Default::default() };
         let back: crate::settings::Settings = toml::from_str(&toml::to_string(&file).expect("write")).expect("read");
         assert_eq!(back.compile, s);
+    }
+
+    #[test]
+    fn ray_tracing_is_off_by_default_and_saved() {
+        let old: crate::settings::Settings = toml::from_str(
+            "[compile]
+preset = \"Final\"
+",
+        )
+        .expect("old file");
+        assert_eq!(old.compile.raytracing, RayTracingSettings::default());
+        assert!(!old.compile.raytracing.on && old.compile.raytracing.bump);
+        let mut s = crate::settings::Settings::default();
+        s.compile.raytracing = RayTracingSettings {
+            on: true,
+            quality: RayQualitySetting::Optimal,
+            device: RayDeviceSetting::Cpu,
+            seed: 9,
+            bounces: Some(4),
+            threshold: Some(0.03),
+            bump: false,
+            ..RayTracingSettings::default()
+        };
+        assert!(!s.compile.raytracing.is_default_state());
+        let back: crate::settings::Settings = toml::from_str(&toml::to_string(&s).expect("write")).expect("read");
+        assert_eq!(back.compile.raytracing, s.compile.raytracing);
+        let part: CompileSettings = toml::from_str(
+            "[raytracing]
+on = true
+",
+        )
+        .expect("partial");
+        assert!(part.raytracing.on && part.raytracing.bump && part.raytracing.quality == RayQualitySetting::Normal);
+        let mut rt = s.compile.raytracing.clone();
+        rt.make_optimal();
+        assert!(rt.on && rt.seed == 9 && rt.bump && rt.bounces.is_none() && rt.config == RayConfigSetting::Optimal);
+        assert_eq!(rt.quality, RayQualitySetting::Optimal);
+        let before = rt.clone();
+        rt.glow = true;
+        rt.settle_after_change(&before);
+        assert_eq!(rt.config, RayConfigSetting::Custom);
+        rt.reset_to_default();
+        assert!(rt.on && rt.is_default_state() && rt.config == RayConfigSetting::Default && rt.ao && rt.shafts);
+        let before = rt.clone();
+        rt.on = false;
+        rt.settle_after_change(&before);
+        assert_eq!(rt.config, RayConfigSetting::Default, "the checkbox is not a change of configuration");
+        let before = rt.clone();
+        rt.quality = RayQualitySetting::Final;
+        rt.settle_after_change(&before);
+        assert_eq!(rt.config, RayConfigSetting::Custom);
+        let before = rt.clone();
+        rt.quality = RayQualitySetting::Normal;
+        rt.settle_after_change(&before);
+        assert_eq!(rt.config, RayConfigSetting::Default, "back to the default values");
+        assert_eq!(RayConfigSetting::parse("Optimal"), Some(RayConfigSetting::Optimal));
+        assert_eq!(RayShaftSourceSetting::parse("sun_and_spots"), Some(RayShaftSourceSetting::SunAndSpots));
+        assert_eq!(RayQualitySetting::parse("FINAL"), Some(RayQualitySetting::Final));
+        assert_eq!(RayDeviceSetting::parse("gpu"), Some(RayDeviceSetting::Gpu));
+        assert!(RayQualitySetting::parse("best").is_none());
+    }
+
+    #[test]
+    fn preview_gpu_share_is_apart_from_the_configuration() {
+        let old: CompileSettings = toml::from_str("[raytracing]\non = true\n").expect("old");
+        assert_eq!((old.raytracing.preview_gpu_share, old.raytracing.preview_share()), (0.0, None), "auto");
+        let mut rt = old.raytracing.clone();
+        let before = rt.clone();
+        rt.preview_gpu_share = 0.35;
+        rt.settle_after_change(&before);
+        assert_eq!(rt.config, RayConfigSetting::Default, "a preview setting is not a configuration change");
+        assert!(rt.is_default_state());
+        assert_eq!(rt.preview_share(), Some(0.35));
+        rt.reset_to_default();
+        rt.make_optimal();
+        assert_eq!(rt.preview_gpu_share, 0.35);
+        rt.preview_gpu_share = 5.0;
+        assert_eq!(rt.preview_share(), Some(1.0));
     }
 
     #[test]

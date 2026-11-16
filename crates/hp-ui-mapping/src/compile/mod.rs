@@ -11,6 +11,7 @@ mod notices;
 mod options_ui;
 mod plan;
 mod progressive;
+mod raytrace_ui;
 mod run;
 mod settings_ui;
 mod snapshot;
@@ -43,6 +44,8 @@ pub(crate) use notices::notice_text;
 pub use options_ui::{compile_options_ui, effective_step_flags};
 pub use plan::content_args as compile_content_args;
 pub(crate) use plan::{PrepInput, prepare};
+pub use raytrace_ui::preview_args as raytracing_preview_args;
+pub(crate) use raytrace_ui::preview_section as raytracing_preview_section;
 pub(crate) use run::{Effect, LogView, RunState, StepStatus, Summary};
 pub(crate) use snapshot::{CompileSidecar, PrepError, Prepared, SnapshotInput, SnapshotOutput, Target};
 
@@ -1145,6 +1148,9 @@ impl CompileDialog {
                 }
                 Tab::Log if self.run.is_some() => {
                     self.steps_ui(ui);
+                    if let Some(run) = &self.run {
+                        raytrace_ui::no_gpu_banner(ui, run);
+                    }
                     self.summary_ui(ui, state);
                     self.log_ui(ui, state);
                 }

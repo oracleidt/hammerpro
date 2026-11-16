@@ -86,7 +86,8 @@ fn registry() -> &'static RwLock<Registry> {
     static REG: OnceLock<RwLock<Registry>> = OnceLock::new();
     REG.get_or_init(|| {
         let mut map = HashMap::with_capacity(2048);
-        for table in std::iter::once(&crate::strings::TR).chain(crate::actions::TABLES) {
+        let tables = [&crate::strings::TR, &crate::raytracing_ui::TR];
+        for table in tables.into_iter().chain(crate::actions::TABLES) {
             for &(k, en, fr) in table.iter() {
                 map.insert(k, (en, fr));
             }

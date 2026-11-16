@@ -133,6 +133,7 @@ fn hammer_order(group: MenuGroup) -> &'static [Action] {
             A::RenderTexturedWire,
             A::RenderLit,
             A::RenderBaked,
+            A::RenderRayTraced,
             A::RenderUnshaded,
             A::RenderSmoothingGroups,
             A::RenderLightmapGrid,

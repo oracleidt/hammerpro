@@ -43,6 +43,7 @@ pub(crate) fn step_flags(s: &CompileSettings, step: StepKind) -> StepFlags {
     let opts = PlanOptions {
         static_prop_lighting: s.static_prop_lighting,
         static_prop_shadows: s.static_prop_shadows,
+        raytracing: super::raytrace_ui::plan_options(s),
         ..PlanOptions::default()
     };
     let (preset, merged, extra) = if step == StepKind::Bsp {
@@ -54,6 +55,7 @@ pub(crate) fn step_flags(s: &CompileSettings, step: StepKind) -> StepFlags {
         let extra = split_args(&s.extra_bsp_args);
         let (preset, _) = flags::merge_flags(step, &base, &[], &[]);
         let (mut merged, rest) = flags::merge_flags(step, &base, &flag_choices(&s.bsp_flag_choices), &extra);
+        merged.extend(hp_compile::raytracing::bsp_args(opts.raytracing.as_ref()));
         merged.extend(rest);
         (preset, merged, extra)
     } else {
@@ -184,6 +186,9 @@ pub(crate) fn step_menu(ui: &mut Ui, s: &mut CompileSettings, step: StepKind, sa
         ui,
         |ui| {
             ui.label(RichText::new(t!("compile.opt.menu_tip")).small().weak());
+            if step == StepKind::Rad {
+                super::raytrace_ui::section(ui, s, salt);
+            }
             if forced > 0 && ui.small_button(t!("compile.opt.reset_all")).clicked() {
                 choices_mut(s, step).clear();
             }
@@ -343,6 +348,7 @@ mod tests {
                 ManagedBy::Lighting,
                 ManagedBy::Game,
                 ManagedBy::StaticPropShadows,
+                ManagedBy::RayTracing,
             ] {
                 assert!(hp_app::i18n::has_key(&format!("compile.managed.{}", by.key())), "{by:?}");
             }

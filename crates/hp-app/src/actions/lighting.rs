@@ -15,6 +15,7 @@ action_list! { lighting_actions {
     MuteSelectedLights => "mute_selected_lights", Map, MapLights, None, Ready;
     UnmuteAllLights => "unmute_all_lights", Map, MapLights, None, Ready;
     MeasureLightCosts => "measure_light_costs", Map, MapLights, None, Ready;
+    RenderRayTraced => "render_ray_traced", View, ViewRender, sc(CTRL_SHIFT, Key::F5), Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];
@@ -32,6 +33,7 @@ pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
     match action {
         Action::RenderBaked => Some(Check::Radio(mode == RenderModeSetting::Baked)),
         Action::RenderLightmapGrid => Some(Check::Radio(mode == RenderModeSetting::LightmapGrid)),
+        Action::RenderRayTraced => Some(Check::Radio(mode == RenderModeSetting::RayTraced)),
         _ => None,
     }
 }
@@ -40,6 +42,7 @@ pub(super) fn icon(action: Action) -> Option<&'static str> {
     match action {
         Action::RenderBaked | Action::ShowLighting => Some("💡"),
         Action::RenderLightmapGrid => Some("⊞"),
+        Action::RenderRayTraced => Some("✨"),
         Action::BakeLighting | Action::BakeAroundCamera => Some("☀"),
         Action::StopBake => Some("⏹"),
         Action::SelectTinyLightmapFaces => Some("🔍"),
@@ -63,6 +66,7 @@ pub(super) const TR: TrTable = &[
     ("action.mute_selected_lights", "Mute the selected lights", "Couper les lumières sélectionnées"),
     ("action.unmute_all_lights", "Unmute all lights", "Réactiver toutes les lumières"),
     ("action.measure_light_costs", "Measure the cost of each light", "Mesurer le coût de chaque lumière"),
+    ("action.render_ray_traced", "Ray traced lighting preview", "Aperçu de l'éclairage en ray tracing"),
     ("shell.undo.edit_lighting_options", "Edit lighting options", "Modifier les options d'éclairage"),
     ("shell.undo.edit_color_correction", "Edit color correction", "Modifier la correction des couleurs"),
 ];

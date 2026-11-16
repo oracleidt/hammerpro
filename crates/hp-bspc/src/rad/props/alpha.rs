@@ -68,6 +68,11 @@ impl Textures {
             .collect()
     }
 
+    pub(crate) fn export(&self, tex: usize) -> Option<hp_raytrace::AlphaTexture> {
+        let t = self.list.get(tex)?;
+        Some(hp_raytrace::AlphaTexture { width: t.width as u32, height: t.height as u32, alpha: t.alpha.clone() })
+    }
+
     pub(crate) fn coverage_for_triangle(&self, tex: usize, uv: &[[f32; 2]; 3]) -> f32 {
         let Some(t) = self.list.get(tex) else { return 1.0 };
         let lo = |c: usize| uv[0][c].min(uv[1][c]).min(uv[2][c]).clamp(0.0, 1.0);
