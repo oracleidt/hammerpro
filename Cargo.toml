@@ -71,8 +71,8 @@ opt-level = 3
 debug = false
 
 [profile.release]
-lto = "thin"
-codegen-units = 1
+lto = false
+codegen-units = 16
 debug = false
 
 [profile.fast]
