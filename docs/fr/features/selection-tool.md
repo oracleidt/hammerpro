@@ -22,10 +22,10 @@ Utilisez **Affichage > Options d’affichage > Afficher le centre des brushes en
 | Geste | Vues 2D | Vue 3D |
 |---|---|---|
 | Clic sur un objet | Le sélectionne (remplace la sélection) | Sélectionne l'objet le plus proche que vous voyez sous le pointeur : les modèles par leur vraie forme (pas leur boîte), et ce que la vue cache est ignoré (objets cachés, textures d'outils cachées par le menu Affichage, déplacements cachés) |
-| Nouveau clic au même endroit | Dans les 2 secondes, tant que le dernier choix est encore la sélection : l'objet superposé suivant (jusqu'à 64 en boucle) | Pareil : l'objet suivant, derrière. Plus tard, ou si la sélection a changé, le clic repart de l'objet le plus proche |
+| Nouveau clic au même endroit | Dans les 2 secondes, tant que le dernier choix est encore la sélection : l'objet superposé suivant (jusqu'à 64 en boucle) | Avec **Cliquer sur la sélection change le mode du gizmo** activé (par défaut), un clic sur la sélection change plutôt le gizmo : le clic du milieu et `Page suiv.` atteignent l'objet derrière. Désactivé : l'objet suivant, derrière, et plus tard, ou si la sélection a changé, le clic repart de l'objet le plus proche |
 | `Ctrl+clic` | Ajoute l'objet à la sélection, ou le retire s'il y est déjà | Pareil ; `Ctrl+clic` traverse aussi le gizmo |
 | Clic dans le vide | Vide la sélection (un clic à l'intérieur du cadre de sélection change plutôt le mode des poignées) | Vide la sélection (pas avec `Ctrl`) |
-| Clic sur un objet qui forme déjà toute la sélection | Change le mode des poignées (Échelle, Rotation, Inclinaison, puis Échelle), comme dans Hammer | |
+| Clic sur un objet qui forme déjà toute la sélection | Change le mode des poignées (Échelle, Rotation, Inclinaison, puis Échelle), comme dans Hammer | Change le mode du gizmo (Déplacer, Pivoter, Échelle, puis Déplacer), comme dans Hammer++. Un double-clic garde le mode d'avant |
 | Clic du milieu | L'objet suivant à l'endroit du dernier clic, ou le premier sous le pointeur | Pareil |
 | Double-clic | Sélectionne l'objet ; pour une entité (ou une entité de brush), ouvre aussi ses propriétés | Pareil |
 | `Page suiv.` / `Page préc.` | Pendant 2 secondes après un clic : l'objet derrière / devant | Pareil |
@@ -142,6 +142,26 @@ Le gizmo se place sur le pivot de la sélection (le pivot déplaçable, l'origin
 
 `Maj` clone, `Alt` coupe le magnétisme. **Local** (ou `Ctrl+J`, **Gizmo en repère local**, dans la palette de commandes) aligne le gizmo sur les angles d'une entité ponctuelle sélectionnée seule plutôt que sur les axes du monde. Décochez **Afficher** pour masquer le gizmo.
 
+Changer vite le mode du gizmo, comme dans Hammer++ :
+
+- Cliquez sur la sélection dans la vue 3D (un objet qui forme toute la sélection, ou le gizmo lui-même sans le glisser) : Déplacer, puis Pivoter, puis Échelle, puis Déplacer. Quand plusieurs objets sont sélectionnés, un clic sur l'un d'eux ne sélectionne que lui, comme avant : utilisez le clic droit sur le gizmo. Un clic sur un objet non sélectionné le sélectionne toujours, un glisser sur le gizmo transforme toujours, et un glisser qui commence sur un objet ne change rien.
+- Un clic droit sur le gizmo fait de même (un clic droit ailleurs ouvre le menu contextuel comme avant).
+- L'action **Changer le mode du gizmo** (`cycle_gizmo_mode`, sans touche par défaut, à attribuer dans **Paramètres > Clavier**) le fait au clavier et affiche le gizmo s'il était masqué.
+- Le nouveau mode s'affiche un instant à côté du gizmo et dans la barre d'état, et le gizmo change de forme (flèches, anneaux, cubes). La barre d'état nomme le mode actuel quand le pointeur est dans la vue 3D.
+- Désactivez **Cliquer sur la sélection change le mode du gizmo** dans **Outils > Options > Sélection** pour que les clics ne fassent que sélectionner (un clic au même endroit descend alors vers l'objet derrière, comme avant).
+
+**Changer le mode d'édition 3D** (`cycle_edit_mode`, `X` avec le jeu de touches **Hammer++**, comme dans Hammer++) passe par aucun (ni gizmo ni flèches d'étirement 3D), cadre (l'ancienne méthode : poignées 2D et flèches d'étirement 3D, sans gizmo) et gizmo. Les jeux **Hammer Pro** et **Hammer** le laissent sans touche.
+
+### Aperçu en direct des transformations
+
+Comme dans Hammer++, les objets que vous transformez s'affichent en direct : pendant que vous déplacez, pivotez ou mettez à l'échelle (gizmo, poignées 2D, flèches d'étirement 3D, `G`, `R`, `E`, un clonage `Maj`), les vrais brushes, props, modèles et aides d'entités sont dessinés à leur nouvelle place à chaque image dans la vue 3D, texturés et éclairés comme le reste de la carte, et les vues 2D montrent leur fil de fer transformé. L'original reste en contour léger. Un clonage montre la copie en direct et laisse l'original en place.
+
+- Relâcher la souris (ou `Entrée` pour `G`, `R`, `E`) fait du changement une seule étape d'annulation, exactement comme avant ; `Échap` ou un changement d'outil remet tout en place.
+- Les sélections plus grandes que **Contour seul au-delà de** (1500 objets par défaut) gardent l'aperçu léger en contour, et une sélection dont l'aperçu en direct devient trop lent pour une image fluide revient seule au contour pour le reste du glisser.
+- Lancer une commande pendant un glisser (un menu, un raccourci) revient aussi au contour pour ce glisser.
+- Désactivez **Montrer les objets en direct pendant leur déplacement** dans **Outils > Options > Sélection** pour toujours avoir l'aperçu en contour.
+- Les faces, arêtes et sommets choisis (choix d'éléments) gardent leur propre aperçu en contour.
+
 ### Poignées d'étirement 3D
 
 Avec **Étirement 3D** activé (par défaut), chaque face de la boîte de la sélection reçoit une flèche aux couleurs des axes. Glissez-en une pour déplacer cette face sur son axe pendant que la face opposée reste en place, comme les poignées d'échelle en 2D (verrouillage des textures compris, étape d'annulation "Stretch").
@@ -228,7 +248,7 @@ Avec une sélection, un clic droit dans une vue ajoute en haut du menu : **Poser
 | **Pivot** | Affiche le pivot déplaçable | Désactivé |
 | **Classe** / **Matériau**, champ, **Sélectionner** | Sélection par classe ou par matériau | Classe |
 
-Les choix du cadre, des poignées et du gizmo durent le temps de la session. Ces options sont aussi accessibles par leur nom dans les scripts (`tool_option`) et via les outils MCP `get_tool_options` / `set_tool_options` (`handles`, `box`, `gizmo`, `gizmo_mode`, `gizmo_local`, `stretch_handles`, `box_confirm`, `pending_box`). `pending_box` lit le cadre en attente, prend `x1 y1 x2 y2` pour en tracer un dans une vue 2D, `confirm`, `add` ou `cancel`.
+Les choix du cadre, des poignées et du gizmo durent le temps de la session. Ces options sont aussi accessibles par leur nom dans les scripts (`tool_option`) et via les outils MCP `get_tool_options` / `set_tool_options` (`handles`, `box`, `gizmo`, `edit_mode`, `gizmo_mode`, `gizmo_local`, `stretch_handles`, `box_confirm`, `pending_box`). `edit_mode` prend gizmo, box ou none. `pending_box` lit le cadre en attente, prend `x1 y1 x2 y2` pour en tracer un dans une vue 2D, `confirm`, `add` ou `cancel`.
 
 ## Paramètres
 
@@ -244,20 +264,23 @@ Dans **Outils > Options...**, page **Sélection** (`[selection]` dans `settings.
 | **Sélection par cadre ajustable (Entrée pour valider)** | Comme la case **Entrée** de la barre d'options | Désactivé |
 | **Poignées d'étirement 3D** | Comme la case de la barre d'options | Activé |
 | **Gizmo en repère local** | Comme le bouton Local | Désactivé |
+| **Cliquer sur la sélection change le mode du gizmo** | Dans la vue 3D, un clic sur la sélection ou un clic droit sur le gizmo fait passer Déplacer, Pivoter, Échelle (`click_cycles_gizmo`) | Activé |
+| **Montrer les objets en direct pendant leur déplacement** | Aperçu en direct des objets transformés pendant les glisser (`live_transform`) | Activé |
+| **Contour seul au-delà de (objets)** | Les sélections plus grandes gardent l'aperçu en contour (`live_transform_limit`, 1 à 100000) | 1500 |
 
 Page **Édition** : **Décaler avec les flèches** (activé) et **Annuler restaure la sélection** (activé : les changements de sélection sont des étapes d'annulation, voir [Annulation et historique](undo-history.md)). Page **Vues** : **Contour des objets sous la souris** (désactivé) entoure ce qui est sous le pointeur dans la vue 3D. Le magnétisme suit **Map > Magnétisme de grille** (`Maj+W`) et la grille active (voir [Grilles](grids.md)).
 
 ## Astuces
 
-- Dans une zone chargée, passez le cadre en **Centres**, ou cliquez plusieurs fois au même endroit pour descendre dans les objets superposés.
+- Dans une zone chargée, passez le cadre en **Centres**, ou faites plusieurs clics du milieu au même endroit pour descendre dans les objets superposés (un simple clic le fait aussi quand **Cliquer sur la sélection change le mode du gizmo** est désactivé).
 - `Maj+glisser` un nœud de chemin pour poser un chemin en vitesse : chaque clone se relie à la suite de sa source.
 - Pour des valeurs exactes, utilisez la boîte [Transformer](transform-align.md) (`Ctrl+M`).
 
 ## FAQ
 
-**Pourquoi un clic sur ma sélection ne prend pas l'objet derrière ?** Un clic sur un objet qui forme déjà toute la sélection change le mode des poignées. Recliquez au même endroit dans les 2 secondes (ou appuyez sur `Page suiv.`) pour atteindre l'objet derrière.
+**Pourquoi un clic sur ma sélection ne prend pas l'objet derrière ?** Dans une vue 2D, un clic sur un objet qui forme déjà toute la sélection change le mode des poignées, dans la vue 3D il change le mode du gizmo. Faites un clic du milieu au même endroit (ou appuyez sur `Page suiv.`) pour atteindre l'objet derrière, ou dans une vue 2D recliquez au même endroit dans les 2 secondes.
 
-**Je clique sur un mur et autre chose est sélectionné.** Un second clic rapide au même endroit descend vers l'objet derrière : attendez 2 secondes, ou cliquez une seule fois. Les brushes à texture d'outil cachée (nodraw, clips, triggers, hints, voir le menu Affichage) et les objets que la vue 3D ne dessine pas n'y sont jamais choisis, mais les vues 2D les montrent et les sélectionnent toujours.
+**Je clique sur un mur et autre chose est sélectionné.** Un second clic rapide au même endroit descend vers l'objet derrière (dans la vue 3D seulement si **Cliquer sur la sélection change le mode du gizmo** est désactivé) : attendez 2 secondes, ou cliquez une seule fois. Les brushes à texture d'outil cachée (nodraw, clips, triggers, hints, voir le menu Affichage) et les objets que la vue 3D ne dessine pas n'y sont jamais choisis, mais les vues 2D les montrent et les sélectionnent toujours.
 
 **Ma rotation saute de 15 degrés en 15 degrés.** C'est le pas de rotation. Maintenez `Ctrl` (ou `Alt`, selon **Touche de rotation libre**) pour un angle libre, ou changez le pas dans la page **Sélection** des paramètres.
 

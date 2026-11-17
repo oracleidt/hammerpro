@@ -38,6 +38,7 @@ pub(crate) struct EntityDesc {
     pub fade: [f32; 2],
     pub tint: [f32; 4],
     pub sprite: Option<String>,
+    pub fallback_icon: Option<String>,
     pub sprite_is_icon: bool,
     pub sprite_additive: bool,
     pub sprite_size: f32,
@@ -185,6 +186,11 @@ pub(crate) fn entity_desc(e: &Entity, fgd: Option<&ResolvedFgd>) -> EntityDesc {
         _ => (None, false),
     };
     let sprite = sprite.and_then(|s| sprite_material(&s));
+    let fallback_icon = crate::builtin_icons::material_for_class(&e.classname);
+    let sprite = match sprite {
+        None if !world_sprite && model.is_none() && wants_builtin_icon(e, class) => fallback_icon.clone(),
+        s => s,
+    };
     let sprite_is_icon = sprite.is_some() && !world_sprite;
     let render_mode = e.get("rendermode").and_then(|s| s.trim().parse::<i32>().ok()).unwrap_or(0);
     let sprite_additive = world_sprite && matches!(render_mode, 3 | 5 | 7 | 9);
@@ -228,6 +234,7 @@ pub(crate) fn entity_desc(e: &Entity, fgd: Option<&ResolvedFgd>) -> EntityDesc {
         fade,
         tint,
         sprite,
+        fallback_icon,
         sprite_is_icon,
         sprite_additive,
         sprite_size,
@@ -248,6 +255,18 @@ pub(crate) fn entity_desc(e: &Entity, fgd: Option<&ResolvedFgd>) -> EntityDesc {
         sprite_color,
         light,
         decal,
+    }
+}
+
+fn wants_builtin_icon(e: &Entity, class: Option<&ResolvedClass>) -> bool {
+    const OWN_LOOK: [&str; 9] =
+        ["overlay", "decal", "instance", "keyframe", "animator", "quadbounds", "lightprop", "studio", "studioprop"];
+    if e.get("model").is_some_and(|m| !m.trim().is_empty()) {
+        return false;
+    }
+    match class {
+        Some(c) => !c.is_solid() && !OWN_LOOK.iter().any(|h| c.has_helper(h)),
+        None => true,
     }
 }
 
@@ -447,6 +466,47 @@ mod tests {
         assert_eq!(entity_desc(&unknown, None).sprite, None, "a model wins over a guessed icon");
         assert_eq!(entity_desc(&ent("Env_Cubemap", &[]), None).sprite.as_deref(), Some("editor/env_cubemap"));
         assert_eq!(entity_desc(&ent("bad/../name", &[]), None).sprite, None);
+    }
+
+    #[test]
+    fn point_entities_without_a_drawable_icon_get_the_builtin_one() {
+        let f = hp_fgd::Fgd::parse(
+            r#"@BaseClass iconsprite("editor/logic_relay.vmt") = RelayBase []
+            @PointClass base(RelayBase) = logic_relay : "" []
+            @PointClass iconsprite(editor\ENV_Cubemap) = env_cubemap : "" []
+            @PointClass iconsprite("materials/editor/env_sun.vmt") = env_sun : "" []
+            @PointClass = point_teleport : "" []
+            @PointClass iconsprite() = env_icon : "" []
+            @PointClass studio("models/editor/playerstart.mdl") = info_player_start : "" []
+            @PointClass lightprop("models/editor/spot.mdl") = light_spot : "" []
+            @PointClass overlay() = info_overlay : "" []
+            @PointClass = weapon_crowbar : "" []
+            @SolidClass = func_detail : "" []"#,
+            None,
+        )
+        .resolve();
+        let d = |class: &str| entity_desc(&ent(class, &[]), Some(&f));
+        let relay = d("logic_relay");
+        assert_eq!(relay.sprite.as_deref(), Some("editor/logic_relay"), "iconsprite inherited from a base class");
+        assert_eq!(relay.fallback_icon.as_deref(), Some("hammerpro/icons/gear"));
+        assert!(relay.sprite_is_icon);
+        assert_eq!(d("env_cubemap").sprite.as_deref(), Some("editor/env_cubemap"), "unquoted, backslash, uppercase");
+        assert_eq!(d("env_sun").sprite.as_deref(), Some("editor/env_sun"));
+        let tele = d("point_teleport");
+        assert_eq!(tele.sprite.as_deref(), Some("hammerpro/icons/teleport"));
+        assert!(tele.sprite_is_icon);
+        assert_eq!(d("env_icon").sprite.as_deref(), Some("hammerpro/icons/generic"));
+        let start = d("info_player_start");
+        assert!(start.model.is_some() && start.sprite.is_none());
+        assert!(d("light_spot").sprite.is_none());
+        assert!(d("info_overlay").sprite.is_none());
+        assert!(d("weapon_crowbar").sprite.is_none());
+        assert!(d("func_detail").sprite.is_none());
+        let unknown = entity_desc(&ent("logic_custom_thing", &[]), Some(&f));
+        assert_eq!(unknown.sprite.as_deref(), Some("editor/logic_custom_thing"));
+        assert_eq!(unknown.fallback_icon.as_deref(), Some("hammerpro/icons/gear"));
+        let sprite = entity_desc(&ent("env_sprite", &[("model", "sprites/glow01.vmt")]), Some(&f));
+        assert!(!sprite.sprite_is_icon && sprite.sprite.as_deref() == Some("sprites/glow01"));
     }
 
     #[test]

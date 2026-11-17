@@ -658,6 +658,33 @@ pub const PARAMS: &[VmtParam] = &[
     ),
     p("$detailblendfactor", F01, C::Detail, LIT | UN, "1", "Strength of the detail.", "Force du détail."),
     p(
+        "$detailblendfactor2",
+        F01,
+        C::Detail,
+        B4,
+        "1",
+        "Strength of the detail on the second texture of a 4-way blend.",
+        "Force du détail sur la deuxième texture d'un mélange à 4 textures.",
+    ),
+    p(
+        "$detailblendfactor3",
+        F01,
+        C::Detail,
+        B4,
+        "1",
+        "Strength of the detail on the third texture of a 4-way blend.",
+        "Force du détail sur la troisième texture d'un mélange à 4 textures.",
+    ),
+    p(
+        "$detailblendfactor4",
+        F01,
+        C::Detail,
+        B4,
+        "1",
+        "Strength of the detail on the fourth texture of a 4-way blend.",
+        "Force du détail sur la quatrième texture d'un mélange à 4 textures.",
+    ),
+    p(
         "$detailblendmode",
         K::Choice(DETAIL_MODES),
         C::Detail,
@@ -1348,6 +1375,14 @@ mod tests {
         }
         assert!(
             params_of(Category::Base, family_of("LightmappedGeneric"), false).all(|p| p.key != "$texture2_blendstart")
+        );
+        let four_detail: Vec<&str> =
+            params_of(Category::Detail, family_of("Lightmapped_4WayBlend"), false).map(|p| p.key).collect();
+        for key in ["$detailblendfactor", "$detailblendfactor2", "$detailblendfactor3", "$detailblendfactor4"] {
+            assert!(four_detail.contains(&key), "{key}");
+        }
+        assert!(
+            params_of(Category::Detail, family_of("LightmappedGeneric"), false).all(|p| p.key != "$detailblendfactor3")
         );
         assert_eq!(find("$BaseTexture").map(|p| p.key), Some("$basetexture"));
     }

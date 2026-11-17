@@ -74,6 +74,7 @@ Le jeu **Hammer++** ajoute :
 | Navigateur de sons | `Maj+F12` |
 | Afficher les textures outils | `Ctrl+Maj+F2` |
 | Afficher les objets d'éditeur | `Alt+O` |
+| Changer le mode d'édition 3D (gizmo, cadre, aucun) | `X` |
 
 Le jeu ne touche pas aux raccourcis que vous avez changés vous-même : ils restent prioritaires quel que soit le jeu. Les contrôles de la caméra (souris et touches de vol) se choisissent à part, avec **Contrôles de la caméra** dans **Paramètres > Vues** (voir [Caméra et navigation](camera-navigation.md)). L'assistant du premier démarrage règle les deux selon l'éditeur dont vous venez (rouvrez-le avec **Aide > Assistant de configuration...**).
 

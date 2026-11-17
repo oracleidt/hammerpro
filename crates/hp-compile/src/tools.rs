@@ -7,6 +7,7 @@ use crate::{CompileError, Result};
 pub const BSPC_ARG: &str = "--bspc";
 
 pub const RAD_ARG: &str = "--rad";
+pub const CUBEMAPS_ARG: &str = "--cubemaps";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolPaths {

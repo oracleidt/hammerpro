@@ -364,9 +364,9 @@ fn static_prop_settings_per_preset() {
         }
     }
     let fin = |opts: &PlanOptions| rad_flags_of(&CompilePlan::preset(Preset::Final, &tools(), &vmf(), opts).unwrap());
-    assert_eq!(fin(&PlanOptions::default()), ["-final", "-StaticPropLighting"]);
+    assert_eq!(fin(&PlanOptions::default()), ["-final", "-StaticPropLighting", "-buildcubemaps"]);
     let off = PlanOptions { static_prop_lighting: false, static_prop_shadows: false, ..PlanOptions::default() };
-    assert_eq!(fin(&off), ["-final", "-nostaticpropshadows"]);
+    assert_eq!(fin(&off), ["-final", "-nostaticpropshadows", "-buildcubemaps"]);
     let forced = PlanOptions {
         extra_rad_args: "-staticproplighting -nostaticpropshadows -softsun 1".to_owned(),
         rad_flags: vec![FlagChoice { flag: "-StaticPropLighting".into(), on: true, value: String::new() }],
@@ -505,4 +505,46 @@ fn the_chosen_rad_file_replaces_any_lights_flag() {
     assert_eq!(flags[at + 1], PathBuf::from("E:/rad/my lights.rad").display().to_string());
     assert!(!flags.iter().any(|a| a == "menu.rad" || a == "old.rad"), "{flags:?}");
     assert!(fin(&PlanOptions::default()).iter().all(|a| !a.eq_ignore_ascii_case("-lights")));
+}
+
+#[test]
+#[cfg(windows)]
+fn cubemaps_are_built_on_compile_by_the_right_switch() {
+    let has = |plan: &CompilePlan, kind: StepKind, flag: &str| args(plan, kind).iter().any(|a| a == flag);
+    let normal = CompilePlan::preset(Preset::Normal, &tools(), &vmf(), &PlanOptions::default()).unwrap();
+    assert!(!has(&normal, StepKind::Rad, BUILD_CUBEMAPS_FLAG) && normal.cubemap_args.is_none());
+    let fin = CompilePlan::preset(Preset::Final, &tools(), &vmf(), &PlanOptions::default()).unwrap();
+    assert!(has(&fin, StepKind::Rad, BUILD_CUBEMAPS_FLAG));
+    let post = fin.cubemap_args.clone().expect("the post step for external compilers");
+    assert_eq!(post.first().map(String::as_str), Some(crate::tools::CUBEMAPS_ARG));
+    assert!(post.iter().any(|a| a == "-final") && post.last().is_some_and(|m| m.ends_with("gm_test")));
+    let off = PlanOptions { cubemaps: CubemapMode::Off, ..PlanOptions::default() };
+    let fin_off = CompilePlan::preset(Preset::Final, &tools(), &vmf(), &off).unwrap();
+    assert!(!has(&fin_off, StepKind::Rad, BUILD_CUBEMAPS_FLAG) && fin_off.cubemap_args.is_none());
+    let on = PlanOptions { cubemaps: CubemapMode::On, ..PlanOptions::default() };
+    let draft_on = CompilePlan::preset(Preset::Draft, &tools(), &vmf(), &on).unwrap();
+    assert!(has(&draft_on, StepKind::Rad, BUILD_CUBEMAPS_FLAG));
+    let rt = |quality: &str, cubemaps: CubemapMode, parallax: CubemapMode| PlanOptions {
+        raytracing: Some(crate::raytracing::RayTracingOptions { quality: quality.to_owned(), ..Default::default() }),
+        cubemaps,
+        parallax_cubemaps: parallax,
+        ..PlanOptions::default()
+    };
+    let p = CompilePlan::preset(Preset::Normal, &tools(), &vmf(), &rt("final", CubemapMode::Auto, CubemapMode::Auto))
+        .unwrap();
+    assert!(!has(&p, StepKind::Rad, "-rtreflections") && !has(&p, StepKind::Rad, BUILD_CUBEMAPS_FLAG));
+    assert!(p.cubemap_args.is_some() && has(&p, StepKind::Bsp, PARALLAX_CUBEMAPS_FLAG));
+    let p = CompilePlan::preset(Preset::Normal, &tools(), &vmf(), &rt("normal", CubemapMode::On, CubemapMode::Off))
+        .unwrap();
+    assert!(has(&p, StepKind::Rad, "-rtreflections") && !has(&p, StepKind::Bsp, PARALLAX_CUBEMAPS_FLAG));
+    let p = CompilePlan::preset(Preset::Normal, &tools(), &vmf(), &rt("optimal", CubemapMode::Off, CubemapMode::Auto))
+        .unwrap();
+    assert!(has(&p, StepKind::Rad, "-rtnoreflections") && p.cubemap_args.is_none());
+    let p = CompilePlan::preset(Preset::Normal, &tools(), &vmf(), &rt("normal", CubemapMode::Auto, CubemapMode::Auto))
+        .unwrap();
+    assert!(!has(&p, StepKind::Bsp, PARALLAX_CUBEMAPS_FLAG) && p.cubemap_args.is_none());
+    let forced = PlanOptions { parallax_cubemaps: CubemapMode::On, ..PlanOptions::default() };
+    let p = CompilePlan::preset(Preset::Normal, &tools(), &vmf(), &forced).unwrap();
+    assert!(has(&p, StepKind::Bsp, PARALLAX_CUBEMAPS_FLAG));
+    assert_eq!(CubemapMode::parse("Always"), Some(CubemapMode::On));
 }

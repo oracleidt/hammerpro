@@ -46,6 +46,7 @@ pub struct CompileOptions {
     pub cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     pub auto_lightmap_scale: bool,
     pub auto_cubemaps: bool,
+    pub parallax_cubemaps: bool,
 }
 
 pub const RELAXED_NOTE: &str = "the game would refuse this map; this compile goes on";
@@ -97,6 +98,7 @@ impl Default for CompileOptions {
             cancel: None,
             auto_lightmap_scale: false,
             auto_cubemaps: false,
+            parallax_cubemaps: false,
         }
     }
 }
@@ -481,6 +483,7 @@ fn compile_once(
 
     let mut cubemaps = crate::cubemap::Cubemaps::new(&entities, opts.map_name.as_deref(), materials);
     cubemaps.set_auto(opts.auto_cubemaps);
+    cubemaps.set_box_projection(opts.parallax_cubemaps);
     cubemaps.resolve_parallax(&parallax_obbs(&entities, materials));
     let mut world_brushes: Vec<usize> = Vec::new();
     let mut disps: Vec<crate::disp::DispFace> = Vec::new();
@@ -835,7 +838,7 @@ fn compile_once(
         planes.len()
     ));
     stage("read brushes");
-    texture_passes(&mut side_texes, &mut tex, &mut cubemaps, &mut brushes, &mut disps, &mut facts_of);
+    let box_faces = texture_passes(&mut side_texes, &mut tex, &mut cubemaps, &mut brushes, &mut disps, &mut facts_of);
     let patches = format!("maps/{}/", cubemaps.map_name().to_ascii_lowercase());
     for m in missing.iter().filter(|m| !m.starts_with(&patches)) {
         log(&format!("material \"{m}\" not found."));
@@ -1409,7 +1412,11 @@ Probably too many areaportals"
         facts_cache.insert(k, f.clone());
         f
     };
-    let overlays = overlay_lumps(&entities, &lumps.side_faces, &mut tex, &mut overlay_facts, max_overlays, log)?;
+    let boxed = box_overlays(&box_faces, &entities, &lumps.side_faces, &mut tex, &mut cubemaps, max_overlays, log);
+    let mut overlay_entities = entities.clone();
+    overlay_entities.extend(boxed.iter());
+    let overlays =
+        overlay_lumps(&overlay_entities, &lumps.side_faces, &mut tex, &mut overlay_facts, max_overlays, log)?;
     if opts.format.overlay_system_levels {
         lumps.data.insert(crate::emit::lump::OVERLAY_SYSTEM_LEVELS, (vec![0; overlays.0.len() / 352 * 4], 0));
     }
@@ -2835,7 +2842,8 @@ fn texture_passes(
     brushes: &mut [MapBrush],
     disps: &mut [crate::disp::DispFace],
     facts_of: &mut dyn FnMut(&str) -> crate::materials::MaterialFacts,
-) {
+) -> Vec<crate::cubemap::boxproj::BoxFace> {
+    let mut box_faces = Vec::new();
     let name_of = |tex: &TexInfos, ti: i32| -> String {
         usize::try_from(ti)
             .ok()
@@ -2918,13 +2926,32 @@ fn texture_passes(
                 let t = &mut sides[i];
                 if t.texinfo >= 0 && !cubemaps.is_manual(t.side_id) && !is_cubemap(tex, t.texinfo, &cubemap_data) {
                     let name = name_of(tex, t.texinfo);
-                    if let Some(p) =
-                        cubemaps.side_material(&name, &t.facts, t.side_id, t.winding.as_ref(), t.offset, t.normal)
-                    {
+                    if let Some(p) = cubemaps.side_material_with(
+                        &name,
+                        &t.facts,
+                        t.side_id,
+                        t.winding.as_ref(),
+                        t.offset,
+                        t.normal,
+                        !t.disp,
+                    ) {
                         let td = tex.clone_texdata(t.texinfo, &p);
                         keep(td, &mut cubemap_data);
                         t.texinfo = retexture(tex, t.texinfo, td);
                         set_side_texinfo(t, brushes, disps);
+                        if let (Some((sample, material)), Some(w)) = (cubemaps.box_patch(&p), t.winding.as_ref())
+                            && let Some(info) = usize::try_from(t.texinfo).ok().and_then(|i| tex.infos.get(i))
+                        {
+                            box_faces.push(crate::cubemap::boxproj::BoxFace {
+                                side_id: t.side_id,
+                                patched: p.to_ascii_lowercase(),
+                                overlay: cubemaps.overlay_name(material, sample),
+                                points: w.points.iter().map(|q| *q + t.offset).collect(),
+                                normal: t.normal,
+                                texture: info.texture,
+                                size: [t.facts.width, t.facts.height],
+                            });
+                        }
                     }
                 }
             }
@@ -2935,7 +2962,9 @@ fn texture_passes(
                 }
                 let name = name_of(tex, ti);
                 let facts = facts_of(&name);
-                if let Some(p) = cubemaps.side_material(&name, &facts, u32::MAX, None, DVec3::ZERO, DVec3::ZERO) {
+                if let Some(p) =
+                    cubemaps.side_material_with(&name, &facts, u32::MAX, None, DVec3::ZERO, DVec3::ZERO, false)
+                {
                     let td = tex.clone_texdata(ti, &p);
                     keep(td, &mut cubemap_data);
                     brushes[b].sides[k].texinfo = retexture(tex, ti, td);
@@ -2958,6 +2987,52 @@ fn texture_passes(
         let td = tex.texdata(&bottom_name, &bottom_facts);
         tex.set_bottom(t.texinfo, td);
     }
+    box_faces
+}
+
+fn box_overlays(
+    box_faces: &[crate::cubemap::boxproj::BoxFace],
+    entities: &[&hp_vmf::Entity],
+    side_faces: &ahash::AHashMap<u32, Vec<u32>>,
+    tex: &mut TexInfos,
+    cubemaps: &mut crate::cubemap::Cubemaps<'_>,
+    max_overlays: usize,
+    log: &mut dyn FnMut(&str),
+) -> Vec<hp_vmf::Entity> {
+    if box_faces.is_empty() {
+        return Vec::new();
+    }
+    let own = entities.iter().filter(|e| e.classname.eq_ignore_ascii_case("info_overlay")).count();
+    let first = entities.iter().map(|e| e.id).max().unwrap_or(0) + 1;
+    let planned = crate::cubemap::boxproj::plan(
+        box_faces,
+        side_faces,
+        max_overlays.saturating_sub(own),
+        OVERLAY_BSP_FACE_COUNT,
+        first,
+    );
+    for patched in &planned.dropped {
+        let Some((sample, material)) = cubemaps.box_patch(patched).map(|(s, m)| (s, m.to_owned())) else { continue };
+        let Some(boxed) = tex.texdata_index(patched) else { continue };
+        let Some(plain) = cubemaps.plain_patch(&material, sample) else { continue };
+        let Some(info) = tex.infos.iter().find(|i| i.texdata == boxed).copied() else { continue };
+        let td = tex.clone_texdata_of(info.texdata, &plain);
+        for i in tex.infos.iter_mut().filter(|i| i.texdata == boxed) {
+            i.texdata = td;
+        }
+    }
+    if !planned.dropped.is_empty() {
+        log(&format!(
+            "Warning: parallax corrected cubemaps: {} materials keep the plain reflection (the map has no room for more overlays, MAX_MAP_OVERLAYS = {max_overlays})",
+            planned.dropped.len()
+        ));
+    }
+    log(&format!(
+        "Parallax corrected cubemaps: {} faces get a box projected reflection through {} overlays",
+        planned.faces,
+        planned.entities.len()
+    ));
+    planned.entities
 }
 
 fn brush_volume(b: &MapBrush) -> f64 {

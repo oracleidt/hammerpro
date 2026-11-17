@@ -12,6 +12,8 @@ pub mod stretch;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_live;
+#[cfg(test)]
 mod tests_qa;
 #[cfg(test)]
 mod tests_sel;
@@ -21,7 +23,7 @@ mod tests_stretch;
 pub use camera::CameraTool;
 pub use gizmo::GizmoMode;
 pub use math::{Handle, HandleMode};
-pub use select::{QueryKind, STRETCH_LABEL, SelectTool, sync_options};
+pub use select::{EditMode, QueryKind, STRETCH_LABEL, SelectTool, sync_options};
 
 pub const TR: hp_app::i18n::TrTable = &[
     ("seltool.mode.scale", "Scale", "Échelle"),
@@ -91,6 +93,31 @@ pub const TR: hp_app::i18n::TrTable = &[
     ("seltool.gizmo.rotate", "Rotate", "Pivoter"),
     ("seltool.gizmo.scale", "Scale", "Échelle"),
     ("seltool.gizmo.local", "Local", "Local"),
+    (
+        "seltool.gizmo_mode_tip",
+        "What the gizmo does. Like Hammer++, clicking the selection in the 3D view or right clicking the gizmo switches to the next mode (move, rotate, scale).",
+        "Ce que fait le gizmo. Comme dans Hammer++, cliquer sur la sélection dans la vue 3D ou faire un clic droit sur le gizmo passe au mode suivant (déplacer, pivoter, échelle).",
+    ),
+    ("seltool.edit.gizmo", "Gizmo", "Gizmo"),
+    ("seltool.edit.box", "Box", "Cadre"),
+    ("seltool.edit.none", "None", "Aucun"),
+    ("seltool.mode_note.gizmo", "Gizmo: {0}", "Gizmo : {0}"),
+    ("seltool.mode_note.edit", "3D edit mode: {0}", "Mode d'édition 3D : {0}"),
+    (
+        "seltool.hint.gizmo_mode",
+        "{0} gizmo: drag to transform (Shift: clone, Alt: no snap).",
+        "Gizmo {0} : glissez pour transformer (Maj : cloner, Alt : sans magnétisme).",
+    ),
+    (
+        "seltool.hint.gizmo_cycle",
+        "{0} gizmo: drag to transform (Shift: clone, Alt: no snap). Right click: next mode.",
+        "Gizmo {0} : glissez pour transformer (Maj : cloner, Alt : sans magnétisme). Clic droit : mode suivant.",
+    ),
+    (
+        "seltool.hint.3d_cycle",
+        "Click to select, click the selection again for the next gizmo mode (now {0}). Ctrl: toggle, middle click: object behind, Ctrl+drag: paint a selection, double click: properties. G, R, E: move, rotate, scale.",
+        "Cliquez pour sélectionner, cliquez à nouveau sur la sélection pour le mode suivant du gizmo (actuellement {0}). Ctrl : inverser, clic milieu : objet derrière, Ctrl+glisser : peindre une sélection, double-clic : propriétés. G, R, E : déplacer, pivoter, mettre à l'échelle.",
+    ),
     (
         "seltool.gizmo.local_tip",
         "Align the gizmo with the angles of a single selected entity instead of the world axes",

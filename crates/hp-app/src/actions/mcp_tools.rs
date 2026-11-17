@@ -185,6 +185,7 @@ pub(super) const TR: TrTable = &[
     ("shell.undo.mcp_paste_special", "MCP: paste special", "MCP : collage spécial"),
     ("shell.undo.mcp_create_overlay", "MCP: create overlay", "MCP : création d'overlay"),
     ("shell.undo.mcp_trim_overlay_faces", "MCP: trim overlay faces", "MCP : rognage des faces d'overlay"),
+    ("shell.undo.mcp_fix_overlay_faces", "MCP: fix overlay faces", "MCP : correction des faces d'overlay"),
     ("shell.undo.mcp_set_overlay", "MCP: edit overlay", "MCP : modification d'overlay"),
     ("shell.undo.mcp_create_decal", "MCP: create decal", "MCP : création de décalque"),
 ];

@@ -32,6 +32,26 @@ Le menu du clic droit propose aussi **Créer en cylindre** et **Créer en arche*
 
 Tracée sur un mur, la boîte s'éloigne du mur ; tracée sous un plafond, elle pousse vers le bas. Avant de commencer, un petit repère montre le point de surface aligné sous le curseur, et la taille `x x y x z` s'affiche au-dessus de la boîte pendant le tracé.
 
+### Limites et direction dans la vue 3D
+
+Quatre bascules dans la barre d'options (**Tracé 3D :**) et dans Paramètres > **Brushes** > **Outil bloc dans la vue 3D** encadrent une boîte tracée sur une surface dans la vue 3D. Maintenez `Ctrl` pendant le tracé (ou au clic de création) pour ignorer les trois limites sur le moment (`Alt` reste « sans magnétisme »).
+
+| Bascule | Effet | Par défaut |
+|---|---|---|
+| **Direction** | Avant le glisser, une flèche au curseur montre vers où la boîte grandira, avec son axe (**+Z**, **-X**...), et la face sous le curseur est surlignée : sur une arête ou un coin, on voit sur quelle face on est. La flèche reste pendant le tracé de la base. | activé |
+| **Coller au contact** | Pendant le réglage de la hauteur, des rayons sont lancés dans le sens de la croissance depuis toute l'empreinte (coins, bords et une grille intérieure). La hauteur s'arrête au premier impact : la boîte finit au ras du mur, du sol ou du plafond opposé (ou d'un déplacement), et l'étiquette de taille indique **(collé)**. Sans impact, la hauteur suit la grille comme d'habitude. | activé |
+| **Limiter à la face** | L'empreinte reste dans la face de départ, toute face convexe, y compris tournée ou inclinée (la face vue selon l'axe de croissance). Cette face est soulignée en cyan tant que la bascule est active. | désactivé |
+| **Sans chevauchement** | La hauteur s'arrête au premier brush que la boîte couperait, avec un test convexe exact contre chaque brush visible (même plus fin que les rayons). La boîte devient rouge avec un quadrilatère rouge à la limite et l'étiquette indique **(arrêté par un brush)**. Une boîte qui chevauche déjà un brush à sa base s'affiche en rouge avec **(chevauche un brush)** et ni le clic ni `Entrée` ne la créent. | désactivé |
+
+Coller au contact et Direction sont actifs car ce sont des garde-fous attendus (un faux mouvement ne fait plus traverser le sol). Limiter à la face et Sans chevauchement changent ce que l'on peut tracer : ils sont à activer soi-même. Désactivez toutes les bascules pour retrouver le comportement de Hammer et Hammer++.
+
+Touches de direction, dans une vue 3D :
+
+- `R` inverse le sens de croissance (la boîte entre dans le brush au lieu d'en sortir), avant ou pendant le tracé. **Inverser** dans la barre d'options fait de même.
+- `X`, `Y` ou `Z` pendant le glisser de la base verrouillent la boîte sur cet axe (appuyez de nouveau pour libérer). La base repart sur le plan qui passe par son premier coin. **Axe :** **Auto** / **X** / **Y** / **Z** dans la barre d'options règle le verrou avant de commencer. **Auto** prend l'axe le plus proche de la normale de la face. Une fois la base relâchée, la direction ne change plus.
+
+Le nouveau brush reste une seule étape d'annulation. Noms de script (`set_tool_options`, outil `block`) : `direction_preview`, `snap_contact`, `limit_to_face`, `no_overlap`, `draw_axis` (`auto`, `x`, `y`, `z`) et `flip` ; les quatre premiers sont les paramètres enregistrés `brush.block_draw.direction_preview`, `brush.block_draw.snap_contact`, `brush.block_draw.limit_to_face` et `brush.block_draw.no_overlap` (`set_setting`).
+
 ## Changer le nombre avec la molette
 
 Comme pour l'ajout d'un cylindre dans Blender, la molette change le nombre de la forme pendant sa création : pendant le glissement dans une vue 2D, tant que la boîte est en attente (avant `Entrée`), et pendant les étapes de base et de hauteur dans la vue 3D.
@@ -122,6 +142,10 @@ Pour les primitives rondes, une petite vignette à côté des paramètres montre
 | Paramètre | Où | Par défaut |
 |---|---|---|
 | **Orienter les primitives selon la vue de tracé** (`[brush] reorient_primitives`) | Paramètres > **Brushes** | activé |
+| **Direction** (`[brush.block_draw] direction_preview`) | Paramètres > **Brushes** | activé |
+| **Coller au contact** (`[brush.block_draw] snap_contact`) | Paramètres > **Brushes** | activé |
+| **Limiter à la face** (`[brush.block_draw] limit_to_face`) | Paramètres > **Brushes** | désactivé |
+| **Sans chevauchement** (`[brush.block_draw] no_overlap`) | Paramètres > **Brushes** | désactivé |
 | **Matériau par défaut** (`[edit] default_material`) | Paramètres > **Édition** | `dev/dev_measuregeneric01b` |
 | **Échelle de texture par défaut** (`[edit] default_texture_scale`) | Paramètres > **Édition** | 0,25 |
 | **Échelle de lightmap par défaut** (`[edit] default_lightmap_scale`) | Paramètres > **Édition** | 16 |
@@ -133,7 +157,7 @@ La fenêtre Paramètres s'ouvre avec **Outils > Options...** (`Ctrl+,`).
 - Sélectionnez un brush avant de tracer dans la vue de dessus : la nouvelle boîte reprend sa plage de hauteur. Sélectionnez d'abord un mur de la pièce et la boîte prend toute la hauteur du mur.
 - Pour un escalier, tracez la boîte avec la largeur, la longueur et la hauteur totale voulues et réglez **Marches** ou **Haut. marche**. Pour un colimaçon, prenez la primitive escalier en colimaçon (ou une arche avec une **Montée** égale à la hauteur d'une marche). Choisissez le côté vers lequel ils montent avec **Direction** (+Y, -Y, +X, -X ou le côté le plus long de la boîte). Pour un tuyau en hélice, prenez un tore avec une **Montée** et un **Arc** supérieur à 360.
 - Laissez **Orienter selon la vue** activé et tracez un cylindre dans la vue de face pour obtenir un tuyau couché le long de X sans devoir le tourner ensuite.
-- Nom de chaque option dans les fichiers `--script` et pour l'outil MCP `set_tool_options` : `kind`, `sides`, `wall`, `arc`, `start`, `rise`, `tube_sides`, `ring`, `torus_arc`, `torus_start`, `torus_rise`, `steps`, `step_height`, `open`, `inner`, `spiral_angle`, `spiral_start`, `slope`, `direction`, `base`, `capital`, `inset`, `door_width`, `door_height`, `thickness`, `door_arch`, `door_arch_radius`, `door_arch_segments`, `reorient`, `preview`, `tex_scale`, `keep_active`, `create_as`.
+- Nom de chaque option dans les fichiers `--script` et pour l'outil MCP `set_tool_options` : `kind`, `sides`, `wall`, `arc`, `start`, `rise`, `tube_sides`, `ring`, `torus_arc`, `torus_start`, `torus_rise`, `steps`, `step_height`, `open`, `inner`, `spiral_angle`, `spiral_start`, `slope`, `direction`, `base`, `capital`, `inset`, `door_width`, `door_height`, `thickness`, `door_arch`, `door_arch_radius`, `door_arch_segments`, `reorient`, `preview`, `tex_scale`, `keep_active`, `create_as`, `direction_preview`, `snap_contact`, `limit_to_face`, `no_overlap`, `draw_axis`, `flip`.
 
 ## FAQ
 

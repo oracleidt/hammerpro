@@ -1093,6 +1093,50 @@ fn four_way_blend_mixes_textures_by_vertex_weights() {
     assert!(count_near(&shot(&mut r, "blend4_two_way"), [0, 255, 0], 12) > 3000);
 }
 
+#[test]
+fn four_way_blend_detail_uses_the_factor_of_each_layer() {
+    let (device, queue) = gpu_or_skip!();
+    let mut r = Renderer::new(&device, &queue);
+    let grey = r.create_texture(&solid([128, 128, 128, 255]));
+    let orange = r.create_texture(&solid([255, 128, 0, 255]));
+    let detail = DetailDesc {
+        texture: orange,
+        mode: DetailDesc::MODE_FADE,
+        raw: false,
+        sets_alpha: false,
+        uv: [1.0, 1.0, 0.0, 0.0],
+        uv_cross: [0.0; 2],
+        scroll: [0.0; 2],
+        tint_blend: [1.0, 1.0, 1.0, 0.0],
+    };
+    let four_way = FourWayDesc { detail_blend: [0.0, 0.0, 1.0, 0.0], ..FourWayDesc::default() };
+    let desc = MaterialDesc {
+        texture: Some(grey),
+        texture2: Some(grey),
+        texture3: Some(grey),
+        texture4: Some(grey),
+        tex_size: [4.0, 4.0],
+        detail: Some(detail),
+        four_way: Some(four_way),
+        ..Default::default()
+    };
+    r.set_material(5, &desc);
+    let view = persp([-300.0, 0.0, 0.0], [0.0, 0.0, 0.0], [64, 64], RenderMode::Unshaded);
+    let mut shot = |weights: [f32; 4], name: &str| {
+        let mut m = box_mesh([0.0, -200.0, -200.0], [16.0, 200.0, 200.0], 5, [0, 0, 0]);
+        m.batches[0].blend = vec![BlendVertex::painted(weights); m.batches[0].vertices.len()];
+        r.upsert_object(1, m);
+        r.render_view(1, &view, &Overlay::default());
+        pixel(&save(&r, 1, name), 32, 32)
+    };
+    let third = shot([0.0, 0.0, 1.0, 0.0], "blend4_detail_layer3");
+    assert!(third[0] > 200 && third[2] < 40, "layer 3 takes its own detail factor: {third:?}");
+    let second = shot([0.0, 1.0, 0.0, 0.0], "blend4_detail_layer2");
+    assert!(second[0].abs_diff(second[2]) < 20, "layer 2 keeps no detail: {second:?}");
+    let fourth = shot([0.0, 0.0, 0.0, 1.0], "blend4_detail_layer4");
+    assert!(fourth[0].abs_diff(fourth[2]) < 20, "layer 4 keeps no detail: {fourth:?}");
+}
+
 fn grid_square() -> ObjectMesh {
     let v = |x: f32, y: f32| Vertex { pos: [x, y, 0.0], normal: [0.0, 0.0, 1.0], uv: [0.0; 2], alpha: 0.0 };
     let tri = |a: [f32; 2], b: [f32; 2], c: [f32; 2], class: WalkClass| MarkTri {

@@ -146,7 +146,7 @@ fn fs_baked(in: LmOut) -> @location(0) vec4<f32> {
     }
     let detail = detail_sample(uv);
     if material.detail_mode != DETAIL_NONE {
-        albedo = detail_combine(albedo, detail);
+        albedo = detail_combine(albedo, detail, cover);
     }
     var bump = vec3<f32>(0.0, 0.0, 1.0);
     let bumped = bump_on();

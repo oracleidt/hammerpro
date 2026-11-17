@@ -9,9 +9,11 @@ Le compilateur fait partie de `hammerpro.exe`. `hammerpro --bspc` construit la g
 ```
 hammerpro --bspc [options] <map>
 hammerpro --rad  [options] <map>
+hammerpro --cubemaps [options] <map>
 ```
 
 - `<map>` est le chemin de la map, avec ou sans extension. `--bspc` lit `<map>.vmf` ; `--rad` éclaire `<map>.bsp` sur place. La map vient en dernier (tout argument qui ne commence pas par `-` est la map).
+- `hammerpro --cubemaps` construit seulement les cubemaps d'un `<map>.bsp` déjà éclairé (ce que lance **Construire les cubemaps à la compilation** après le `vrad.exe` de Valve) ; il prend les options `-final`, `-game`, `-gmod`, `-target`, `-insert_search_path` et les options de montage de `--rad`.
 - La casse des options ne compte pas. Une option qui attend une valeur et n'en a pas, ou une valeur qui n'est pas un nombre, arrête tout avec `Error: ...` et le code de sortie 1.
 - Chaque ligne de sortie est affichée sur la sortie standard et ajoutée à `<map>.log` à côté de la map (fins de ligne CRLF, comme les outils de Valve).
 - Code de sortie 0 en cas de succès, 1 pour toute erreur (et pour une fuite avec `-leaktest`).
@@ -65,6 +67,7 @@ Géométrie et visibilité. Les valeurs par défaut sont celles de la ligne de c
 | `-cleanpak` | | Retire les fichiers inutilisés du pakfile et le compresse en LZMA. | désactivé |
 | `-autocubemaps` | | Dimensionne les cubemaps de taille par défaut selon la zone qu'ils reflètent et retire ceux qui ne servent pas. | désactivé |
 | `-rtautocubemaps` | | Hammer Pro, écrit par les cubemaps automatiques du ray tracing : quand la map n'a pas d'`env_cubemap`, en place là où les surfaces réfléchissantes en ont besoin (tailles de l'analyse des cubemaps) dans la map compilée seulement, puis active `-autocubemaps`. Avec ses propres cubemaps, seulement `-autocubemaps`. | désactivé |
+| `-parallaxcubemaps` | | Hammer Pro : cubemaps à correction de parallaxe. Chaque `env_cubemap` reçoit la boîte de sa pièce (clé `hp_pcbox`, ou la brush de son `parallaxobb`), ses faces réfléchissantes `LightmappedGeneric` du monde reçoivent un overlay de reflet projeté sur la boîte, dessiné par le shader intégré à la map (voir [Cubemaps](cubemaps.md#cubemaps-à-correction-de-parallaxe-dans-garrys-mod)). | désactivé |
 | `-embed` | dossier | Empaquette un dossier entier dans le BSP (compilations complètes seulement, refusé avec `-onlyents`/`-onlyprops`). | aucun |
 | `-dxlevel` | niveau | Retire les entités exclues par leur `mindxlevel`/`maxdxlevel`. | aucun |
 | `-radius_override` | unités | Rayon de visibilité. | `farz` du brouillard, sinon aucun |
@@ -126,6 +129,8 @@ Sans contenu de jeu (Garry's Mod introuvable et pas de `-game`), les matériaux 
 | `-staticpropsamplescale` | facteur | Plus ou moins de rayons pour les props (plus que 0). | 1 |
 | `-StaticPropNormals` | | Débogage : les props montrent leurs normales. | désactivé |
 | `-nostaticpropshadows` | | Hammer Pro : aucune ombre de prop statique. | désactivé |
+| `-buildcubemaps` | | Hammer Pro : construit les cubemaps à la fin de l'éclairage : chaque `env_cubemap` et la cubemap par défaut rendues à partir de la map éclairée dans le pakfile, comme `buildcubemaps`. Marche avec l'éclairage classique et ray tracé. | Final, ray tracing Final et Optimal |
+| `-nobuildcubemaps` | | Hammer Pro : ne construit pas les cubemaps (substituts jusqu'à `buildcubemaps`). | |
 | `-nodispshadows` | | Hammer Pro : aucune ombre de displacement. | désactivé |
 | `-nostylebounce` | | Hammer Pro : les lumières nommées (commutables) ne rebondissent pas, comme dans VRAD. | désactivé |
 | `-raytracing` | qualité (facultatif) | Hammer Pro : calcule l'éclairage avec le path tracer (GPU, CPU à défaut) au lieu de la radiosité. Le mot facultatif est `draft`, `normal`, `final` ou `optimal`. Toute option `-rt` ci-dessous l'active aussi. Voir [Ray tracing](compile-options.md#ray-tracing). | désactivé |
@@ -161,8 +166,8 @@ Sans contenu de jeu (Garry's Mod introuvable et pas de `-game`), les matériaux 
 | `-rtglow` | | Halos lumineux autour des lumières puissantes. | désactivé |
 | `-rtglowintensity` | 0 à 8 | Luminosité des halos. | 1 |
 | `-rtnocubemaps` | | Pas de placement automatique des cubemaps (fait seulement quand la map n'a pas d'`env_cubemap`). | placés |
-| `-rtreflections` | | Cubemaps ray tracées à toutes les qualités : chaque `env_cubemap` et la cubemap par défaut rendus à partir de la map éclairée dans le pakfile, comme `buildcubemaps`. | Final et Optimal |
-| `-rtnoreflections` | | Pas de cubemaps ray tracées (textures provisoires jusqu'à `buildcubemaps`). | |
+| `-rtreflections` | | Comme `-buildcubemaps` (gardé pour les anciens scripts). | Final et Optimal |
+| `-rtnoreflections` | | Comme `-nobuildcubemaps`. | |
 | `-rtnotonemap` | | Pas d'`env_tonemap_controller` automatique (ajouté seulement quand la map n'en a pas). | ajouté |
 | `-rtcolorcorrection` | | Correction colorimétrique automatique discrète. | désactivé |
 | `-ao` / `-ambientocclusion` | | Occlusion ambiante précalculée, comme dans VRAD++ (`-ao 0`, `-noao` : désactivée). Voir [Occlusion ambiante](compile-options.md#ambient-occlusion). | désactivé |

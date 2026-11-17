@@ -88,6 +88,7 @@ pub(super) const TR: TrTable = &[
     ("shell.undo.place_cubemaps", "Place cubemaps", "Placement de cubemaps"),
     ("action.trim_overlay_faces", "Trim overlay faces", "Rogner les faces de l'overlay"),
     ("shell.undo.trim_overlay_faces", "Trim overlay faces", "Rognage des faces d'overlay"),
+    ("shell.undo.fix_overlay_faces", "Fix overlay faces", "Correction des faces d'overlay"),
     (
         "app.health.trim_overlay_none",
         "Select one or more overlays (info_overlay) first",

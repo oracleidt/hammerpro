@@ -55,10 +55,7 @@ impl SettingsPage for HelpersPage {
             .on_hover_text(t!("shell.helpers.editor_objects_tip"))
             .changed();
         changed |= ui
-            .add_enabled(
-                s.show_editor_objects,
-                egui::Checkbox::new(&mut s.show_entity_icons, t!("action.toggle_entity_icons")),
-            )
+            .checkbox(&mut s.show_entity_icons, t!("action.toggle_entity_icons"))
             .on_hover_text(t!("shell.helpers.entity_icons_tip"))
             .changed();
         heading(ui, t!("shell.helpers.connections"));
@@ -116,13 +113,13 @@ pub(crate) const TR: TrTable = &[
     ("shell.helpers.hidden", "Hidden", "Masquées"),
     (
         "shell.helpers.editor_objects_tip",
-        "Entity icons and helpers that only exist in the editor. World sprites stay visible.",
-        "Icônes d'entités et aides qui n'existent que dans l'éditeur. Les sprites du jeu restent visibles.",
+        "Helper shapes and labels that only exist in the editor. Entity icons have their own setting.",
+        "Formes d'aide et étiquettes qui n'existent que dans l'éditeur. Les icônes d'entités ont leur propre réglage.",
     ),
     (
         "shell.helpers.entity_icons_tip",
-        "Draw the FGD iconsprite of point entities in the 3D view, like Hammer. Off shows coloured boxes.",
-        "Affiche l'iconsprite du FGD des entités ponctuelles dans la vue 3D, comme Hammer. Désactivé, elles sont des boîtes colorées.",
+        "Draw the icon of point entities in the 3D views, like Hammer: the FGD iconsprite, or a built in icon when the game has none. Off shows coloured boxes.",
+        "Affiche l'icône des entités ponctuelles dans les vues 3D, comme Hammer : l'iconsprite du FGD, ou une icône intégrée quand le jeu n'en a pas. Désactivé, elles sont des boîtes colorées.",
     ),
     ("shell.helpers.connections", "Input/output connections", "Connexions entrées/sorties"),
     ("shell.helpers.link_valid", "Valid", "Valide"),

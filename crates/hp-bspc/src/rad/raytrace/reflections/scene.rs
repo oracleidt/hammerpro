@@ -619,7 +619,9 @@ pub(crate) fn build(src: &hp_bsp::Bsp, models: &dyn ModelSource) -> Result<Scene
     }
     let mut lines: Vec<String> = prop_lines.into_iter().filter(|l| l.starts_with("Error")).take(4).collect();
     if !sky.trim().is_empty() && passes.iter().zip(&scene.sky).any(|(p, s)| *p && s.is_none()) {
-        lines.push(format!("Warning: ray traced reflections: the sky textures skybox/{sky} cannot be read, the sky shows black in the cubemaps"));
+        lines.push(format!(
+            "Warning: cubemaps: the sky textures skybox/{sky} cannot be read, the sky shows black in the cubemaps"
+        ));
     }
     scene.lines = lines;
     scene.normals = geometry.iter().map(|p| (p[1] - p[0]).cross(p[2] - p[0]).normalize_or_zero()).collect();

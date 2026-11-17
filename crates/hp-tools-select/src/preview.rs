@@ -49,6 +49,11 @@ impl PreviewGeom {
         Self { edges, bounds, simplified }
     }
 
+    pub fn push_ghost(&self, out: &mut Overlay, color: [f32; 4]) {
+        out.lines.reserve(self.edges.len());
+        out.lines.extend(self.edges.iter().map(|[a, b]| line(*a, *b, color)));
+    }
+
     pub fn push(&self, out: &mut Overlay, m: &DMat4, color: [f32; 4]) {
         out.lines_on_top.reserve(self.edges.len());
         for [a, b] in &self.edges {
@@ -205,6 +210,8 @@ mod tests {
         let mut out = Overlay::default();
         g.push(&mut out, &DMat4::from_translation(DVec3::X), [1.0; 4]);
         assert_eq!(out.lines_on_top.len(), 60);
+        g.push_ghost(&mut out, [1.0; 4]);
+        assert_eq!(out.lines.len(), 60);
         let mut out = Overlay::default();
         push_outline(&mut out, doc, &all, &eb, [1.0; 4], 30);
         assert_eq!(out.lines_on_top.len(), 30);

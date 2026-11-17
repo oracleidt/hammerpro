@@ -444,6 +444,8 @@ See [Particles](../features/particles.md).
 | Command | Id | Default | Hammer | Hammer++ |
 |---|---|---|---|---|
 | Gizmo in local space | `toggle_gizmo_local` | `Ctrl+J` |  |  |
+| Cycle gizmo mode (move, rotate, scale) | `cycle_gizmo_mode` |  |  |  |
+| Cycle 3D edit mode (gizmo, box, none) | `cycle_edit_mode` |  |  | `X` |
 | Install the available update | `install_update` |  |  |  |
 | Make hint brush | `make_hint_brush` |  |  |  |
 | Camera mode: apply the texture to the targeted face | `fly_apply_texture` | `T` |  |  |

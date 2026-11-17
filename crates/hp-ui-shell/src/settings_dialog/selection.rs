@@ -78,6 +78,28 @@ impl SettingsPage for SelectionPage {
             .checkbox(&mut s.click_to_zoom, t!("shell.selection.click_to_zoom"))
             .on_hover_text(t!("shell.selection.click_to_zoom_tip"))
             .changed();
+        changed |= ui
+            .checkbox(&mut s.click_cycles_gizmo, t!("shell.selection.click_cycles_gizmo"))
+            .on_hover_text(t!("shell.selection.click_cycles_gizmo_tip"))
+            .changed();
+        heading(ui, t!("shell.selection.live"));
+        changed |= ui
+            .checkbox(&mut s.live_transform, t!("shell.selection.live_transform"))
+            .on_hover_text(t!("shell.selection.live_transform_tip"))
+            .changed();
+        ui.add_enabled_ui(s.live_transform, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(t!("shell.selection.live_limit"));
+                changed |= ui
+                    .add(
+                        egui::DragValue::new(&mut s.live_transform_limit)
+                            .range(1..=hp_app::settings::MAX_LIVE_LIMIT)
+                            .speed(10.0),
+                    )
+                    .on_hover_text(t!("shell.selection.live_limit_tip"))
+                    .changed();
+            });
+        });
         if changed {
             state.settings_dirty = true;
         }
@@ -91,6 +113,33 @@ impl SettingsPage for SelectionPage {
 
 pub(crate) const TR: TrTable = &[
     ("shell.selection.page", "Selection", "Sélection"),
+    ("shell.selection.live", "Live transform preview", "Aperçu en direct des transformations"),
+    (
+        "shell.selection.live_transform",
+        "Show objects live while moving them",
+        "Montrer les objets en direct pendant leur déplacement",
+    ),
+    (
+        "shell.selection.live_transform_tip",
+        "Like Hammer++: while you drag, rotate or scale with the gizmo, the 2D handles, G, R, E or a Shift clone, the real brushes, props and entities are drawn at their new place in every view, textured and lit, with the original as a faint outline. Off: only an outline preview until you release.",
+        "Comme dans Hammer++ : pendant que vous déplacez, pivotez ou mettez à l'échelle avec le gizmo, les poignées 2D, G, R, E ou un clonage Maj, les vrais brushes, props et entités sont dessinés à leur nouvelle place dans toutes les vues, texturés et éclairés, avec l'original en contour léger. Désactivé : seulement un aperçu en contour jusqu'au relâchement.",
+    ),
+    ("shell.selection.live_limit", "Outline only above (objects)", "Contour seul au-delà de (objets)"),
+    (
+        "shell.selection.live_limit_tip",
+        "Bigger selections show the outline preview to keep the editor smooth. It also falls back to the outline by itself when a frame of live preview gets too slow.",
+        "Les sélections plus grandes montrent l'aperçu en contour pour garder l'éditeur fluide. Il revient aussi seul au contour quand une image de l'aperçu en direct devient trop lente.",
+    ),
+    (
+        "shell.selection.click_cycles_gizmo",
+        "Click the selection to switch the gizmo mode",
+        "Cliquer sur la sélection change le mode du gizmo",
+    ),
+    (
+        "shell.selection.click_cycles_gizmo_tip",
+        "Like Hammer++: in the 3D view, clicking an object that is already selected, or right clicking the gizmo, switches the gizmo between move, rotate and scale. A click on another object still selects it and the middle click steps to the object behind. Off: clicking the same spot again selects the object behind, as before.",
+        "Comme dans Hammer++ : dans la vue 3D, cliquer sur un objet déjà sélectionné, ou faire un clic droit sur le gizmo, fait passer le gizmo entre déplacer, pivoter et échelle. Un clic sur un autre objet le sélectionne toujours et le clic milieu passe à l'objet derrière. Désactivé : cliquer à nouveau au même endroit sélectionne l'objet derrière, comme avant.",
+    ),
     ("shell.selection.transforms", "Transforms", "Transformations"),
     ("shell.selection.rotation_step", "Rotation step", "Pas de rotation"),
     (

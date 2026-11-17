@@ -1,3 +1,4 @@
+mod builtin_icons;
 mod bump;
 mod cubemaps;
 mod decals;

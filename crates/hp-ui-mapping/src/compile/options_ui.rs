@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use egui::{RichText, Ui};
-use hp_app::settings::{CompileSettings, FlagChoiceSetting};
+use hp_app::settings::{CompileSettings, CubemapBuildSetting, FlagChoiceSetting};
 use hp_app::{t, tf, theme};
 use hp_compile::flags::{self, FlagChoice, FlagInfo, ManagedBy};
 use hp_compile::{BspMode, PlanOptions, RadMode, StepKind, split_args};
@@ -210,10 +210,57 @@ pub fn rad_file_ui(ui: &mut Ui, s: &mut CompileSettings, map: Option<&std::path:
     changed
 }
 
+pub(crate) fn cubemap_toggles(ui: &mut Ui, s: &mut CompileSettings, builtin: bool) {
+    let label = |v: CubemapBuildSetting| match v {
+        CubemapBuildSetting::Auto => t!("compile.build_cubemaps.auto"),
+        CubemapBuildSetting::On => t!("compile.build_cubemaps.on"),
+        CubemapBuildSetting::Off => t!("compile.build_cubemaps.off"),
+    };
+    let tip = t!("compile.build_cubemaps_tip");
+    ui.horizontal_wrapped(|ui| {
+        ui.label(t!("compile.build_cubemaps")).on_hover_text(tip);
+        egui::ComboBox::from_id_salt("hp_compile_build_cubemaps")
+            .selected_text(label(s.build_cubemaps))
+            .show_ui(ui, |ui| {
+                for v in CubemapBuildSetting::ALL {
+                    ui.selectable_value(&mut s.build_cubemaps, v, label(v));
+                }
+            })
+            .response
+            .on_hover_text(tip);
+    });
+    let tip = if builtin { t!("compile.parallax_cubemaps_tip") } else { t!("compile.parallax_cubemaps_builtin") };
+    let parallax = |v: CubemapBuildSetting| match v {
+        CubemapBuildSetting::Auto => t!("compile.parallax_cubemaps.auto"),
+        CubemapBuildSetting::On => t!("compile.build_cubemaps.on"),
+        CubemapBuildSetting::Off => t!("compile.parallax_cubemaps.off"),
+    };
+    ui.horizontal_wrapped(|ui| {
+        ui.label(t!("compile.parallax_cubemaps")).on_hover_text(tip);
+        ui.add_enabled_ui(builtin, |ui| {
+            egui::ComboBox::from_id_salt("hp_compile_parallax_cubemaps")
+                .selected_text(parallax(s.parallax_cubemaps))
+                .show_ui(ui, |ui| {
+                    for v in CubemapBuildSetting::ALL {
+                        ui.selectable_value(&mut s.parallax_cubemaps, v, parallax(v));
+                    }
+                })
+                .response
+                .on_hover_text(tip)
+                .on_disabled_hover_text(tip);
+        });
+    });
+}
+
 pub fn compile_options_ui(ui: &mut Ui, s: &mut CompileSettings) {
     ui.horizontal_wrapped(|ui| {
         ui.label(t!("compile.static_props"));
         prop_toggles(ui, s);
+    });
+    ui.horizontal_wrapped(|ui| {
+        ui.label(t!("compile.cubemaps_row"));
+        let builtin = s.uses_builtin_compiler();
+        cubemap_toggles(ui, s, builtin);
     });
     rad_file_ui(ui, s, None);
     step_menu(ui, s, StepKind::Bsp, "hp_settings_opts");
@@ -395,6 +442,7 @@ mod tests {
                 ManagedBy::Game,
                 ManagedBy::StaticPropShadows,
                 ManagedBy::RayTracing,
+                ManagedBy::Cubemaps,
             ] {
                 assert!(hp_app::i18n::has_key(&format!("compile.managed.{}", by.key())), "{by:?}");
             }

@@ -2,6 +2,7 @@ mod draw;
 mod element;
 mod extra;
 mod keys;
+mod live;
 mod options;
 
 use std::cell::{Cell, RefCell};
@@ -29,6 +30,42 @@ use crate::stretch::{FaceHandle, face_center};
 pub use keys::{NudgeKey, NudgeMod, NudgeView, nudge_delta, take_nudge_keys};
 pub use options::sync_options;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum EditMode {
+    #[default]
+    Gizmo,
+    Box,
+    None,
+}
+
+impl EditMode {
+    pub const ALL: [EditMode; 3] = [EditMode::Gizmo, EditMode::Box, EditMode::None];
+
+    pub fn next(self) -> Self {
+        match self {
+            EditMode::None => EditMode::Box,
+            EditMode::Box => EditMode::Gizmo,
+            EditMode::Gizmo => EditMode::None,
+        }
+    }
+
+    pub fn id(self) -> &'static str {
+        match self {
+            EditMode::Gizmo => "gizmo",
+            EditMode::Box => "box",
+            EditMode::None => "none",
+        }
+    }
+
+    pub fn label_key(self) -> &'static str {
+        match self {
+            EditMode::Gizmo => "seltool.edit.gizmo",
+            EditMode::Box => "seltool.edit.box",
+            EditMode::None => "seltool.edit.none",
+        }
+    }
+}
+
 pub const PICK_POINTS: f64 = 4.0;
 const CYCLE_SLOP: f32 = 3.0;
 const CYCLE_SECONDS: f64 = 2.0;
@@ -37,6 +74,7 @@ const DOUBLE_CLICK_SLOP: f32 = 6.0;
 const MAX_DRAG: f64 = hp_geom::MAX_COORD * 2.0;
 const PIVOT_PICK: f32 = 8.0;
 const SCALE_RANGE: (f64, f64) = (0.01, 100.0);
+const GHOST_ALPHA: f32 = 0.35;
 pub const STRETCH_LABEL: &str = "Stretch";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -84,6 +122,8 @@ struct Drag {
     ghost: Vec<[DVec3; 2]>,
     ghost_points: Vec<DVec3>,
     typed: String,
+    live_off: bool,
+    live_slow: u8,
 }
 
 impl Drag {
@@ -273,6 +313,10 @@ pub struct SelectTool {
     pivot_sig: Option<u64>,
     wheel_note: Option<(String, f64)>,
     centers: RefCell<Vec<CenterKey>>,
+    live: Option<live::Live>,
+    gizmo_before_click: Option<GizmoMode>,
+    mode_note: Option<f64>,
+    handles_hidden: bool,
 }
 
 type CenterKey = ((usize, u64, [u64; 4]), Vec<DVec3>);
@@ -307,6 +351,10 @@ impl SelectTool {
             pivot_sig: None,
             wheel_note: None,
             centers: RefCell::new(Vec::new()),
+            live: None,
+            gizmo_before_click: None,
+            mode_note: None,
+            handles_hidden: false,
         }
     }
 
@@ -391,6 +439,55 @@ impl SelectTool {
 
     pub fn set_gizmo_mode(&mut self, mode: GizmoMode) {
         self.gizmo_mode = mode;
+    }
+
+    pub fn gizmo_mode(&self) -> GizmoMode {
+        self.gizmo_mode
+    }
+
+    pub fn edit_mode(&self) -> EditMode {
+        if self.gizmo_visible {
+            EditMode::Gizmo
+        } else if self.handles_hidden {
+            EditMode::None
+        } else {
+            EditMode::Box
+        }
+    }
+
+    pub fn set_edit_mode(&mut self, mode: EditMode) {
+        self.gizmo_visible = mode == EditMode::Gizmo;
+        self.handles_hidden = mode == EditMode::None;
+        self.hover = Hover::default();
+    }
+
+    pub(crate) fn cycle_gizmo_mode(&mut self, state: &AppState) {
+        self.gizmo_mode = self.gizmo_mode.next();
+        self.mode_note = Some(state.frame.time);
+        self.hover = Hover::default();
+    }
+
+    pub(crate) fn cycle_edit_mode(&mut self, state: &AppState) {
+        self.set_edit_mode(self.edit_mode().next());
+        self.mode_note = Some(state.frame.time);
+    }
+
+    fn click_cycles(&self, state: &AppState) -> bool {
+        state.settings.selection.click_cycles_gizmo
+            && self.gizmo_visible
+            && state.settings.selection.element == hp_app::settings::SelectElement::Object
+            && self.gizmo_center(state).is_some()
+    }
+
+    pub(crate) fn right_click_gizmo(&mut self, state: &mut AppState, view: &ViewInfo, pos: Pos2) -> bool {
+        if view.is_2d() || self.drag.is_some() || !self.click_cycles(state) {
+            return false;
+        }
+        if self.gizmo_hit(state, view, pos).is_none() {
+            return false;
+        }
+        self.cycle_gizmo_mode(state);
+        true
     }
 
     fn note_view(&mut self, view: &ViewInfo) {
@@ -603,7 +700,7 @@ impl SelectTool {
                     if view.is_2d() {
                         self.click_2d(state, view, p, mods);
                     } else {
-                        self.click_3d(state, view, p, mods);
+                        self.click_3d(state, view, p, mods, true);
                     }
                 }
                 ToolFlow::Handled
@@ -712,7 +809,8 @@ impl SelectTool {
     }
 
     pub(crate) fn stretch_handles(&self, state: &AppState, view: &ViewInfo) -> Vec<FaceHandle> {
-        if view.is_2d() || !state.settings.selection.stretch_handles || !self.stretchable(state) {
+        if view.is_2d() || self.handles_hidden || !state.settings.selection.stretch_handles || !self.stretchable(state)
+        {
             return Vec::new();
         }
         let Some(b) = self.selection_bounds(state) else { return Vec::new() };
@@ -796,6 +894,7 @@ impl SelectTool {
         let objs = if elements { Vec::new() } else { state.doc.selected_objects() };
         let (ghost, ghost_points) = if elements { element::picked_ghost(state) } else { (Vec::new(), Vec::new()) };
         let preview = PreviewGeom::capture(&state.doc, &objs, &|e| state.entity_bounds(e));
+        let live_off = elements || !live::wants_live(state, &objs);
         let snap_ref = snap_reference(state, &objs, &bounds);
         let pivot = self.pivot_for(state, &objs, &bounds);
         let axes = self.gizmo_axes(state);
@@ -827,6 +926,8 @@ impl SelectTool {
             ghost,
             ghost_points,
             typed: String::new(),
+            live_off,
+            live_slow: 0,
         });
     }
 
@@ -850,6 +951,8 @@ impl SelectTool {
             ghost: Vec::new(),
             ghost_points: Vec::new(),
             typed: String::new(),
+            live_off: true,
+            live_slow: 0,
         });
     }
 
@@ -996,7 +1099,7 @@ impl SelectTool {
                 self.begin_plain(state, view, DragOp::Paint { remove: mods.shift, done: HashSet::new() }, origin, mods);
                 self.paint_at(state, view, origin, mods);
             } else {
-                self.click_3d(state, view, origin, mods);
+                self.click_3d(state, view, origin, mods, false);
             }
             return;
         };
@@ -1343,7 +1446,9 @@ impl SelectTool {
         }
     }
 
-    fn publish_drag(&self, state: &mut AppState) {
+    fn publish_drag(&mut self, state: &mut AppState) {
+        self.sync_live(state);
+        let applied = self.is_live();
         state.runtime.selection.typing_angle = self.drag.as_ref().is_some_and(|d| d.rotates() && !d.elements);
         let live = self.drag.as_ref().filter(|d| d.transforms() && !d.elements && !d.is_clone());
         let Some(d) = live else {
@@ -1353,13 +1458,17 @@ impl SelectTool {
         let matrix = d.matrix();
         let slot = &mut state.runtime.selection.drag;
         match slot {
-            Some(t) if t.objs.len() == d.objs.len() && t.objs.first() == d.objs.first() => t.matrix = matrix,
-            _ => *slot = Some(hp_app::runtime::DragTransform { objs: d.objs.clone().into(), matrix }),
+            Some(t) if t.objs.len() == d.objs.len() && t.objs.first() == d.objs.first() => {
+                t.matrix = matrix;
+                t.applied = applied;
+            }
+            _ => *slot = Some(hp_app::runtime::DragTransform { objs: d.objs.clone().into(), matrix, applied }),
         }
     }
 
     fn finish_drag(&mut self, state: &mut AppState) {
         state.runtime.selection.drag = None;
+        self.end_live(state);
         let Some(mut d) = self.drag.take() else { return };
         if d.is_modal() {
             state.runtime.selection.modal_transform = false;
@@ -1422,9 +1531,19 @@ impl SelectTool {
         }
         let m = d.matrix();
         let pivot = self.active_pivot(state);
-        let clone = d.is_clone();
-        let r = if clone {
-            self.clone_transform(state, &d, m)
+        let r = self.apply_drag(state, &d, m);
+        let ok = r.is_ok();
+        Self::report(state, r);
+        if ok && let Some(p) = pivot {
+            let moved = m.transform_point3(p);
+            state.pivot = moved.is_finite().then_some(moved);
+            self.pivot_sig = state.pivot.map(|_| self.selection_sig(state));
+        }
+    }
+
+    fn apply_drag(&self, state: &mut AppState, d: &Drag, m: DMat4) -> Result<(), hp_editor::EditError> {
+        if d.is_clone() {
+            self.clone_transform(state, d, m)
         } else {
             match &d.op {
                 DragOp::Move { delta, .. } | DragOp::GizmoMove { delta, .. } if d.elements => {
@@ -1448,13 +1567,6 @@ impl SelectTool {
                 }
                 _ => state.doc.transform(&d.objs, m),
             }
-        };
-        let ok = r.is_ok();
-        Self::report(state, r);
-        if ok && let Some(p) = pivot {
-            let moved = m.transform_point3(p);
-            state.pivot = moved.is_finite().then_some(moved);
-            self.pivot_sig = state.pivot.map(|_| self.selection_sig(state));
         }
     }
 
@@ -1530,9 +1642,17 @@ impl SelectTool {
         self.cycle = Some(ClickCycle { view: view.index, pos, candidates: cands, index, time: state.frame.time });
     }
 
-    fn click_3d(&mut self, state: &mut AppState, view: &ViewInfo, pos: Pos2, mods: Modifiers) {
+    fn click_3d(&mut self, state: &mut AppState, view: &ViewInfo, pos: Pos2, mods: Modifiers, from_click: bool) {
         let ctrl = ctrl(mods);
         self.pick_click = None;
+        self.gizmo_before_click = None;
+        let cycles = from_click && !ctrl && !mods.shift && self.click_cycles(state);
+        if cycles && self.gizmo_hit(state, view, pos).is_some() {
+            self.gizmo_before_click = Some(self.gizmo_mode);
+            self.cycle_gizmo_mode(state);
+            self.pick_click = Some(PickClick { view: view.index, pos });
+            return;
+        }
         let same_spot =
             self.cycle.as_ref().is_some_and(|c| c.view == view.index && (c.pos - pos).length() <= CYCLE_SLOP);
         if !ctrl && !same_spot && self.on_3d_handle(state, view, pos) {
@@ -1542,6 +1662,17 @@ impl SelectTool {
         if element::click(state, view, pos, mods) {
             self.sel_cache.set(None);
             return;
+        }
+        if cycles {
+            let cands = candidates_3d(state, view, pos);
+            if cands.first().is_some_and(|front| whole_selection(state, front)) {
+                self.gizmo_before_click = Some(self.gizmo_mode);
+                self.cycle_gizmo_mode(state);
+                self.pick_click = Some(PickClick { view: view.index, pos });
+                self.cycle =
+                    Some(ClickCycle { view: view.index, pos, candidates: cands, index: 0, time: state.frame.time });
+                return;
+            }
         }
         match click_select_3d(state, view, pos, mods, &mut self.cycle) {
             Pick3d::Nothing => {}
@@ -1565,7 +1696,7 @@ impl SelectTool {
         if view.is_2d() {
             self.click_2d(state, view, pos, Modifiers::NONE);
         } else {
-            self.click_3d(state, view, pos, Modifiers::NONE);
+            self.click_3d(state, view, pos, Modifiers::NONE, false);
         }
     }
 
@@ -1591,6 +1722,10 @@ impl SelectTool {
     fn double_click(&mut self, state: &mut AppState, view: &ViewInfo, pos: Pos2) {
         if let Some(m) = self.mode_before_click.take() {
             self.handle_mode = m;
+        }
+        if let Some(m) = self.gizmo_before_click.take() {
+            self.gizmo_mode = m;
+            self.mode_note = None;
         }
         let mode = state.select_mode();
         let at_cycle = |c: &Option<ClickCycle>| match c {
@@ -1779,6 +1914,11 @@ fn cycle_continues(
     c.candidates.get(c.index).is_some_and(|t| t.len() == sel.len() && t.iter().all(|o| sel.contains(o)))
 }
 
+fn whole_selection(state: &AppState, target: &[ObjRef]) -> bool {
+    let sel = state.doc.selection();
+    !target.is_empty() && sel.objects.len() == target.len() && target.iter().all(|o| sel.contains(*o))
+}
+
 fn exactly_selected(state: &AppState, target: &[ObjRef]) -> bool {
     let sel = state.doc.selection();
     !target.is_empty() && target.iter().all(|o| sel.contains(*o))
@@ -1857,6 +1997,7 @@ impl Tool for SelectTool {
     }
 
     fn deactivate(&mut self, state: &mut AppState) {
+        self.end_live(state);
         self.drag = None;
         self.pending = None;
         self.hover = Hover::default();
@@ -1912,6 +2053,33 @@ impl Tool for SelectTool {
         ToolFlow::Handled
     }
 
+    fn secondary_click(&mut self, state: &mut AppState, view: &ViewInfo, pos: Pos2) -> bool {
+        self.right_click_gizmo(state, view, pos)
+    }
+
+    fn action(&mut self, state: &mut AppState, action: hp_app::Action) -> bool {
+        match action {
+            hp_app::Action::CycleGizmoMode => {
+                if !self.gizmo_visible {
+                    self.set_edit_mode(EditMode::Gizmo);
+                }
+                self.cycle_gizmo_mode(state);
+                true
+            }
+            hp_app::Action::CycleEditMode => {
+                self.cycle_edit_mode(state);
+                true
+            }
+            _ => {
+                if self.is_live() {
+                    self.drop_live(state);
+                    self.publish_drag(state);
+                }
+                false
+            }
+        }
+    }
+
     fn key_input(&mut self, state: &mut AppState, ctx: &egui::Context) -> bool {
         let used = self.keys(state, ctx);
         self.publish_drag(state);
@@ -1935,7 +2103,11 @@ impl Tool for SelectTool {
             if d.transforms() {
                 let color =
                     if d.is_clone() { rgba(hp_app::theme::VIEW_SUCCESS, 1.0) } else { rgba(draw::PREVIEW_COLOR, 1.0) };
-                d.preview.push(out, &d.matrix(), color);
+                if !self.is_live() {
+                    d.preview.push(out, &d.matrix(), color);
+                } else if !d.is_clone() {
+                    d.preview.push_ghost(out, rgba(draw::PREVIEW_COLOR, GHOST_ALPHA));
+                }
                 if d.elements {
                     let m = d.matrix();
                     let f = |p: DVec3| m.transform_point3(p).as_vec3().to_array();
@@ -2070,6 +2242,7 @@ impl Tool for SelectTool {
 
     fn cancel(&mut self, state: &mut AppState) -> bool {
         state.runtime.selection.drag = None;
+        self.end_live(state);
         if let Some(d) = self.drag.take() {
             if d.is_modal() {
                 state.runtime.selection.modal_transform = false;
@@ -2090,6 +2263,10 @@ impl Tool for SelectTool {
 
 #[cfg(test)]
 impl SelectTool {
+    pub(crate) fn publish_for_tests(&mut self, state: &mut AppState) {
+        self.publish_drag(state);
+    }
+
     pub(crate) fn drag_matrix(&self) -> Option<DMat4> {
         self.drag.as_ref().map(Drag::matrix)
     }

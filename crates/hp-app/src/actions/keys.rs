@@ -59,6 +59,7 @@ const HAMMER_PLUS_PLUS_KEYS: &[(&str, &str)] = &[
     ("show_sound_browser", "Shift+F12"),
     ("toggle_tool_textures", "Ctrl+Shift+F2"),
     ("toggle_editor_objects", "Alt+O"),
+    ("cycle_edit_mode", "X"),
 ];
 
 const HAMMERPRO_ALIASES: &[(&str, &str)] = &[("select_none", "Shift+Q"), ("toggle_grid", "Shift+R")];

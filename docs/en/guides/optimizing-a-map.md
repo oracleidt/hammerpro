@@ -69,7 +69,12 @@ The advisor reports these as the **Cubemaps** topic (it never changes them). The
 
 ## Overlays
 
-An overlay (`info_overlay`) is cut into one fragment per brush face of its `sides` list, even the faces its rectangle never reaches. A long list costs fragments and compile time, and the engine refuses an overlay on more than 64 faces. The advisor reports overlays on more than 16 faces (more than 64: high impact) and overlays listing 4 faces or more that their rectangle does not touch, as the **Overlays** topic. **Go to** selects the overlay and frames it. The advisor never edits it: run **Tools > Brush operations > Trim overlay faces** (also in the right click menu of the views) on the selected overlays to remove the faces their rectangle does not touch, in one undo step. Faces it touches and side ids that no longer exist are kept; an overlay that touches none of its faces is left as is.
+An overlay (`info_overlay`) is cut into one fragment per brush face of its `sides` list, even the faces its rectangle never reaches. A long list costs fragments and compile time, and the engine refuses an overlay on more than 64 faces. The advisor reports overlays on more than 16 faces (more than 64: high impact) and overlays listing faces that their rectangle does not touch, as the **Overlays** topic. **Go to** selects the overlay and frames it. The advisor never edits anything by itself; each overlay finding has a **Fix** button, and **Fix all overlays (N)** above the list fixes every overlay finding at once. A fix, in one undo step (**Fix overlay faces**):
+
+- removes from the `sides` list the faces the overlay rectangle does not touch (faces it touches are kept; an overlay that touches none of its faces is left as is);
+- splits an overlay that really covers more than 64 faces into several overlays of 64 faces at most: same material, keys, name and outputs, each piece gets its part of the rectangle and of `StartU`, `EndU`, `StartV`, `EndV`, so the texture continues across the pieces without a seam.
+
+A message gives the numbers: overlays fixed, brush faces before and after, overlays added by splitting. The fixed findings leave the list. **Tools > Brush operations > Trim overlay faces** still trims the selected overlays without the advisor, and [Check for problems](../features/check-problems.md) fixes an overlay on more than 64 faces the same way.
 
 ## The Optimize the map window
 
@@ -93,7 +98,7 @@ The checks:
 | Areaportals | Every areaportal: one brush, thin, narrow opening, sealed on all four sides, not touching another, door link and start state, really separating two areas. Doors without areaportal and doorless openings that are the only way between two groups of visleaves get a suggested areaportal fitted to the opening. |
 | Lights | Floating lights, lamps without light, blocked lights, lamps of the same model with different lights, redundant lights, spot lights aimed into walls, too many switchable lights, a missing light_environment, broken falloff values. |
 | Cubemaps | Rooms with reflective materials and no cubemap that sees them, faces taking the cubemap of another room or one behind a wall, faces far from their cubemap, cubemaps inside brushes, in the void, at floor level, too close together, too big or too small, too many cubemaps. Fixes are placed with the [Cubemaps tool](../features/cubemaps.md). |
-| Overlays | Overlays on more than 16 brush faces (more than 64 is refused by the engine) and overlays listing faces their rectangle does not touch. Fixed with **Trim overlay faces**. |
+| Overlays | Overlays on more than 16 brush faces (more than 64 is refused by the engine) and overlays listing faces their rectangle does not touch. **Fix** and **Fix all overlays** trim the face lists and split the overlays over the limit. |
 
 ## With an AI assistant (MCP)
 
@@ -113,6 +118,7 @@ The same checks are MCP tools, and there they can apply the fixes (one undo step
 | `suggest_cubemaps` | Suggested cubemaps at eye height and sides fixes; `apply` places them. |
 | `show_cubemap_assignment` | Shows the faces coloured by their cubemap in the views. |
 | `trim_overlay_faces` | Removes from overlays the faces their rectangle does not touch (`ids`, `all`, `preview`), one undo step. |
+| `fix_overlay_faces` | The **Fix** button: trims the face lists and splits the overlays on more than 64 faces (`ids`, `all`, `preview`), one undo step, with the face counts before and after. `optimize_map` with `apply` safe or all does it too. |
 
 On a big map the analysis can take longer than one call: the tool then answers `running: true` and the analysis goes on in the background; calling the tool again with the same arguments (without editing the map) returns the result. `vis: "auto"` (the default) uses the exact visibility on maps up to 4000 brushes and the fast one above.
 

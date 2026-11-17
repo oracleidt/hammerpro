@@ -47,6 +47,7 @@ mod bspc_cli;
 mod bspc_game;
 mod bspc_instances;
 mod bspc_optimize;
+mod bspc_parallax;
 mod collaboration;
 mod crash;
 mod discord;
@@ -299,7 +300,10 @@ fn pick_adapter(
 }
 
 fn main() -> eframe::Result<()> {
-    if std::env::args().nth(1).is_some_and(|arg| arg == bspc_cli::BSPC_ARG || arg == bspc_cli::RAD_ARG) {
+    if std::env::args()
+        .nth(1)
+        .is_some_and(|arg| arg == bspc_cli::BSPC_ARG || arg == bspc_cli::RAD_ARG || arg == bspc_cli::CUBEMAPS_ARG)
+    {
         let settings = hp_app::settings::Settings::load_or_default(&hp_app::settings::Settings::default_path());
         hp_fs::configure_scan(settings.scan.to_config());
     }
@@ -317,6 +321,10 @@ fn main() -> eframe::Result<()> {
     if std::env::args().nth(1).as_deref() == Some(bspc_cli::RAD_ARG) {
         let args: Vec<String> = std::env::args().skip(2).collect();
         std::process::exit(bspc_cli::run_rad(&args));
+    }
+    if std::env::args().nth(1).as_deref() == Some(bspc_cli::CUBEMAPS_ARG) {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        std::process::exit(bspc_cli::run_cubemaps(&args));
     }
     if std::env::args().nth(1).as_deref() == Some(batch::IMPORT_ARG) {
         let args: Vec<String> = std::env::args().skip(2).collect();

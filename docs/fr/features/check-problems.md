@@ -58,6 +58,7 @@ Des messages en haut indiquent quand la map est en cours de vérification, quand
 | axes de texture invalides | Réaligner les textures sur le monde |
 | plan en double | Supprimer les faces en double |
 | faces d'overlay manquantes | Retirer les faces inexistantes des listes (un overlay qui n'est plus sur aucune face est supprimé) |
+| overlay sur trop de faces | Retirer les faces que l'overlay ne touche pas et découper en plusieurs overlays un overlay qui couvre vraiment plus de 64 faces (`info_overlay` seulement), comme **Corriger** dans **Map > Optimiser la map...** |
 | displacement sur une entité de brush | Déplacer les solides dans le monde |
 | brush minuscule | Supprimer les solides minuscules |
 | brush d'origine dans le monde | Supprimer les brushes d'origine du monde |

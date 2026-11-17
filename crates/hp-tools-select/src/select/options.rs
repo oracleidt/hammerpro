@@ -77,9 +77,13 @@ impl SelectTool {
                 state.set_pick_element(e);
             }
             "gizmo" => match flag(&v) {
-                Some(b) => self.gizmo_visible = b,
+                Some(b) => self.set_edit_mode(if b { super::EditMode::Gizmo } else { super::EditMode::Box }),
                 None => return false,
             },
+            "edit_mode" => {
+                let Some(m) = super::EditMode::ALL.into_iter().find(|m| m.id() == v) else { return false };
+                self.set_edit_mode(m);
+            }
             "gizmo_mode" => {
                 let Some(m) = GizmoMode::ALL.into_iter().find(|m| gizmo_mode_name(*m) == v) else { return false };
                 self.gizmo_mode = m;
@@ -175,9 +179,14 @@ impl SelectTool {
             ),
             ToolOption::new("gizmo", on_off(self.gizmo_visible), "on/off: show the transform gizmo in the 3D view."),
             ToolOption::new(
+                "edit_mode",
+                self.edit_mode().id(),
+                "gizmo, box or none: what the 3D view shows on the selection, like the X key of Hammer++                  (gizmo; box: no gizmo, the 2D handles and 3D stretch arrows only; none: no gizmo and no 3D arrows).",
+            ),
+            ToolOption::new(
                 "gizmo_mode",
                 gizmo_mode_name(self.gizmo_mode),
-                "move, rotate or scale: what the gizmo does.",
+                "move, rotate or scale: what the gizmo does. Clicking the selection in the 3D view or right clicking the                  gizmo cycles it (selection.click_cycles_gizmo).",
             ),
             ToolOption::new(
                 "gizmo_local",

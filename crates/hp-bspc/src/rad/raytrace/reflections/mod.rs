@@ -8,7 +8,6 @@ mod vtf;
 use glam::Vec3A;
 use rayon::prelude::*;
 
-use super::{Quality, RayTracing};
 use crate::props::ModelSource;
 
 type Faces = [[Vec<Vec3A>; 6]; 2];
@@ -20,16 +19,12 @@ const PAK_BUDGET: u64 = 96 << 20;
 const RAYS_FINAL: u32 = 1 << 17;
 const RAYS_NORMAL: u32 = 1 << 15;
 
-pub(crate) fn wanted(rt: &RayTracing) -> bool {
-    rt.effects.reflections.unwrap_or(matches!(rt.quality, Quality::Final | Quality::Optimal))
-}
-
 pub(crate) fn pixels(size: i32) -> u32 {
     if size <= 0 { DEFAULT_SIZE } else { (1u32 << (size - 1).min(15) as u32).clamp(MIN_SIZE, MAX_SIZE) }
 }
 
-fn samples_for(size: u32, quality: Quality) -> u32 {
-    let budget = if matches!(quality, Quality::Final | Quality::Optimal) { RAYS_FINAL } else { RAYS_NORMAL };
+fn samples_for(size: u32, fine: bool) -> u32 {
+    let budget = if fine { RAYS_FINAL } else { RAYS_NORMAL };
     (budget / (size * size).max(1)).clamp(4, 256)
 }
 
@@ -101,18 +96,18 @@ pub(crate) fn plan(map: &str, cubes: &[([i32; 3], i32)], passes: [bool; 2]) -> (
 pub(crate) fn bake(
     bytes: Vec<u8>,
     models: &dyn ModelSource,
-    rt: &RayTracing,
+    seed: u32,
+    fine: bool,
     log: &mut dyn FnMut(&str),
 ) -> Result<Vec<u8>, String> {
     let t = std::time::Instant::now();
     let src = hp_bsp::Bsp::from_vec(bytes).map_err(|e| format!("not a BSP file: {e}"))?;
     let cubes = src.cubemaps().unwrap_or_default();
     let Some(map) = map_name(&src) else {
-        log(
-            "ray traced reflections: the map name is not known (no materials/maps folder in the pakfile), cubemaps not rendered",
-        );
+        log("cubemaps: the map name is not known (no materials/maps folder in the pakfile), cubemaps not rendered");
         return Ok(src.into_vec());
     };
+    models.prepare();
     let with_pak = crate::rad::props::MapPak { pak: src.pakfile().ok().filter(|p| !p.is_empty()), inner: models };
     let scene = scene::build(&src, &with_pak)?;
     drop(with_pak);
@@ -120,17 +115,16 @@ pub(crate) fn bake(
         log(l);
     }
     if !scene.passes.iter().any(|p| *p) {
-        log("ray traced reflections: the map has no lighting, cubemaps not rendered");
+        log("cubemaps: the map has no lighting, cubemaps not rendered");
         return Ok(src.into_vec());
     }
     let (jobs, shrunk) = plan(&map, &cubes, scene.passes);
     if shrunk {
         log(&format!(
-            "ray traced reflections: the largest cubemaps are rendered at a smaller size so they fit in {} MB of the pakfile",
+            "cubemaps: the largest cubemaps are rendered at a smaller size so they fit in {} MB of the pakfile",
             PAK_BUDGET >> 20
         ));
     }
-    let seed = rt.seed;
     let rendered: Vec<(String, Faces, u32)> = jobs
         .iter()
         .enumerate()
@@ -139,7 +133,7 @@ pub(crate) fn bake(
                 Some(o) => scene.render(
                     Vec3A::new(o[0] as f32, o[1] as f32, o[2] as f32),
                     j.size,
-                    samples_for(j.size, rt.quality),
+                    samples_for(j.size, fine),
                     seed.wrapping_add(i as u32),
                 ),
                 None => scene.render_sky(j.size),
@@ -169,9 +163,16 @@ pub(crate) fn bake(
     sizes.sort_unstable();
     sizes.dedup();
     log(&format!(
-        "ray traced reflections: {} env_cubemap rendered ({} px) and the default cubemap, {} {} textures ({} KB) written to materials/maps/{map}/ in the pakfile in {:.1} s, no buildcubemaps needed",
-        jobs.len() - 1,
-        sizes.iter().map(u32::to_string).collect::<Vec<_>>().join(", "),
+        "cubemaps: {} and the default cubemap, {} {} textures ({} KB) written to materials/maps/{map}/ in the pakfile in {:.1} s, no buildcubemaps needed",
+        if sizes.is_empty() {
+            "no env_cubemap in the map, only the default cubemap rendered".to_owned()
+        } else {
+            format!(
+                "{} env_cubemap rendered ({} px)",
+                jobs.len() - 1,
+                sizes.iter().map(u32::to_string).collect::<Vec<_>>().join(", ")
+            )
+        },
         count,
         match scene.passes {
             [true, true] => "LDR and HDR",

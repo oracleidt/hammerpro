@@ -147,6 +147,7 @@ fn clones_leave_their_visgroups_when_asked() {
 #[test]
 fn clicks_cycle_through_objects_behind_in_3d() {
     let mut state = state();
+    state.settings.selection.click_cycles_gizmo = false;
     let mut tool = SelectTool::new();
     let v = view3d();
     let light = scr(&v, DVec3::new(0.0, -8.0, 96.0));
@@ -929,6 +930,7 @@ fn block(state: &mut AppState, min: DVec3, max: DVec3, material: &str) -> ObjRef
 #[test]
 fn a_later_click_on_the_same_spot_keeps_the_front_object() {
     let mut state = state();
+    state.settings.selection.click_cycles_gizmo = false;
     let mut tool = SelectTool::new();
     let v = view3d();
     let light = scr(&v, DVec3::new(0.0, -8.0, 96.0));
@@ -973,10 +975,12 @@ fn hidden_tool_brushes_do_not_catch_clicks() {
     state.settings.render.hide_clips = false;
     state.settings.view.show_tool_textures = false;
     state.frame.time += 3.0;
+    state.doc.clear_selection();
     click(&mut tool, &mut state, &v, light, Modifiers::NONE);
     assert_eq!(state.doc.selected_objects(), vec![LIGHT], "tool textures off: same");
     state.settings.view.show_tool_textures = true;
     state.frame.time += 3.0;
+    state.doc.clear_selection();
     click(&mut tool, &mut state, &v, light, Modifiers::NONE);
     assert_eq!(state.doc.selected_objects(), vec![clip]);
     let top = view2d(ViewKind::Top);
@@ -1055,7 +1059,7 @@ fn typed_angles_rotate_exactly_on_every_axis() {
     assert!(typed_frame(&ctx, &mut state, &mut tool, events, Modifiers::NONE));
     tool.handle_event(&mut state, &v, PointerEvent::Hover(c + vec2(-60.0, 10.0)), Modifiers::NONE);
     assert!(approx(tool.modal().expect("modal").angle, 90.0), "the mouse does not change a typed angle");
-    assert!(approx(bounds(&state, WALL).size().x, 512.0), "only a preview so far");
+    assert_eq!(state.doc.history_len().0, 0, "only a preview so far");
     assert!(key_frame(&ctx, &mut state, &mut tool, vec![key(Key::Enter, Modifiers::NONE)]));
     let b = bounds(&state, WALL);
     assert!(approx(b.size().x, 16.0) && approx(b.size().y, 512.0), "{b:?}");

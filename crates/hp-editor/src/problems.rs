@@ -314,6 +314,17 @@ impl Document {
                     Ok(true)
                 })
             }
+            "overlay_too_many_faces" => {
+                let ids: Vec<Id> = problem
+                    .objects
+                    .iter()
+                    .filter_map(|o| match *o {
+                        ObjRef::Entity(id) => Some(id),
+                        ObjRef::Solid(_) => None,
+                    })
+                    .collect();
+                Ok(self.fix_overlay_faces(&ids).is_ok_and(|r| !r.overlays.is_empty()))
+            }
             "overlay_missing_faces" => {
                 let sides = self.all_side_ids();
                 let mut changes: Vec<(Id, Vec<(String, String)>)> = Vec::new();

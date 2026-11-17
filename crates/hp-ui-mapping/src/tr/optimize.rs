@@ -4,8 +4,8 @@ pub const TR: TrTable = &[
     ("optimize.title", "Optimize the map", "Optimiser la map"),
     (
         "optimize.intro",
-        "What is not optimized in this map and what to do about it, sorted by impact. Nothing is changed for you: use Go to, then fix it yourself.",
-        "Ce qui n'est pas optimisé dans cette map et quoi faire, trié par impact. Rien n'est modifié à votre place : utilisez Aller à, puis corrigez vous-même.",
+        "What is not optimized in this map and what to do about it, sorted by impact. Nothing is changed for you: use Go to, then fix it yourself, or press Fix where a finding offers it.",
+        "Ce qui n'est pas optimisé dans cette map et quoi faire, trié par impact. Rien n'est modifié à votre place : utilisez Aller à, puis corrigez vous-même, ou appuyez sur Corriger quand un constat le propose.",
     ),
     ("optimize.refresh", "Refresh", "Actualiser"),
     (
@@ -332,22 +332,45 @@ pub const TR: TrTable = &[
     ("optimize.topic.overlays", "Overlays", "Overlays"),
     (
         "optimize.why.overlays",
-        "Why: an overlay is cut into one fragment per brush face in its list, even faces its rectangle never reaches. Long lists cost fragments and compile time, and above 64 faces the engine refuses the overlay. Go to selects it: then Tools > Trim overlay faces (or right click) removes the faces it does not touch, in one undo step.",
-        "Pourquoi : un overlay est découpé en un fragment par face de brush de sa liste, même les faces que son rectangle n'atteint jamais. Les longues listes coûtent des fragments et du temps de compilation, et au delà de 64 faces le moteur refuse l'overlay. Aller à le sélectionne : ensuite Outils > Rogner les faces de l'overlay (ou clic droit) retire les faces qu'il ne touche pas, en une seule étape d'annulation.",
+        "Why: an overlay is cut into one fragment per brush face in its list, even faces its rectangle never reaches. Long lists cost fragments and compile time, and above 64 faces the engine refuses the overlay. Go to selects and frames it. Fix trims its face list to the faces it touches and splits an overlay that really covers more than 64 faces into several overlays, in one undo step; Fix all does it for every overlay finding. Nothing is changed until you press a button.",
+        "Pourquoi : un overlay est découpé en un fragment par face de brush de sa liste, même les faces que son rectangle n'atteint jamais. Les longues listes coûtent des fragments et du temps de compilation, et au delà de 64 faces le moteur refuse l'overlay. Aller à le sélectionne et le cadre. Corriger réduit sa liste aux faces qu'il touche et découpe en plusieurs overlays un overlay qui couvre vraiment plus de 64 faces, en une seule étape d'annulation ; Tout corriger le fait pour chaque constat d'overlay. Rien n'est modifié tant que vous n'appuyez pas sur un bouton.",
     ),
     (
         "optimize.f.overlay_over_limit",
-        "Overlay {0} ({3}) is applied to {1} brush faces, the engine allows {4}: the compile fails or drops it. {2} of them are outside its rectangle: select it with Go to and run Trim overlay faces, or split it.",
-        "L'overlay {0} ({3}) est appliqué à {1} faces de brush, le moteur en accepte {4} : la compilation échoue ou l'abandonne. {2} d'entre elles sont hors de son rectangle : sélectionnez-le avec Aller à et lancez Rogner les faces de l'overlay, ou découpez-le.",
+        "Overlay {0} ({3}) is applied to {1} brush faces, the engine allows {4}: the compile fails or drops it. {2} of them are outside its rectangle. Fix trims them and splits it into overlays of {4} faces at most.",
+        "L'overlay {0} ({3}) est appliqué à {1} faces de brush, le moteur en accepte {4} : la compilation échoue ou l'abandonne. {2} d'entre elles sont hors de son rectangle. Corriger les retire et le découpe en overlays de {4} faces au plus.",
     ),
     (
         "optimize.f.overlay_many_faces",
-        "Overlay {0} ({3}) is applied to {1} brush faces: each face is one more fragment to clip, store and draw. {2} of them are outside its rectangle: select it with Go to and run Trim overlay faces.",
-        "L'overlay {0} ({3}) est appliqué à {1} faces de brush : chaque face est un fragment de plus à découper, stocker et dessiner. {2} d'entre elles sont hors de son rectangle : sélectionnez-le avec Aller à et lancez Rogner les faces de l'overlay.",
+        "Overlay {0} ({3}) is applied to {1} brush faces: each face is one more fragment to clip, store and draw. {2} of them are outside its rectangle: Fix removes them.",
+        "L'overlay {0} ({3}) est appliqué à {1} faces de brush : chaque face est un fragment de plus à découper, stocker et dessiner. {2} d'entre elles sont hors de son rectangle : Corriger les retire.",
     ),
     (
         "optimize.f.overlay_unused_faces",
-        "Overlay {0} ({3}) lists {2} of its {1} brush faces that its rectangle does not touch: they only count toward the {4} face limit. Select it with Go to and run Trim overlay faces.",
-        "L'overlay {0} ({3}) liste {2} de ses {1} faces de brush que son rectangle ne touche pas : elles ne comptent que dans la limite de {4} faces. Sélectionnez-le avec Aller à et lancez Rogner les faces de l'overlay.",
+        "Overlay {0} ({3}) lists {2} of its {1} brush faces that its rectangle does not touch: they cost compile time and count toward the {4} face limit. Fix removes them.",
+        "L'overlay {0} ({3}) liste {2} de ses {1} faces de brush que son rectangle ne touche pas : elles coûtent du temps de compilation et comptent dans la limite de {4} faces. Corriger les retire.",
     ),
+    ("optimize.fix", "Fix", "Corriger"),
+    (
+        "optimize.fix_overlay_tip",
+        "Trim the face list of this overlay to the faces it touches, and split it when it really covers more than 64 faces. One undo step.",
+        "Réduire la liste de faces de cet overlay aux faces qu'il touche, et le découper s'il couvre vraiment plus de 64 faces. Une seule étape d'annulation.",
+    ),
+    ("optimize.fix_all_overlays", "Fix all overlays ({0})", "Corriger tous les overlays ({0})"),
+    (
+        "optimize.fix_all_overlays_tip",
+        "Fix every overlay finding of this report at once (trim and split), in one undo step.",
+        "Corriger d'un coup tous les constats d'overlay de ce rapport (rognage et découpe), en une seule étape d'annulation.",
+    ),
+    (
+        "optimize.overlay_fixed",
+        "Overlays fixed: {0}. Brush faces: {1} before, {2} after. Overlays added by splitting: {3}",
+        "Overlays corrigés : {0}. Faces de brush : {1} avant, {2} après. Overlays ajoutés par découpe : {3}",
+    ),
+    (
+        "optimize.overlay_fix_nothing",
+        "Nothing to fix: the overlays only list faces they touch",
+        "Rien à corriger : les overlays ne listent que des faces qu'ils touchent",
+    ),
+    ("optimize.overlay_fix_failed", "Could not fix the overlays: {0}", "Impossible de corriger les overlays : {0}"),
 ];

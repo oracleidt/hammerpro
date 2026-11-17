@@ -11,7 +11,7 @@ L'outil décal pose des entités `infodecal` et l'outil overlay des entités `in
 | **Outil décal** | **Outils > Outil actif > Outil décal** | `Maj+D` |
 | **Outil overlay** | **Outils > Outil actif > Outil overlay** | `Maj+O` |
 
-Les deux outils sont aussi dans la palette d'outils. Ils ne marchent que dans la vue 3D : cliquer dans une vue 2D affiche le message **Cliquez sur une face dans la vue 3D** et le curseur indique que la vue n'est pas utilisable.
+Les deux outils sont aussi dans la palette d'outils. Ils ne posent que sur une face de la vue 3D : cliquer dans le vide d'une vue 2D affiche le message **Cliquez sur une face dans la vue 3D**. Dans les vues 2D l'outil overlay sélectionne, déplace, redimensionne et tourne les overlays (voir [Modifier les overlays dans les vues 2D](#modifier-les-overlays-dans-les-vues-2d)).
 
 Le matériau posé est le matériau actuel (celui choisi dans le [navigateur de textures](texture-browser.md)). S'il n'y en a pas, c'est le matériau par défaut des paramètres, sinon `dev/dev_measuregeneric01b`.
 
@@ -51,6 +51,25 @@ Passez le curseur sur une face de la vue 3D : un aperçu montre l'overlay avec l
 
 Un nouvel overlay reçoit les clés qu'écrit Hammer pour que le compilateur le construise : `material`, `sides` (la face cliquée), `StartU`/`StartV` à 0 et `EndU`/`EndV` à 1, `BasisOrigin`, `BasisU`, `BasisV`, `BasisNormal` (la même base que Hammer) et les quatre coins `uv0` à `uv3`, à une demi-taille de texture autour du centre. La taille vaut la taille de la texture multipliée par `$decalscale`, comme pour les décals, et se change ensuite en glissant les coins. Les poignées de coin s'affichent pour 32 overlays sélectionnés au plus.
 
+### Modifier les overlays dans les vues 2D
+
+Sélectionnez un overlay (cliquez dessus dans une vue 2D avec l'outil overlay, ou dans n'importe quelle vue avec l'outil de sélection), puis utilisez les poignées de l'outil overlay, comme dans Hammer. Les mêmes poignées sont affichées dans la vue 3D.
+
+| Poignée | Effet |
+| --- | --- |
+| Coin (grand carré) | Déforme l'overlay : déplace un coin (`uv0` à `uv3`). |
+| Bord (petit carré, au milieu de chaque côté) | Redimensionne l'overlay : déplace ce côté, le côté opposé reste. L'étiquette montre la nouvelle taille. |
+| Poignée ronde au dessus du côté haut | Tourne l'overlay autour de son centre sur son plan, par pas de 15 degrés quand le magnétisme est actif. L'étiquette montre l'angle. |
+| Intérieur de l'overlay | Déplace l'overlay sur son plan, aligné sur la grille de la vue. |
+
+- Les coins et les côtés s'alignent sur la grille de la vue et sur les bords et coins des faces de l'overlay, et restent sur ces faces. `Alt` : hors grille.
+- Un redimensionnement simple étire la texture sur la nouvelle taille, comme Hammer (`StartU`, `EndU`, `StartV`, `EndV` ne changent pas). Maintenez `Ctrl` en glissant un coin ou un côté pour garder l'échelle de la texture : la plage de texture du côté déplacé grandit ou rétrécit avec l'overlay, la texture se répète ou est coupée au lieu d'être étirée.
+- `Maj` en glissant un coin ou un côté le colle à un coin d'un autre overlay.
+- Après un déplacement ou une rotation la liste de faces suit : quand l'overlay quitte une de ses faces, sa liste `sides` est refaite avec les faces sous lui, comme un déplacement avec l'outil de sélection.
+- Un overlay vu par la tranche dans une vue 2D (un overlay de mur dans la vue de dessus) n'y montre pas de poignées, seulement son contour ; glissez le pour le déplacer le long de son plan.
+- Chaque glissement est une étape d'annulation (**Modifier l'overlay**). `Échap` pendant un glissement l'annule.
+- MCP : `set_overlay` fait les mêmes modifications avec `corners`, `texture_range`, `move_by`, `size` et `rotate_by` ; `ui_drag` pilote les poignées.
+
 ### Options
 
 | Option | Effet | Par défaut |
@@ -74,16 +93,16 @@ Pour modifier la liste de faces à la main, utilisez le bouton pipette à côté
 
 ## Astuces
 
-- **Outils > Opérations sur les brushes > Rogner les faces de l'overlay** (aussi dans le menu du clic droit des vues) retire des overlays sélectionnés les faces que leur rectangle ne touche pas, en une étape d'annulation : moins de fragments, et de nouveau sous la limite de 64 faces. **Map > Optimiser la map...** liste les overlays à rogner (thème **Overlays**).
+- **Outils > Opérations sur les brushes > Rogner les faces de l'overlay** (aussi dans le menu du clic droit des vues) retire des overlays sélectionnés les faces que leur rectangle ne touche pas, en une étape d'annulation : moins de fragments, et de nouveau sous la limite de 64 faces. **Map > Optimiser la map...** liste les overlays à corriger (thème **Overlays**), avec un bouton **Corriger** par overlay et **Corriger tous les overlays** : ils rognent les listes de faces et découpent en plusieurs overlays un overlay qui couvre vraiment plus de 64 faces (voir [Optimiser une map](../guides/optimizing-a-map.md#overlays)).
 - **Édition > Définir la distance maximale...** écrit `fademaxdist` sur les overlays pour qu'ils disparaissent en fondu avec la distance.
-- [Vérifier les problèmes](check-problems.md) trouve les overlays dont les faces n'existent plus (avec une correction qui les retire des listes) et ceux posés sur plus de 64 faces. Une map est limitée à 8192 overlays.
+- [Vérifier les problèmes](check-problems.md) trouve les overlays dont les faces n'existent plus (avec une correction qui les retire des listes) et ceux posés sur plus de 64 faces (avec une correction qui les rogne et les découpe). Une map est limitée à 8192 overlays.
 - Le visgroup automatique **Overlays et décals** contient tous les `info_overlay` et `infodecal` (voir [Visgroups](visgroups.md)).
-- Outils MCP : `list_decals`, `create_decal`, `list_overlays`, `create_overlay`, `set_overlay`, `trim_overlay_faces`. Voir la [référence des outils MCP](../../MCP.md) (en anglais).
+- Outils MCP : `list_decals`, `create_decal`, `list_overlays`, `create_overlay`, `set_overlay`, `trim_overlay_faces`, `fix_overlay_faces`. Voir la [référence des outils MCP](../../MCP.md) (en anglais).
 - `set_tool_options` avec l'outil `decal` ou `overlay` et l'option `snap` (`on` ou `off`) active ou coupe l'alignement sur la grille de l'outil, comme sa case à cocher.
 
 ## FAQ
 
-**Cliquer dans la vue de dessus ne fait rien.** Les deux outils ne posent que sur une face touchée dans la vue 3D.
+**Cliquer dans la vue de dessus ne fait rien.** Les deux outils ne posent que sur une face touchée dans la vue 3D. Dans les vues 2D l'outil overlay sélectionne et modifie les overlays existants.
 
 **Mon décal est énorme (ou minuscule).** La taille vient de la texture et de son `$decalscale`. Utilisez un matériau de décal, ou changez `$decalscale` dans le matériau (voir [Éditeur de matériaux](material-editor.md)).
 

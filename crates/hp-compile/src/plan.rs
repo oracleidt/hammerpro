@@ -260,6 +260,66 @@ pub struct PlanOptions {
     pub lights_file: Option<PathBuf>,
     pub target: Option<String>,
     pub raytracing: Option<crate::raytracing::RayTracingOptions>,
+    pub cubemaps: CubemapMode,
+    pub parallax_cubemaps: CubemapMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub enum CubemapMode {
+    #[default]
+    Auto,
+    On,
+    Off,
+}
+
+pub const BUILD_CUBEMAPS_FLAG: &str = "-buildcubemaps";
+pub const NO_BUILD_CUBEMAPS_FLAG: &str = "-nobuildcubemaps";
+pub const PARALLAX_CUBEMAPS_FLAG: &str = "-parallaxcubemaps";
+const RT_REFLECTIONS: [&str; 2] = ["-rtreflections", "-rtnoreflections"];
+
+impl CubemapMode {
+    pub const ALL: [CubemapMode; 3] = [CubemapMode::Auto, CubemapMode::On, CubemapMode::Off];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            CubemapMode::Auto => "auto",
+            CubemapMode::On => "on",
+            CubemapMode::Off => "off",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<CubemapMode> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "auto" => Some(CubemapMode::Auto),
+            "on" | "always" | "true" => Some(CubemapMode::On),
+            "off" | "never" | "false" => Some(CubemapMode::Off),
+            _ => None,
+        }
+    }
+
+    pub fn resolve(self, rad: RadMode, rt: Option<&crate::raytracing::RayTracingOptions>) -> bool {
+        match self {
+            CubemapMode::On => rad != RadMode::Off,
+            CubemapMode::Off => false,
+            CubemapMode::Auto => rad == RadMode::Final || (rad != RadMode::Off && rt.is_some_and(rt_fine)),
+        }
+    }
+
+    pub fn resolve_parallax(self, rt: Option<&crate::raytracing::RayTracingOptions>) -> bool {
+        match self {
+            CubemapMode::On => true,
+            CubemapMode::Off => false,
+            CubemapMode::Auto => rt.is_some_and(rt_fine),
+        }
+    }
+}
+
+fn rt_fine(rt: &crate::raytracing::RayTracingOptions) -> bool {
+    matches!(rt.quality.trim().to_ascii_lowercase().as_str(), "final" | "optimal")
+}
+
+pub fn cubemap_quality_final(rad: RadMode, rt: Option<&crate::raytracing::RayTracingOptions>) -> bool {
+    rad == RadMode::Final || rt.is_some_and(rt_fine)
 }
 
 impl Default for PlanOptions {
@@ -287,6 +347,8 @@ impl Default for PlanOptions {
             lights_file: None,
             target: None,
             raytracing: None,
+            cubemaps: CubemapMode::Auto,
+            parallax_cubemaps: CubemapMode::Off,
         }
     }
 }
@@ -309,6 +371,8 @@ pub struct CompilePlan {
     pub modes: StepModes,
     #[serde(default)]
     pub cache: Option<crate::cache::PlanCache>,
+    #[serde(default)]
+    pub cubemap_args: Option<Vec<String>>,
 }
 
 impl CompilePlan {
@@ -320,6 +384,7 @@ impl CompilePlan {
             stop_on_leak: false,
             modes: StepModes::default(),
             cache: None,
+            cubemap_args: None,
         }
     }
 
@@ -370,6 +435,11 @@ impl CompilePlan {
             );
             args.extend(flags);
             args.extend(crate::raytracing::bsp_args(opts.raytracing.as_ref()));
+            if opts.parallax_cubemaps.resolve_parallax(opts.raytracing.as_ref())
+                && !args.iter().chain(extra.iter()).any(|a| a.eq_ignore_ascii_case(PARALLAX_CUBEMAPS_FLAG))
+            {
+                args.push(PARALLAX_CUBEMAPS_FLAG.to_owned());
+            }
             args.extend(threads.iter().cloned());
             args.extend(extra);
             push_content_args(&mut args, &opts.content_args);
@@ -399,9 +469,28 @@ impl CompilePlan {
             }
             args.push("-game".to_owned());
             args.push(compile_game_dir.clone());
-            args.push(map_arg);
+            args.push(map_arg.clone());
             steps.push(Step::new(StepKind::Rad, &tools.compiler, args));
         }
+        let cubemap_args = opts.cubemaps.resolve(modes.rad, opts.raytracing.as_ref()).then(|| {
+            let mut args = vec![crate::tools::CUBEMAPS_ARG.to_owned()];
+            if cubemap_quality_final(modes.rad, opts.raytracing.as_ref()) {
+                args.push("-final".to_owned());
+            }
+            push_content_args(&mut args, &opts.content_args);
+            if let Some(t) = target {
+                args.push("-target".to_owned());
+                args.push(t.to_owned());
+            }
+            if let Some(root) = game_dir.parent().filter(|p| !p.as_os_str().is_empty() && target.is_none()) {
+                args.push("-gmod".to_owned());
+                args.push(root.to_string_lossy().into_owned());
+            }
+            args.push("-game".to_owned());
+            args.push(compile_game_dir.clone());
+            args.push(map_arg.clone());
+            args
+        });
 
         let pack_action = match &opts.deferred_pack {
             Some(files) => Some(StepAction::PackDeferred { files: files.clone() }),
@@ -443,6 +532,7 @@ impl CompilePlan {
             stop_on_leak: opts.stop_on_leak,
             modes,
             cache: None,
+            cubemap_args,
         })
     }
 
@@ -551,8 +641,17 @@ pub fn rad_step_flags(mode: RadMode, opts: &PlanOptions) -> (Vec<String>, Vec<St
         flags.push(flags::LIGHTS.to_owned());
         flags.push(file.display().to_string());
     }
-    if let Some(rt) = &opts.raytracing {
-        flags.extend(rt.args());
+    let build = opts.cubemaps.resolve(mode, opts.raytracing.as_ref());
+    match &opts.raytracing {
+        Some(rt) => {
+            flags.extend(rt.args().into_iter().filter(|a| !RT_REFLECTIONS.iter().any(|r| a.eq_ignore_ascii_case(r))));
+            extra.retain(|a| !RT_REFLECTIONS.iter().any(|r| a.eq_ignore_ascii_case(r)));
+            if build != rt_fine(rt) {
+                flags.push(RT_REFLECTIONS[usize::from(!build)].to_owned());
+            }
+        }
+        None if build => flags.push(BUILD_CUBEMAPS_FLAG.to_owned()),
+        None => {}
     }
     (flags, extra)
 }

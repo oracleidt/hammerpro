@@ -361,8 +361,17 @@ pub(crate) fn external_plan(
         threads: super::plan::threads_of(s),
         lights: lights.as_deref(),
     };
-    let steps = profile_steps(profile, &cx)?;
+    let mut steps = profile_steps(profile, &cx)?;
+    add_cubemap_step(&mut steps, plan.cubemap_args.clone(), tools);
     Ok(replace_compile_steps(plan, steps))
+}
+
+pub(crate) fn add_cubemap_step(steps: &mut Vec<Step>, args: Option<Vec<String>>, tools: &ToolPaths) {
+    if let Some(args) = args
+        && let Some(at) = steps.iter().rposition(|st| st.enabled && st.kind == StepKind::Rad)
+    {
+        steps.insert(at + 1, Step::new(StepKind::Custom, &tools.compiler, args));
+    }
 }
 
 fn planned_lights(plan: &CompilePlan) -> Option<PathBuf> {
@@ -683,6 +692,26 @@ mod tests {
         assert_eq!(out.notices[0].step, 3);
         assert_eq!(out.notices[1].step, 2);
         assert!(out.cache.is_none());
+    }
+
+    #[test]
+    fn valve_compilers_get_the_cubemap_step_after_the_lighting() {
+        let root = scratch("cubesteps");
+        let tools = fake_game(&root);
+        let mut steps = vec![
+            Step::new(StepKind::Bsp, "vbsp.exe", vec![]),
+            Step::new(StepKind::Rad, "vrad.exe", vec![]),
+            Step::new(StepKind::Custom, "post.exe", vec![]),
+        ];
+        add_cubemap_step(&mut steps, None, &tools);
+        assert_eq!(steps.len(), 3);
+        add_cubemap_step(&mut steps, Some(vec![hp_compile::CUBEMAPS_ARG.to_owned(), "gm_x".to_owned()]), &tools);
+        let kinds: Vec<StepKind> = steps.iter().map(|s| s.kind).collect();
+        assert_eq!(kinds, [StepKind::Bsp, StepKind::Rad, StepKind::Custom, StepKind::Custom]);
+        assert_eq!((steps[2].exe.as_path(), steps[2].args[0].as_str()), (tools.compiler.as_path(), "--cubemaps"));
+        let mut no_rad = vec![Step::new(StepKind::Bsp, "vbsp.exe", vec![])];
+        add_cubemap_step(&mut no_rad, Some(vec!["--cubemaps".to_owned()]), &tools);
+        assert_eq!(no_rad.len(), 1, "no lighting, no cubemaps");
     }
 
     #[test]

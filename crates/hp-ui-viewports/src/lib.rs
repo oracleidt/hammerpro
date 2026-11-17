@@ -1074,7 +1074,12 @@ impl Viewports {
                     tool.click_while_flying(state, view, view.rect.center(), input.modifiers);
                 }
             }
-        } else if input.z_pressed && !text_focus && self.gesture.is_none() && !state.runtime.selection.modal_transform {
+        } else if input.z_pressed
+            && !text_focus
+            && self.gesture.is_none()
+            && !state.runtime.selection.modal_transform
+            && !state.runtime.brush.block_axis_keys
+        {
             let candidate = match hovered {
                 Some(h) => Some(h),
                 None => state.ui.focused_view,
@@ -1131,7 +1136,7 @@ impl Viewports {
                     match click {
                         Click::Menu if is_click && tool_takes_right_click(tool.id(), kind, input.modifiers) => {}
                         Click::Menu => {
-                            if is_click {
+                            if is_click && !tool_right_click(state, tool, slot_of(view), kind, press, cfg, ppp) {
                                 self.open_menu(state, slot_of(view), kind, press, cfg, ppp);
                             }
                             ended = Some(view);
@@ -1178,7 +1183,7 @@ impl Viewports {
                     self.gesture = None;
                     let is_click = travel < click_travel && !self.swallow;
                     if !(is_click && tool_takes_right_click(tool.id(), kind, input.modifiers)) {
-                        if is_click {
+                        if is_click && !tool_right_click(state, tool, slot_of(view), kind, press, cfg, ppp) {
                             self.open_menu(state, slot_of(view), kind, press, cfg, ppp);
                         }
                         ended = Some(view);
@@ -2481,6 +2486,20 @@ pub(crate) const RENDER_MODES: [(RenderModeSetting, Action); 11] = [
     (RenderModeSetting::ColorCorrected, Action::RenderColorCorrected),
     (RenderModeSetting::RayTraced, Action::RenderRayTraced),
 ];
+
+fn tool_right_click(
+    state: &mut AppState,
+    tool: &mut dyn Tool,
+    slot: Option<&Slot>,
+    kind: ViewKind,
+    press: Pos2,
+    cfg: &RenderConfig,
+    ppp: f32,
+) -> bool {
+    let Some(s) = slot else { return false };
+    let view = view_info(s.index, kind, s.rect, &state.cameras, cfg, ppp);
+    tool.secondary_click(state, &view, press)
+}
 
 pub fn tool_takes_right_click(tool: ToolId, kind: ViewKind, modifiers: egui::Modifiers) -> bool {
     tool == ToolId::Slice || tool == ToolId::Texture && kind == ViewKind::Perspective && !modifiers.shift

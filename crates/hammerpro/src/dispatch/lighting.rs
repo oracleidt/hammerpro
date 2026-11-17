@@ -1294,6 +1294,7 @@ mod tests {
         let at = |x: f64| hp_app::runtime::DragTransform {
             objs: vec![hp_editor::ObjRef::Entity(light)].into(),
             matrix: glam::DMat4::from_translation(DVec3::X * x),
+            applied: false,
         };
         state.runtime.selection.drag = Some(at(16.0));
         preview.schedule(&mut state, 1.0);
@@ -1571,6 +1572,7 @@ mod tests {
         let drag = |objs: Vec<hp_editor::ObjRef>, offset: DVec3| hp_app::runtime::DragTransform {
             objs: objs.into(),
             matrix: glam::DMat4::from_translation(offset),
+            applied: false,
         };
         state.runtime.selection.drag = Some(drag(vec![hp_editor::ObjRef::Entity(light)], DVec3::X * 64.0));
         let (key, moved) = dragged_lights(&state).expect("a dragged light");
@@ -1586,6 +1588,11 @@ mod tests {
         assert!(dragged_lights(&state).is_none(), "brushes wait for the end of the drag");
         state.runtime.selection.drag = Some(drag(vec![hp_editor::ObjRef::Entity(light)], DVec3::ZERO));
         assert!(dragged_lights(&state).is_none(), "nothing moved yet");
+        let mut live = drag(vec![hp_editor::ObjRef::Entity(light)], DVec3::X * 64.0);
+        live.applied = true;
+        state.runtime.selection.drag = Some(live);
+        let (_, moved) = dragged_lights(&state).expect("a live dragged light");
+        assert_eq!(moved[0].origin(), Some(DVec3::new(0.0, 0.0, 128.0)), "the live drag moved it in the map already");
         state.runtime.selection.drag = None;
         preview.schedule(&mut state, 1.1);
         assert_eq!(preview.drag_key, None);

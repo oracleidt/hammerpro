@@ -58,7 +58,7 @@
 
 В левом столбце перечислены страницы: **Базовая текстура**, **Прозрачность**, **Карта рельефа**, **Детализация**, **Отражения**, **Фонг**, **Контурный свет**, **Самосвещение**, **Освещение и поверхность**, **Качание дерева**, **Вода**, **Преломление**, **Спрайт**, **Компиляция флагов**, **Другие параметры**. Страницы с установленными параметрами показывают их количество жирным шрифтом; страницы, для которых шейдер не имеет значения, скрыты.
 
-Для Lightmapped_4WayBlend в **Базовой текстуре** также перечислены параметры 4-стороннего смешивания: `$basetexture3`, `$basetexture4`, `$textureN_lumstart` и `$textureN_lumend`, `$textureN_blendstart` и `$textureN_blendend`, `$lumblendfactorN`, `$textureN_uvscale` и `$textureN_blendmode`; На **карте рельефа** указано `$textureN_bumpblendfactor`. За ними следуют 3D-изображения (см. [4-way blends](displacement-tool.md#4-way-blends-lightmapped_4wayblend)).
+Для Lightmapped_4WayBlend в **Базовой текстуре** также перечислены параметры 4-стороннего смешивания: `$basetexture3`, `$basetexture4`, `$textureN_lumstart` и `$textureN_lumend`, `$textureN_blendstart` и `$textureN_blendend`, `$lumblendfactorN`, `$textureN_uvscale` и `$textureN_blendmode`; На **карте рельефа** указано `$textureN_bumpblendfactor`; в **Детализации** указаны `$detailblendfactor2`..`$detailblendfactor4`, сила детали на текстурах 2-4. За ними следуют 3D-изображения (см. [4-way blends](displacement-tool.md#4-way-blends-lightmapped_4wayblend)).
 
 В каждой строке параметра отображается его ключ (жирный шрифт, если он установлен), виджет, кнопка `✖` (**Удалить (возврат к значениям по умолчанию)**), когда он установлен, и строка, сообщающая, что он делает. Виджеты следуют параметру:
 

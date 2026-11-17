@@ -60,6 +60,7 @@ pub(crate) const RANGES: &[(&str, f64, f64)] = &[
     ("selection.random_yaw_max", -360.0, 720.0),
     ("selection.random_yaw_snap", 0.0, 180.0),
     ("selection.random_tilt_deg", 0.0, hp_editor::MAX_JITTER_DEG),
+    ("selection.live_transform_limit", 1.0, hp_app::settings::MAX_LIVE_LIMIT as f64),
     ("grid.per_view.perspective.size", hp_app::settings::GRID_MIN, hp_app::settings::GRID_MAX),
     ("grid.per_view.top.size", hp_app::settings::GRID_MIN, hp_app::settings::GRID_MAX),
     ("grid.per_view.front.size", hp_app::settings::GRID_MIN, hp_app::settings::GRID_MAX),

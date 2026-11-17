@@ -11,7 +11,7 @@ The decal tool places `infodecal` entities and the overlay tool places `info_ove
 | **Decal tool** | **Tools > Active tool > Decal tool** | `Shift+D` |
 | **Overlay tool** | **Tools > Active tool > Overlay tool** | `Shift+O` |
 
-Both tools are also in the tool palette. Both work in the 3D view only: clicking in a 2D view shows the message **Click a face in the 3D view** and the cursor shows that the view is not usable.
+Both tools are also in the tool palette. Both place on a face of the 3D view only: clicking empty space in a 2D view shows the message **Click a face in the 3D view**. In the 2D views the overlay tool selects, moves, resizes and rotates overlays (see [Editing overlays in the 2D views](#editing-overlays-in-the-2d-views)).
 
 The material placed is the current material (the one chosen in the [texture browser](texture-browser.md)). When none is chosen, the default material of the settings is used, else `dev/dev_measuregeneric01b`.
 
@@ -51,6 +51,25 @@ Move the cursor over a face of the 3D view: a preview shows the overlay with the
 
 A new overlay gets the keys Hammer writes so the compiler builds it: `material`, `sides` (the face clicked), `StartU`/`StartV` 0 and `EndU`/`EndV` 1, `BasisOrigin`, `BasisU`, `BasisV`, `BasisNormal` (the same basis as Hammer) and the four corners `uv0` to `uv3`, half the texture size around the center. The size is the texture size times `$decalscale`, like decals, and can be changed afterwards by dragging the corners. Corner handles are shown for up to 32 selected overlays at once.
 
+### Editing overlays in the 2D views
+
+Select an overlay (click it in a 2D view with the overlay tool, or in any view with the selection tool), then use the overlay tool handles, like Hammer. The same handles are shown in the 3D view.
+
+| Handle | What it does |
+| --- | --- |
+| Corner (large square) | Reshapes the overlay: moves one corner (`uv0` to `uv3`). |
+| Edge (small square, middle of each side) | Resizes the overlay: moves that side, the opposite side stays. The label shows the new size. |
+| Round handle above the top side | Rotates the overlay around its center on its plane, by steps of 15 degrees when the grid snap is on. The label shows the angle. |
+| Inside of the overlay | Moves the overlay on its plane, snapped to the grid of the view. |
+
+- Corners and sides are snapped to the grid of the view and to the edges and corners of the faces of the overlay, and stay on those faces. `Alt`: off the grid.
+- A plain resize stretches the texture over the new size, like Hammer (`StartU`, `EndU`, `StartV`, `EndV` stay). Hold `Ctrl` while dragging a corner or a side to keep the texture scale instead: the texture range of the moved side grows or shrinks with the overlay, so the texture repeats or is cut rather than stretched.
+- `Shift` while dragging a corner or a side sticks it to a corner of another overlay.
+- After a move or a rotation the face list follows: when the overlay leaves one of its faces, its `sides` list is rebuilt from the faces under it, like a move with the selection tool.
+- An overlay seen edge on in a 2D view (a wall overlay in the top view) shows no handles there, only its outline; drag it to move it along its plane.
+- Each drag is one undo step (**Edit overlay**). `Escape` during a drag cancels it.
+- MCP: `set_overlay` does the same edits with `corners`, `texture_range`, `move_by`, `size` and `rotate_by`; `ui_drag` drives the handles.
+
 ### Options
 
 | Option | What it does | Default |
@@ -75,15 +94,15 @@ To edit the face list by hand, use the eyedropper button next to the `sides` key
 ## Tips
 
 - **Edit > Set maximum distance...** writes `fademaxdist` on overlays so they fade out with distance.
-- [Check for problems](check-problems.md) finds overlays whose faces no longer exist (with a fix that removes them from the lists) and overlays on more than 64 faces. A map is limited to 8192 overlays.
-- **Tools > Brush operations > Trim overlay faces** (also in the right click menu of the views) removes from the selected overlays the faces their rectangle does not touch, in one undo step: fewer fragments, and back under the 64 face limit. **Map > Optimize the map...** lists the overlays worth trimming (topic **Overlays**).
+- [Check for problems](check-problems.md) finds overlays whose faces no longer exist (with a fix that removes them from the lists) and overlays on more than 64 faces (with a fix that trims and splits them). A map is limited to 8192 overlays.
+- **Tools > Brush operations > Trim overlay faces** (also in the right click menu of the views) removes from the selected overlays the faces their rectangle does not touch, in one undo step: fewer fragments, and back under the 64 face limit. **Map > Optimize the map...** lists the overlays worth fixing (topic **Overlays**), with a **Fix** button per overlay and **Fix all overlays**: they trim the face lists and split an overlay that really covers more than 64 faces into several overlays (see [Optimizing a map](../guides/optimizing-a-map.md#overlays)).
 - The auto visgroup **Overlays and decals** holds every `info_overlay` and `infodecal` (see [Visgroups](visgroups.md)).
-- MCP tools: `list_decals`, `create_decal`, `list_overlays`, `create_overlay`, `set_overlay`, `trim_overlay_faces`. See the [MCP tool reference](../../MCP.md).
+- MCP tools: `list_decals`, `create_decal`, `list_overlays`, `create_overlay`, `set_overlay`, `trim_overlay_faces`, `fix_overlay_faces`. See the [MCP tool reference](../../MCP.md).
 - `set_tool_options` with tool `decal` or `overlay` and the option `snap` (`on` or `off`) switches the grid snapping of the tool, like its checkbox.
 
 ## FAQ
 
-**Clicking in the top view does nothing.** Both tools place on a face hit in the 3D view only.
+**Clicking in the top view does nothing.** Both tools place on a face hit in the 3D view only. In the 2D views the overlay tool selects and edits existing overlays.
 
 **My decal is huge (or tiny).** The size comes from the texture and its `$decalscale`. Use a decal material, or change `$decalscale` in the material (see [Material editor](material-editor.md)).
 

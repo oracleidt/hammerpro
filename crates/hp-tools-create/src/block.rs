@@ -5,7 +5,7 @@ use glam::{DVec2, DVec3};
 use hp_app::actions::key_label;
 use hp_app::state::AppState;
 use hp_app::{Severity, Tool, ToolFlow, ToolId, ToolMenuEntry, ViewInfo, ViewInput, ViewKind, t, tf};
-use hp_editor::{EditError, ObjRef, Owner};
+use hp_editor::{EditError, Id, ObjRef, Owner};
 use hp_geom::{
     Aabb, MAX_DOOR_ARCH_SEGMENTS, MAX_PRIMITIVE_SIDES, MAX_STAIR_STEPS, PrimitiveParams, make_primitive, step_count,
 };
@@ -13,6 +13,7 @@ use hp_render::Overlay;
 
 pub use hp_geom::Primitive;
 
+use crate::block_limits::{self, Footprint, MIN_HEIGHT};
 use crate::block_preview::{self, PreviewStyle, Projection};
 use crate::common::{
     BoxHandle, COLOR_PENDING, COLOR_SHAPE, MIN_EXTENT, Mouse, Ov, Snap, box_screen_rect, clean, consume_plain_key,
@@ -189,10 +190,17 @@ pub(crate) fn primitive_key(kind: Primitive) -> &'static str {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Limit {
+    Free,
+    Contact,
+    Overlap,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Phase3d {
     Base,
-    Height { anchor: Pos2, base_height: f64, height: f64 },
+    Height { anchor: Pos2, base_height: f64, height: f64, wanted: f64, limit: Limit },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -205,9 +213,62 @@ struct Draw3d {
     end: DVec3,
     phase: Phase3d,
     surface: Option<ObjRef>,
+    face: Option<(Id, usize)>,
+    normal: DVec3,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Hover3d {
+    point: DVec3,
+    frame: u64,
+    normal: DVec3,
+    face: Option<(Id, usize)>,
+}
+
+thread_local! {
+    static DRAW_SETTINGS: std::cell::Cell<hp_app::settings::BlockDrawSettings> =
+        std::cell::Cell::new(hp_app::settings::BlockDrawSettings::default());
+}
+
+pub fn sync_block_options(state: &AppState) {
+    DRAW_SETTINGS.with(|c| c.set(state.settings.brush.block_draw));
+}
+
+fn draw_cfg() -> hp_app::settings::BlockDrawSettings {
+    DRAW_SETTINGS.with(|c| c.get())
+}
+
+pub fn axis_label(axis: usize, sign: f64) -> String {
+    format!("{}{}", if sign < 0.0 { '-' } else { '+' }, ['X', 'Y', 'Z'][axis.min(2)])
+}
+
+fn direction_of(normal: DVec3, lock: Option<usize>, flip: bool) -> (usize, f64) {
+    let axis = lock.unwrap_or_else(|| crate::common::dominant_axis(normal));
+    let sign = if normal[axis] >= -1e-9 { 1.0 } else { -1.0 };
+    (axis, if flip { -sign } else { sign })
 }
 
 impl Draw3d {
+    fn footprint(&self) -> Footprint {
+        let (i, j) = block_limits::plane_axes(self.axis);
+        let a = DVec2::new(self.start[i], self.start[j]);
+        let b = DVec2::new(self.end[i], self.end[j]);
+        Footprint { axis: self.axis, level: self.level, lo: a.min(b), hi: a.max(b) }
+    }
+
+    fn blocked(&self) -> bool {
+        matches!(self.phase, Phase3d::Height { height, limit: Limit::Overlap, .. } if height.abs() < MIN_HEIGHT)
+    }
+
+    fn wanted_bounds(&self) -> Aabb {
+        let mut d = *self;
+        if let Phase3d::Height { wanted, .. } = self.phase {
+            d.phase =
+                Phase3d::Height { anchor: Pos2::ZERO, base_height: 0.0, height: wanted, wanted, limit: Limit::Free };
+        }
+        d.bounds()
+    }
+
     fn plane_point(&self, origin: DVec3, dir: DVec3, snap: &Snap) -> Option<DVec3> {
         let a = self.axis;
         if dir[a].abs() < 1e-9 {
@@ -238,6 +299,13 @@ impl Draw3d {
         }
     }
 
+    fn limit(&self) -> Limit {
+        match self.phase {
+            Phase3d::Base => Limit::Free,
+            Phase3d::Height { limit, .. } => limit,
+        }
+    }
+
     fn bounds(&self) -> Aabb {
         let mut min = self.start.min(self.end);
         let mut max = self.start.max(self.end);
@@ -249,7 +317,8 @@ impl Draw3d {
 
     fn final_bounds(&self) -> Option<Aabb> {
         let b = self.bounds();
-        (matches!(self.phase, Phase3d::Height { .. }) && b.size().min_element() > MIN_EXTENT).then_some(b)
+        (matches!(self.phase, Phase3d::Height { .. }) && !self.blocked() && b.size().min_element() > MIN_EXTENT)
+            .then_some(b)
     }
 
     fn base_center(&self) -> DVec3 {
@@ -312,7 +381,10 @@ pub struct BlockTool {
     drag: Option<Drag>,
     draw3d: Option<Draw3d>,
     hover: Option<(usize, BoxHandle, u64)>,
-    hover_3d: Option<(DVec3, u64)>,
+    hover_3d: Option<Hover3d>,
+    pub axis_lock: Option<usize>,
+    pub flip: bool,
+    bypass: bool,
     initialized: bool,
     seen_reorient: Option<bool>,
     picker: ClassPicker,
@@ -338,6 +410,9 @@ impl BlockTool {
             draw3d: None,
             hover: None,
             hover_3d: None,
+            axis_lock: None,
+            flip: false,
+            bypass: false,
             initialized: false,
             seen_reorient: None,
             picker: ClassPicker::default(),
@@ -409,6 +484,7 @@ impl BlockTool {
     }
 
     fn ensure_init(&mut self, state: &AppState) {
+        sync_block_options(state);
         let reorient = state.settings.brush.reorient_primitives;
         if self.seen_reorient != Some(reorient) {
             self.seen_reorient = Some(reorient);
@@ -493,6 +569,7 @@ impl BlockTool {
     }
 
     pub fn confirm(&mut self, state: &mut AppState) -> bool {
+        self.relimit(state);
         if let Some(d) = self.draw3d {
             let Some(b) = d.final_bounds() else { return false };
             let created = self.create(state, b).is_some();
@@ -587,17 +664,111 @@ impl BlockTool {
         ToolFlow::Handled
     }
 
+    fn draw_settings(state: &AppState) -> hp_app::settings::BlockDrawSettings {
+        state.settings.brush.block_draw
+    }
+
+    fn limit_height(&self, state: &AppState, d: &Draw3d, wanted: f64) -> (f64, Limit) {
+        let cfg = Self::draw_settings(state);
+        if self.bypass || !(cfg.snap_contact || cfg.no_overlap) || wanted.abs() < MIN_EXTENT {
+            return (wanted, Limit::Free);
+        }
+        let fp = d.footprint();
+        let dir = d.sign * wanted.signum();
+        let mut h = wanted.abs();
+        let mut limit = Limit::Free;
+        if cfg.snap_contact
+            && let Some(c) = block_limits::contact_distance(state, &fp, dir, h)
+            && c < h - 1e-6
+        {
+            h = c;
+            limit = Limit::Contact;
+        }
+        if cfg.no_overlap
+            && let Some(c) = block_limits::overlap_distance(state, &fp, dir, h)
+            && c < h - 1e-6
+        {
+            h = c;
+            limit = Limit::Overlap;
+        }
+        (wanted.signum() * clean(h), limit)
+    }
+
+    fn relimit(&mut self, state: &AppState) {
+        let Some(d) = self.draw3d else { return };
+        if let Phase3d::Height { anchor, base_height, wanted, .. } = d.phase {
+            let (height, limit) = self.limit_height(state, &d, wanted);
+            self.draw3d = Some(Draw3d { phase: Phase3d::Height { anchor, base_height, height, wanted, limit }, ..d });
+        }
+    }
+
+    fn face_limit(&self, state: &AppState, d: &Draw3d) -> Option<Vec<DVec2>> {
+        if self.bypass || !Self::draw_settings(state).limit_to_face {
+            return None;
+        }
+        let (solid, side) = d.face?;
+        let poly = block_limits::face_polygon(state, solid, side)?;
+        Some(block_limits::project(&poly, d.axis))
+    }
+
+    fn clamp_footprint(&self, state: &AppState, d: &mut Draw3d) {
+        let Some(poly) = self.face_limit(state, d) else { return };
+        let (i, j) = block_limits::plane_axes(d.axis);
+        let s = DVec2::new(d.start[i], d.start[j]);
+        let e = DVec2::new(d.end[i], d.end[j]);
+        if let Some((s2, e2)) = block_limits::clamp_rect(&poly, s, e) {
+            let fix = |v: f64, old: f64| if (v - old).abs() < 1e-9 { old } else { clean(v) };
+            d.start[i] = fix(s2.x, s.x);
+            d.start[j] = fix(s2.y, s.y);
+            d.end[i] = fix(e2.x, e.x);
+            d.end[j] = fix(e2.y, e.y);
+        }
+    }
+
+    fn direction(&self, normal: DVec3) -> (usize, f64) {
+        direction_of(normal, self.axis_lock, self.flip)
+    }
+
+    pub fn set_axis_lock(&mut self, lock: Option<usize>) {
+        self.axis_lock = lock.filter(|a| *a < 3);
+        let (lock, flip) = (self.axis_lock, self.flip);
+        if let Some(d) = self.draw3d.as_mut()
+            && d.phase == Phase3d::Base
+        {
+            let (axis, sign) = direction_of(d.normal, lock, flip);
+            if axis != d.axis {
+                d.axis = axis;
+                d.level = clean(d.start[axis]);
+                d.end = d.start;
+            }
+            d.sign = sign;
+        }
+    }
+
+    pub fn set_flip(&mut self, state: &AppState, flip: bool) {
+        if flip == self.flip {
+            return;
+        }
+        self.flip = flip;
+        if let Some(d) = self.draw3d.as_mut() {
+            d.sign = -d.sign;
+        }
+        self.relimit(state);
+    }
+
     fn mouse_3d(&mut self, state: &mut AppState, view: &ViewInfo, m: &Mouse) -> ToolFlow {
         let Some(pos) = m.pos else { return ToolFlow::Ignored };
         let snap = Snap::new(state, view, m.modifiers);
         let surface_snap = |surface: Option<ObjRef>| Snap::on_object(state, view, m.modifiers, surface);
+        self.bypass = m.modifiers.ctrl || m.modifiers.command;
 
-        if let Some(d) = self.draw3d.as_mut()
+        if let Some(d) = self.draw3d
             && d.view == view.index
             && let Phase3d::Height { anchor, base_height, .. } = d.phase
         {
-            let h = height_from_mouse(view, d, anchor, pos, base_height, &surface_snap(d.surface));
-            d.phase = Phase3d::Height { anchor, base_height, height: h };
+            let wanted = height_from_mouse(view, &d, anchor, pos, base_height, &surface_snap(d.surface));
+            let (height, limit) = self.limit_height(state, &d, wanted);
+            self.draw3d = Some(Draw3d { phase: Phase3d::Height { anchor, base_height, height, wanted, limit }, ..d });
             if m.activated() {
                 if m.drag_started {
                     self.drag = Some(Drag::Swallow);
@@ -609,10 +780,21 @@ impl BlockTool {
         }
 
         if m.hovering() {
-            self.hover_3d = pick_surface(state, view, pos)
-                .map(|h| surface_snap(Some(ObjRef::Solid(h.solid))).on_plane(h.point, h.normal))
-                .or_else(|| ground_point(view, pos).map(|p| DVec3::new(snap.v(p.x, 0), snap.v(p.y, 1), 0.0)))
-                .map(|p| (p, state.frame.index));
+            let (ray_o, _) = view.ray(pos);
+            self.hover_3d = match pick_surface(state, view, pos) {
+                Some(h) => Some(Hover3d {
+                    point: surface_snap(Some(ObjRef::Solid(h.solid))).on_plane(h.point, h.normal),
+                    frame: state.frame.index,
+                    normal: h.normal,
+                    face: Some((h.solid, h.side_index)),
+                }),
+                None => ground_point(view, pos).map(|p| Hover3d {
+                    point: DVec3::new(snap.v(p.x, 0), snap.v(p.y, 1), 0.0),
+                    frame: state.frame.index,
+                    normal: if ray_o.z >= 0.0 { DVec3::Z } else { DVec3::NEG_Z },
+                    face: None,
+                }),
+            };
             return ToolFlow::Ignored;
         }
 
@@ -623,15 +805,20 @@ impl BlockTool {
             let start = match pick_surface(state, view, origin) {
                 Some(hit) => {
                     let surface = Some(ObjRef::Solid(hit.solid));
-                    let axis = crate::common::dominant_axis(hit.normal);
+                    let (axis, sign) = self.direction(hit.normal);
                     let aligned = hit.normal[axis].abs() > 0.999;
                     let level =
                         if aligned { clean(hit.point[axis]) } else { surface_snap(surface).v(hit.point[axis], axis) };
-                    Some((axis, if hit.normal[axis] >= 0.0 { 1.0 } else { -1.0 }, level, surface))
+                    Some((axis, sign, level, surface, Some((hit.solid, hit.side_index)), hit.normal))
                 }
-                None => ground_point(view, origin).map(|_| (2, if ray_o.z >= 0.0 { 1.0 } else { -1.0 }, 0.0, None)),
+                None => ground_point(view, origin).map(|p| {
+                    let up = if ray_o.z >= 0.0 { DVec3::Z } else { DVec3::NEG_Z };
+                    let (axis, sign) = self.direction(up);
+                    let level = if axis == 2 { 0.0 } else { snap.v(p[axis], axis) };
+                    (axis, sign, level, None, None, up)
+                }),
             };
-            self.draw3d = start.and_then(|(axis, sign, level, surface)| {
+            self.draw3d = start.and_then(|(axis, sign, level, surface, face, normal)| {
                 let mut d = Draw3d {
                     view: view.index,
                     axis,
@@ -641,10 +828,20 @@ impl BlockTool {
                     end: DVec3::ZERO,
                     phase: Phase3d::Base,
                     surface,
+                    face,
+                    normal,
                 };
                 let p = d.plane_point(ray_o, ray_d, &surface_snap(surface))?;
                 d.start = p;
                 d.end = p;
+                if let Some(poly) = self.face_limit(state, &d) {
+                    let (i, j) = block_limits::plane_axes(axis);
+                    if let Some(s) = block_limits::clamp_start(&poly, DVec2::new(p[i], p[j])) {
+                        d.start[i] = clean(s.x);
+                        d.start[j] = clean(s.y);
+                        d.end = d.start;
+                    }
+                }
                 Some(d)
             });
             if self.draw3d.is_some() {
@@ -652,13 +849,15 @@ impl BlockTool {
             }
         }
         if (m.dragging || m.drag_stopped)
-            && let Some(d) = self.draw3d.as_mut()
+            && let Some(mut d) = self.draw3d
             && d.view == view.index
             && d.phase == Phase3d::Base
         {
             let (o, dir) = view.ray(pos);
             if let Some(p) = d.plane_point(o, dir, &surface_snap(d.surface)) {
                 d.end = p;
+                self.clamp_footprint(state, &mut d);
+                self.draw3d = Some(d);
             }
         }
         if m.drag_stopped {
@@ -666,13 +865,16 @@ impl BlockTool {
                 self.drag = None;
                 return ToolFlow::Handled;
             }
-            if let Some(d) = self.draw3d.as_mut()
+            if let Some(d) = self.draw3d
                 && d.phase == Phase3d::Base
             {
                 if d.base_valid() {
-                    let base_height = 0.0;
                     let step = surface_snap(d.surface).step_along(d.axis);
-                    d.phase = Phase3d::Height { anchor: pos, base_height, height: step };
+                    let (height, limit) = self.limit_height(state, &d, step);
+                    self.draw3d = Some(Draw3d {
+                        phase: Phase3d::Height { anchor: pos, base_height: 0.0, height, wanted: step, limit },
+                        ..d
+                    });
                 } else {
                     self.draw3d = None;
                 }
@@ -849,26 +1051,120 @@ impl BlockTool {
         Some(tf!(count.label_key(), value))
     }
 
+    fn arrow(&self, state: &AppState) -> Option<(DVec3, usize, f64)> {
+        if !Self::draw_settings(state).direction_preview || self.pending.is_some() {
+            return None;
+        }
+        match self.draw3d {
+            Some(d) if d.phase == Phase3d::Base => Some((d.base_center(), d.axis, d.sign)),
+            Some(_) => None,
+            None => self.hover_3d.filter(|h| fresh(state, h.frame)).map(|h| {
+                let (axis, sign) = self.direction(h.normal);
+                (h.point, axis, sign)
+            }),
+        }
+    }
+
+    fn limit_suffix(&self) -> Option<(String, egui::Color32)> {
+        let d = self.draw3d?;
+        match d.limit() {
+            Limit::Free => None,
+            Limit::Contact => Some((t!("create.block.snapped").to_owned(), COLOR_PENDING)),
+            Limit::Overlap if d.blocked() => {
+                Some((t!("create.block.overlap_blocked").to_owned(), hp_app::theme::VIEW_ERROR))
+            }
+            Limit::Overlap => Some((t!("create.block.overlap_stop").to_owned(), hp_app::theme::VIEW_ERROR)),
+        }
+    }
+
     fn paint_3d(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
-        let Some(b) = self.current_box() else {
-            if let Some((p, frame)) = self.hover_3d
-                && fresh(state, frame)
-                && let Some(s) = view.world_to_screen(p)
+        if let Some((p, axis, sign)) = self.arrow(state) {
+            paint_direction_arrow(view, painter, p, axis, sign);
+        }
+        let Some(mut b) = self.current_box() else {
+            if let Some(h) = self.hover_3d
+                && fresh(state, h.frame)
+                && let Some(s) = view.world_to_screen(h.point)
                 && view.rect.contains(s)
             {
                 painter.circle_stroke(s, 4.0, Stroke::new(1.5, COLOR_PENDING));
             }
             return;
         };
+        if let Some(d) = self.draw3d
+            && d.blocked()
+        {
+            b = d.wanted_bounds();
+        }
         let mut top = b.center();
         top.z = b.max.z;
         if let Some(s) = view.world_to_screen(top)
             && view.rect.contains(s)
         {
-            paint_label(painter, s - Vec2::new(0.0, 8.0), Align2::CENTER_BOTTOM, &fmt_size(&b), COLOR_PENDING);
+            let (text, color) = match self.limit_suffix() {
+                Some((suffix, color)) => (format!("{} {suffix}", fmt_size(&b)), color),
+                None => (fmt_size(&b), COLOR_PENDING),
+            };
+            paint_label(painter, s - Vec2::new(0.0, 8.0), Align2::CENTER_BOTTOM, &text, color);
             if let Some(text) = self.count_label() {
                 paint_label(painter, s - Vec2::new(0.0, 28.0), Align2::CENTER_BOTTOM, &text, COLOR_SHAPE);
             }
+        }
+    }
+
+    fn face_overlay(&self, state: &AppState, ov: &mut Ov<'_>) {
+        let cfg = Self::draw_settings(state);
+        let (face, hovered) = match self.draw3d {
+            Some(d) => (d.face, false),
+            None => match self.hover_3d.filter(|h| fresh(state, h.frame) && self.pending.is_none()) {
+                Some(h) => (h.face, true),
+                None => (None, false),
+            },
+        };
+        let Some((solid, side)) = face else { return };
+        let Some(poly) = block_limits::face_polygon(state, solid, side) else { return };
+        if hovered && cfg.direction_preview {
+            ov.polygon_fill(&poly, rgba(COLOR_PENDING, 0.16));
+            ov.polygon_outline(&poly, rgba(COLOR_PENDING, 0.9), true);
+        }
+        if cfg.limit_to_face && !self.bypass {
+            ov.polygon_outline(&poly, rgba(COLOR_FACE_LIMIT, 1.0), true);
+        }
+    }
+}
+
+const COLOR_FACE_LIMIT: egui::Color32 = hp_app::theme::VIEW_INFO;
+pub const FLIP_KEY: egui::Key = egui::Key::R;
+
+fn paint_direction_arrow(view: &ViewInfo, painter: &egui::Painter, p: DVec3, axis: usize, sign: f64) {
+    let Some(a) = view.world_to_screen(p) else { return };
+    if !view.rect.contains(a) {
+        return;
+    }
+    let mut dir = DVec3::ZERO;
+    dir[axis] = sign;
+    let dist = (p - view.cam3d.pos).length().max(1.0);
+    let color = [hp_app::theme::AXIS_X, hp_app::theme::AXIS_Y, hp_app::theme::AXIS_Z][axis.min(2)];
+    let label = axis_label(axis, sign);
+    let tip = view.world_to_screen(p + dir * dist * 0.15).map(|b| b - a).filter(|v| v.length() > 10.0);
+    match tip {
+        Some(v) => {
+            let v = if v.length() > 72.0 { v.normalized() * 72.0 } else { v };
+            painter.arrow(a, v, Stroke::new(5.0, egui::Color32::from_black_alpha(170)));
+            painter.arrow(a, v, Stroke::new(2.5, color));
+            paint_label(painter, a + v + v.normalized() * 12.0, Align2::CENTER_CENTER, &label, color);
+        }
+        None => {
+            let toward = (view.cam3d.pos - p).dot(dir) > 0.0;
+            painter.circle_stroke(a, 9.0, Stroke::new(2.5, color));
+            if toward {
+                painter.circle_filled(a, 3.0, color);
+            } else {
+                let k = 5.0;
+                painter.line_segment([a + Vec2::new(-k, -k), a + Vec2::new(k, k)], Stroke::new(2.0, color));
+                painter.line_segment([a + Vec2::new(-k, k), a + Vec2::new(k, -k)], Stroke::new(2.0, color));
+            }
+            paint_label(painter, a + Vec2::new(14.0, -14.0), Align2::LEFT_BOTTOM, &label, color);
         }
     }
 }
@@ -947,6 +1243,26 @@ impl Tool for BlockTool {
     }
 
     fn key_input(&mut self, state: &mut AppState, ctx: &egui::Context) -> bool {
+        let base = self.draw3d.is_some_and(|d| d.phase == Phase3d::Base);
+        state.runtime.brush.block_axis_keys = base;
+        let pointed = self.draw3d.is_some() || self.hover_3d.is_some_and(|h| fresh(state, h.frame));
+        if pointed && self.pending.is_none() && consume_plain_key(ctx, FLIP_KEY) {
+            self.set_flip(state, !self.flip);
+            return true;
+        }
+        if base {
+            for (key, k) in [(egui::Key::X, 0), (egui::Key::Y, 1), (egui::Key::Z, 2)] {
+                if consume_plain_key(ctx, key) {
+                    self.set_axis_lock(if self.axis_lock == Some(k) { None } else { Some(k) });
+                    return true;
+                }
+            }
+        }
+        let bypass = ctx.input(|i| i.modifiers.ctrl || i.modifiers.command);
+        if self.draw3d.is_some() && bypass != self.bypass {
+            self.bypass = bypass;
+            self.relimit(state);
+        }
         if self.is_ready() && consume_plain_key(ctx, egui::Key::Enter) {
             self.confirm(state);
             return true;
@@ -960,6 +1276,9 @@ impl Tool for BlockTool {
 
     fn overlay(&self, state: &AppState, view: &ViewInfo, out: &mut Overlay) {
         let mut ov = Ov::new(out, view);
+        if !view.is_2d() {
+            self.face_overlay(state, &mut ov);
+        }
         if let Some(d) = self.draw3d
             && d.phase == Phase3d::Base
         {
@@ -984,13 +1303,43 @@ impl Tool for BlockTool {
         }
         let Some(b) = self.current_box() else {
             if !view.is_2d()
-                && let Some((p, frame)) = self.hover_3d
-                && fresh(state, frame)
+                && let Some(h) = self.hover_3d
+                && fresh(state, h.frame)
             {
-                ov.point(p, rgba(COLOR_PENDING, 1.0), 6.0);
+                ov.point(h.point, rgba(COLOR_PENDING, 1.0), 6.0);
             }
             return;
         };
+        if let Some(d) = self.draw3d
+            && d.limit() == Limit::Overlap
+        {
+            let red = hp_app::theme::VIEW_ERROR;
+            let shown = if d.blocked() { d.wanted_bounds() } else { b };
+            if !view.is_2d() {
+                ov.box_faces(&shown, rgba(red, if d.blocked() { 0.16 } else { 0.10 }));
+            }
+            ov.box_edges(&shown, rgba(red, 1.0), true);
+            if !d.blocked() {
+                let (i, j) = block_limits::plane_axes(d.axis);
+                let far = d.level + d.sign * d.height();
+                let corner = |a: f64, c: f64| {
+                    let mut p = DVec3::ZERO;
+                    p[d.axis] = far;
+                    p[i] = a;
+                    p[j] = c;
+                    p
+                };
+                let quad = [
+                    corner(b.min[i], b.min[j]),
+                    corner(b.max[i], b.min[j]),
+                    corner(b.max[i], b.max[j]),
+                    corner(b.min[i], b.max[j]),
+                ];
+                ov.polygon_fill(&quad, rgba(red, 0.35));
+                ov.polygon_outline(&quad, rgba(red, 1.0), true);
+            }
+            return;
+        }
         if !view.is_2d() {
             ov.box_faces(&b, rgba(COLOR_PENDING, 0.10));
         }
@@ -1049,6 +1398,8 @@ impl Tool for BlockTool {
             ui.separator();
             material_chip(ui, state);
             ui.separator();
+            self.draw3d_ui(ui, state);
+            ui.separator();
             if hp_app::widgets::icon_toggle(ui, "📌", self.options.keep_active, t!("create.block.keep_active_tip"))
                 .clicked()
             {
@@ -1095,13 +1446,19 @@ impl Tool for BlockTool {
             ),
             None => t!("create.block.hint_idle").to_owned(),
         };
+        let hint = if self.pending.is_none() {
+            format!("{hint} {}", tf!("create.block.hint_limits", key_label(FLIP_KEY)))
+        } else {
+            hint
+        };
         match ShapeCount::of(&self.options) {
             Some(count) => Some(format!("{hint} {}", tf!(count.hint_key(), WHEEL_FAST_STEP))),
             None => Some(hint),
         }
     }
 
-    fn cancel(&mut self, _state: &mut AppState) -> bool {
+    fn cancel(&mut self, state: &mut AppState) -> bool {
+        state.runtime.brush.block_axis_keys = false;
         let had = self.pending.is_some() || self.draw3d.is_some() || self.drag.is_some();
         self.pending = None;
         self.draw3d = None;
@@ -1155,6 +1512,48 @@ impl Tool for BlockTool {
                 None => false,
             },
             "preview" => flag.map(|v| self.preview_open = v).is_some(),
+            "snap_contact" | "limit_to_face" | "no_overlap" | "direction_preview" => match flag {
+                Some(v) => {
+                    let b = &mut state.settings.brush.block_draw;
+                    match key {
+                        "snap_contact" => b.snap_contact = v,
+                        "limit_to_face" => b.limit_to_face = v,
+                        "no_overlap" => b.no_overlap = v,
+                        _ => b.direction_preview = v,
+                    }
+                    state.settings_dirty = true;
+                    sync_block_options(state);
+                    self.relimit(state);
+                    true
+                }
+                None => false,
+            },
+            "draw_axis" => match value.trim().to_ascii_lowercase().as_str() {
+                "auto" | "none" | "normal" => {
+                    self.set_axis_lock(None);
+                    true
+                }
+                "x" => {
+                    self.set_axis_lock(Some(0));
+                    true
+                }
+                "y" => {
+                    self.set_axis_lock(Some(1));
+                    true
+                }
+                "z" => {
+                    self.set_axis_lock(Some(2));
+                    true
+                }
+                _ => false,
+            },
+            "flip" => match flag {
+                Some(v) => {
+                    self.set_flip(state, v);
+                    true
+                }
+                None => false,
+            },
             "tex_scale" => set(&mut o.tex_scale, num.filter(|v| (0.01..=64.0).contains(v))),
             "keep_active" => flag.map(|v| o.keep_active = v).is_some(),
             "create_as" => {
@@ -1225,6 +1624,42 @@ impl Tool for BlockTool {
                 "world, or a brush entity class (func_detail, trigger_multiple...)",
             ),
             ToolOption::new("keep_active", on(o.keep_active), "on: stay in the block tool after creating"),
+            ToolOption::new(
+                "snap_contact",
+                on(draw_cfg().snap_contact),
+                "3D draw: the height stops flush with the first wall, floor or ceiling hit by rays cast from the whole footprint, the size label says (snapped) (setting brush.block_draw.snap_contact, saved)",
+            ),
+            ToolOption::new(
+                "limit_to_face",
+                on(draw_cfg().limit_to_face),
+                "3D draw: the footprint stays inside the face it started on, also rotated or slanted faces, and that face is outlined (setting brush.block_draw.limit_to_face, saved)",
+            ),
+            ToolOption::new(
+                "no_overlap",
+                on(draw_cfg().no_overlap),
+                "3D draw: the height stops at the first brush the new box would intersect (exact convex test), shown in red, and a box that would overlap cannot be created (setting brush.block_draw.no_overlap, saved)",
+            ),
+            ToolOption::new(
+                "direction_preview",
+                on(draw_cfg().direction_preview),
+                "3D draw: an arrow with its axis label (+Z...) shows where the box will grow and the hovered face is highlighted (setting brush.block_draw.direction_preview, saved)",
+            ),
+            ToolOption::new(
+                "draw_axis",
+                match self.axis_lock {
+                    Some(0) => "x",
+                    Some(1) => "y",
+                    Some(2) => "z",
+                    _ => "auto",
+                }
+                .to_owned(),
+                "3D draw axis: auto (the axis nearest the face normal), x, y or z (X, Y, Z keys while drawing the base); hold Ctrl to ignore the snap to contact, limit to face and no overlap limits",
+            ),
+            ToolOption::new(
+                "flip",
+                on(self.flip),
+                "on: the 3D box grows against the face normal, into the brush (R key)",
+            ),
         ]
         .into_iter()
         .chain(crate::block_structures::option_values(o, &num))
@@ -1233,6 +1668,39 @@ impl Tool for BlockTool {
 }
 
 impl BlockTool {
+    fn draw3d_ui(&mut self, ui: &mut Ui, state: &mut AppState) {
+        ui.label(t!("create.block.draw3d")).on_hover_text(t!("create.block.draw3d_tip"));
+        let b = &mut state.settings.brush.block_draw;
+        let mut changed = false;
+        for (value, key, tip) in [
+            (&mut b.direction_preview, "create.block.direction_preview", "create.block.direction_preview_tip"),
+            (&mut b.snap_contact, "create.block.snap_contact", "create.block.snap_contact_tip"),
+            (&mut b.limit_to_face, "create.block.limit_face", "create.block.limit_face_tip"),
+            (&mut b.no_overlap, "create.block.no_overlap", "create.block.no_overlap_tip"),
+        ] {
+            changed |= ui.checkbox(value, t!(key)).on_hover_text(t!(tip)).changed();
+        }
+        if changed {
+            state.settings_dirty = true;
+            sync_block_options(state);
+            self.relimit(state);
+        }
+        let axis_tip = tf!("create.block.axis_tip", "X", "Y", "Z");
+        ui.label(t!("create.block.axis")).on_hover_text(&axis_tip);
+        for (lock, label) in [(None, t!("create.block.axis_auto")), (Some(0), "X"), (Some(1), "Y"), (Some(2), "Z")] {
+            if ui.selectable_label(self.axis_lock == lock, label).on_hover_text(&axis_tip).clicked() {
+                self.set_axis_lock(lock);
+            }
+        }
+        if ui
+            .selectable_label(self.flip, t!("create.block.flip"))
+            .on_hover_text(tf!("create.block.flip_tip", key_label(FLIP_KEY)))
+            .clicked()
+        {
+            self.set_flip(state, !self.flip);
+        }
+    }
+
     fn params_ui(&mut self, ui: &mut Ui, grid: bool) {
         let param = |ui: &mut Ui, label: &str, tip: &str, value: egui::DragValue<'_>| {
             param(ui, label, tip, value);
@@ -1435,6 +1903,10 @@ fn paint_primitive_icon(painter: &egui::Painter, r: Rect, kind: Primitive, color
     }
     painter.extend(shapes);
 }
+
+#[cfg(test)]
+#[path = "block_tests3d.rs"]
+mod tests3d;
 
 #[cfg(test)]
 mod tests {

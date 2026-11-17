@@ -11,6 +11,7 @@ pub struct FourWayBlend {
     pub lum_blend_factor: [f32; FOUR_WAY_LAYERS],
     pub uv_scale: [[f32; 2]; FOUR_WAY_LAYERS],
     pub modulate_2x: [bool; FOUR_WAY_LAYERS],
+    pub detail_blend: [f32; FOUR_WAY_LAYERS],
 }
 
 impl Default for FourWayBlend {
@@ -21,6 +22,7 @@ impl Default for FourWayBlend {
             lum_blend_factor: [0.0; FOUR_WAY_LAYERS],
             uv_scale: [[1.0, 1.0]; FOUR_WAY_LAYERS],
             modulate_2x: [false; FOUR_WAY_LAYERS],
+            detail_blend: [1.0; FOUR_WAY_LAYERS],
         }
     }
 }
@@ -61,6 +63,9 @@ impl Material {
             {
                 out.uv_scale[layer] = uv;
             }
+            let factor_key =
+                if layer == 0 { "$detailblendfactor".to_owned() } else { format!("$detailblendfactor{n}") };
+            out.detail_blend[layer] = finite(self.get_f32(&factor_key), 1.0);
             if layer == 0 {
                 continue;
             }
@@ -101,6 +106,19 @@ mod tests {
         assert_eq!(f.lum_blend_factor, [0.0, 0.5, 0.7, 0.0]);
         assert_eq!(f.uv_scale, [[1.0, 1.0], [2.0, 3.0], [0.5, 0.5], [1.0, 1.0]]);
         assert_eq!(f.modulate_2x, [false, false, false, true]);
+        assert_eq!(f.detail_blend, [1.0; 4]);
+    }
+
+    #[test]
+    fn reads_the_detail_blend_factor_of_every_layer() {
+        let m = crate::parse(
+            r#"Lightmapped_4WayBlend {
+                "$basetexture" "a/1" "$detail" "d"
+                "$detailblendfactor" "0" "$detailblendfactor2" ".5" "$detailblendfactor3" "1" "$detailblendfactor4" "x"
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(m.four_way_blend().unwrap().detail_blend, [0.0, 0.5, 1.0, 1.0]);
     }
 
     #[test]

@@ -93,6 +93,63 @@ pub fn go_to(state: &mut AppState, f: &Finding) {
 
 const DETAIL_CODE: &str = "detail_candidates";
 
+fn is_overlay_fix(f: &Finding) -> bool {
+    f.fix == Some(hp_editor::optimize::overlays::FIX)
+}
+
+fn finding_overlays(f: &Finding) -> impl Iterator<Item = hp_editor::Id> + '_ {
+    f.objects.iter().filter_map(|o| match *o {
+        hp_editor::ObjRef::Entity(id) => Some(id),
+        hp_editor::ObjRef::Solid(_) => None,
+    })
+}
+
+pub fn fix_overlays(state: &mut AppState, ids: &[hp_editor::Id]) -> Option<hp_editor::optimize::overlays::FixReport> {
+    let fresh = !state.runtime.optimize.stale(state.doc.scene_revision());
+    match state.doc.fix_overlay_faces(ids) {
+        Ok(r) if r.overlays.is_empty() => {
+            state.notify(hp_app::Severity::Info, t!("optimize.overlay_fix_nothing"));
+            Some(r)
+        }
+        Ok(r) => {
+            state.notify(
+                hp_app::Severity::Success,
+                tf!("optimize.overlay_fixed", r.overlays.len(), r.faces_before, r.faces_after, r.created),
+            );
+            let fixed: std::collections::HashSet<hp_editor::Id> = r.overlays.iter().map(|o| o.id).collect();
+            let revision = state.doc.scene_revision();
+            if let Some(report) = state.runtime.optimize.report.as_mut() {
+                let report = std::sync::Arc::make_mut(report);
+                report.findings.retain(|f| !(is_overlay_fix(f) && finding_overlays(f).any(|id| fixed.contains(&id))));
+                if fresh {
+                    report.revision = revision;
+                }
+            }
+            state.runtime.optimize.selected = None;
+            Some(r)
+        }
+        Err(e) => {
+            state.notify(hp_app::Severity::Warning, tf!("optimize.overlay_fix_failed", e));
+            None
+        }
+    }
+}
+
+pub fn fix_all_overlays(state: &mut AppState) -> Option<hp_editor::optimize::overlays::FixReport> {
+    let ids: Vec<hp_editor::Id> = state
+        .runtime
+        .optimize
+        .report
+        .as_ref()
+        .map(|r| r.findings.iter().filter(|f| is_overlay_fix(f)).flat_map(finding_overlays).collect())
+        .unwrap_or_default();
+    if ids.is_empty() {
+        state.notify(hp_app::Severity::Info, t!("optimize.overlay_fix_nothing"));
+        return None;
+    }
+    fix_overlays(state, &ids)
+}
+
 pub fn select_detail(state: &mut AppState, f: &Finding) -> usize {
     let scene = state.doc.scene();
     let objs: Vec<hp_editor::ObjRef> = f
@@ -207,6 +264,16 @@ impl OptimizeWindow {
                 }
             }
         });
+        let fixable = report.findings.iter().filter(|f| is_overlay_fix(f)).count();
+        if fixable > 0
+            && self.topic.is_none_or(|t| t == Topic::Overlays)
+            && ui
+                .button(tf!("optimize.fix_all_overlays", fixable))
+                .on_hover_text(t!("optimize.fix_all_overlays_tip"))
+                .clicked()
+        {
+            fix_all_overlays(state);
+        }
         ui.separator();
         if report.findings.is_empty() {
             ui.label(RichText::new(t!("optimize.clean")).color(theme::success()));
@@ -239,6 +306,12 @@ impl OptimizeWindow {
                             {
                                 state.runtime.optimize.selected = Some(i);
                                 select_detail(state, f);
+                            }
+                            if is_overlay_fix(f)
+                                && ui.button(t!("optimize.fix")).on_hover_text(t!("optimize.fix_overlay_tip")).clicked()
+                            {
+                                let ids: Vec<hp_editor::Id> = finding_overlays(f).collect();
+                                fix_overlays(state, &ids);
                             }
                             if f.topic == Topic::Cubemaps
                                 && ui
@@ -296,7 +369,8 @@ mod tests {
                     .args(vec!["2".to_owned(), "1024".to_owned()]),
                 Finding::new(Topic::Overlays, "overlay_many_faces", Impact::Medium, "m".to_owned())
                     .objects(vec![hp_editor::ObjRef::Entity(1)])
-                    .args(vec!["1".to_owned(), "20".to_owned(), "19".to_owned(), "x".to_owned(), "64".to_owned()]),
+                    .args(vec!["1".to_owned(), "20".to_owned(), "19".to_owned(), "x".to_owned(), "64".to_owned()])
+                    .fix(hp_editor::optimize::overlays::FIX),
             ],
             vis: Some(hp_editor::optimize::vis::VisReport {
                 clusters: 12,
@@ -329,6 +403,52 @@ mod tests {
         assert_eq!(n, usize::from(world_two));
         assert_eq!(state.doc.scene_revision(), before, "selecting never edits the map");
         state.runtime.optimize.error = Some("x".to_owned());
+        run_ctx(&mut state, |ctx, state| w.show(ctx, state));
+    }
+
+    #[test]
+    fn fix_buttons_trim_overlays_in_one_step_and_drop_their_findings() {
+        let _lang = crate::lang_lock();
+        crate::register_translations();
+        let mut state = test_state();
+        let kv = |k: &str, v: &str| (k.to_owned(), v.to_owned());
+        let ov = state
+            .doc
+            .create_point_entity(
+                "info_overlay",
+                DVec3::ZERO,
+                &[
+                    kv("material", "overlays/road01"),
+                    kv("sides", "1 7"),
+                    kv("BasisOrigin", "0 0 0"),
+                    kv("BasisNormal", "0 0 1"),
+                    kv("BasisU", "1 0 0"),
+                    kv("BasisV", "0 1 0"),
+                    kv("uv0", "-32 -32 0"),
+                    kv("uv1", "-32 32 0"),
+                    kv("uv2", "32 32 0"),
+                    kv("uv3", "32 -32 0"),
+                ],
+            )
+            .expect("overlay");
+        let findings = hp_editor::optimize::overlays::findings(&state.doc);
+        assert_eq!(findings.len(), 1);
+        assert!(is_overlay_fix(&findings[0]));
+        state.runtime.optimize.report =
+            Some(Arc::new(OptimizeReport { findings, revision: state.doc.scene_revision(), ..Default::default() }));
+        state.runtime.optimize.show = true;
+        let mut w = OptimizeWindow::default();
+        run_ctx(&mut state, |ctx, state| w.show(ctx, state));
+        let undo = state.doc.history_len().0;
+        let r = fix_all_overlays(&mut state).expect("fixed");
+        assert_eq!((r.faces_before, r.faces_after, r.created), (2, 1, 0));
+        assert_eq!(state.doc.history_len().0, undo + 1, "one undo step");
+        assert_eq!(state.doc.scene().entity(ov).unwrap().entity.get("sides"), Some("1"));
+        let report = state.runtime.optimize.report.clone().expect("report");
+        assert!(report.findings.is_empty(), "the fixed finding is gone");
+        assert!(!state.runtime.optimize.stale(state.doc.scene_revision()));
+        assert!(fix_all_overlays(&mut state).is_none());
+        assert!(fix_overlays(&mut state, &[ov]).is_some_and(|r| r.overlays.is_empty()));
         run_ctx(&mut state, |ctx, state| w.show(ctx, state));
     }
 }

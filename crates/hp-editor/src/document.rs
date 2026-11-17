@@ -459,6 +459,14 @@ impl Document {
         self.next_side_id
     }
 
+    pub fn rewind_id_counters(&mut self, object: Id, side: Id) {
+        if self.history.tx.is_some() {
+            return;
+        }
+        self.next_object_id = self.next_object_id.min(object.max(1));
+        self.next_side_id = self.next_side_id.min(side.max(1));
+    }
+
     pub(crate) fn alloc_object_id(&mut self) -> Id {
         let id = self.next_object_id;
         self.next_object_id = self.next_object_id.saturating_add(1);

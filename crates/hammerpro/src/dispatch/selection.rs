@@ -35,6 +35,8 @@ const HANDLED: &[Action] = &[
     Action::AlignCenterHorizontal,
     Action::AlignCenterVertical,
     Action::ToggleGizmoLocal,
+    Action::CycleGizmoMode,
+    Action::CycleEditMode,
     Action::RandomRotate,
     Action::RandomRotateDialog,
 ];
@@ -83,6 +85,14 @@ impl Package for Selection {
                 let s = &mut app.state.settings.selection;
                 s.gizmo_local = !s.gizmo_local;
                 app.state.settings_dirty = true;
+            }
+            Action::CycleGizmoMode | Action::CycleEditMode => {
+                if app.state.tool != hp_app::ToolId::Select && app.has_tool(hp_app::ToolId::Select) {
+                    app.switch_tool(hp_app::ToolId::Select);
+                }
+                if !app.active_tool_action(action) {
+                    return false;
+                }
             }
             _ => return false,
         }

@@ -32,6 +32,26 @@ The right click menu also offers **Create as cylinder** and **Create as arch**: 
 
 Drawn on a wall, the box grows away from the wall; drawn under a ceiling, it grows downward. A small marker shows the snapped surface point under the cursor before you start, and the size `x x y x z` is shown above the box while drawing.
 
+### Limits and direction in the 3D view
+
+Four toggles in the options bar (**3D draw:**) and in Settings > **Brushes** > **Block tool in the 3D view** shape a box drawn on a surface in the 3D view. Hold `Ctrl` while drawing (or when you click to create) to ignore the three limits for that moment (`Alt` stays "no snapping").
+
+| Toggle | What it does | Default |
+|---|---|---|
+| **Direction** | Before you drag, an arrow at the cursor points where the box will grow, with its axis label (**+Z**, **-X**...), and the face under the cursor is highlighted, so at an edge or a corner you see which face you are on. The arrow stays during the base drag. | on |
+| **Snap to contact** | While you set the height, rays are cast along the growth direction from the whole footprint (corners, edges and a grid inside). The height stops at the nearest hit, so the box ends flush with the opposite wall, floor or ceiling (or a displacement), and the size label says **(snapped)**. When nothing is reached, the height snaps to the grid as usual. | on |
+| **Limit to face** | The footprint stays inside the face you started on, any convex face, rotated and slanted ones too (the face seen along the growth axis). That face is outlined in cyan while the toggle is on. | off |
+| **No overlap** | The height stops at the first brush the box would intersect, with an exact convex test against every visible brush (even one thinner than the rays). The box turns red with a red quad at the limit and the label says **(stopped at a brush)**. A box that already overlaps a brush at its base is shown red with **(overlaps a brush)** and a click or `Enter` does not create it. | off |
+
+Snap to contact and Direction are on because they are safety limits most mappers expect (a slip can no longer push a box through the floor). Limit to face and No overlap change what you can draw, so they are opt in. Turn every toggle off for the plain Hammer and Hammer++ behavior.
+
+Direction keys, in a 3D view:
+
+- `R` flips the growth direction (the box grows into the brush instead of out of it), before or while drawing. **Flip** in the options bar does the same.
+- `X`, `Y` or `Z` while you drag the base lock the box to that axis (press it again to unlock). The base restarts on the plane through its first corner. **Axis:** **Auto** / **X** / **Y** / **Z** in the options bar sets the lock before you start. **Auto** uses the axis nearest the face normal. Once the base is released, the direction stays fixed.
+
+The new brush is still one undo step. The scripted names (`set_tool_options`, tool `block`) are `direction_preview`, `snap_contact`, `limit_to_face`, `no_overlap`, `draw_axis` (`auto`, `x`, `y`, `z`) and `flip`; the first four are the saved settings `brush.block_draw.direction_preview`, `brush.block_draw.snap_contact`, `brush.block_draw.limit_to_face` and `brush.block_draw.no_overlap` (`set_setting`).
+
 ## Changing the count with the mouse wheel
 
 Like adding a cylinder in Blender, the mouse wheel changes the count of the shape while you create it: during the drag in a 2D view, while the box is pending (before `Enter`), and during the base and height steps in the 3D view.
@@ -122,6 +142,10 @@ For round primitives a small thumbnail next to the parameters shows the shape se
 | Setting | Where | Default |
 |---|---|---|
 | **Orient primitives to the drawing view** (`[brush] reorient_primitives`) | Settings > **Brushes** | on |
+| **Direction** (`[brush.block_draw] direction_preview`) | Settings > **Brushes** | on |
+| **Snap to contact** (`[brush.block_draw] snap_contact`) | Settings > **Brushes** | on |
+| **Limit to face** (`[brush.block_draw] limit_to_face`) | Settings > **Brushes** | off |
+| **No overlap** (`[brush.block_draw] no_overlap`) | Settings > **Brushes** | off |
 | **Default material** (`[edit] default_material`) | Settings > **Editing** | `dev/dev_measuregeneric01b` |
 | **Default texture scale** (`[edit] default_texture_scale`) | Settings > **Editing** | 0.25 |
 | **Default lightmap scale** (`[edit] default_lightmap_scale`) | Settings > **Editing** | 16 |
@@ -133,7 +157,7 @@ The Settings window opens with **Tools > Options...** (`Ctrl+,`).
 - Select a brush before drawing in the Top view: the new box takes the height range of the selection. Select a wall of the room first and the new box gets the full wall height.
 - For stairs, draw the box with the width, the run and the total rise you want and set **Steps** or **Step height**. For a spiral staircase, use the spiral stairs primitive (or an arch with **Rise** set to the step height). Choose the side they rise toward with **Direction** (+Y, -Y, +X, -X or the longest side of the box). For a helical pipe, use a torus with **Rise** and an **Arc** above 360.
 - Turn **Orient to view** on and draw a cylinder in the Front view to get a horizontal pipe along X without rotating it afterwards.
-- The scripted name of each option (for `--script` files and the MCP tool `set_tool_options`): `kind`, `sides`, `wall`, `arc`, `start`, `rise`, `tube_sides`, `ring`, `torus_arc`, `torus_start`, `torus_rise`, `steps`, `step_height`, `open`, `inner`, `spiral_angle`, `spiral_start`, `slope`, `direction`, `base`, `capital`, `inset`, `door_width`, `door_height`, `thickness`, `door_arch`, `door_arch_radius`, `door_arch_segments`, `reorient`, `preview`, `tex_scale`, `keep_active`, `create_as`.
+- The scripted name of each option (for `--script` files and the MCP tool `set_tool_options`): `kind`, `sides`, `wall`, `arc`, `start`, `rise`, `tube_sides`, `ring`, `torus_arc`, `torus_start`, `torus_rise`, `steps`, `step_height`, `open`, `inner`, `spiral_angle`, `spiral_start`, `slope`, `direction`, `base`, `capital`, `inset`, `door_width`, `door_height`, `thickness`, `door_arch`, `door_arch_radius`, `door_arch_segments`, `reorient`, `preview`, `tex_scale`, `keep_active`, `create_as`, `direction_preview`, `snap_contact`, `limit_to_face`, `no_overlap`, `draw_axis`, `flip`.
 
 ## FAQ
 

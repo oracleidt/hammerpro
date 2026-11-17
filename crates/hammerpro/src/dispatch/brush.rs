@@ -188,6 +188,7 @@ impl Package for Brush {
     fn tick(&self, app: &mut HammerProApp, ctx: &egui::Context) {
         app.poll_nodraw_scan(ctx);
         app.poll_func_detail(ctx);
+        hp_tools_create::sync_block_options(&app.state);
     }
 
     fn dialogs(&self, app: &mut HammerProApp, ctx: &egui::Context) {

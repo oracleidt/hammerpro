@@ -69,7 +69,12 @@ Le conseiller les signale dans le sujet **Cubemaps** (il ne les modifie jamais).
 
 ## Overlays
 
-Un overlay (`info_overlay`) est découpé en un fragment par face de brush de sa liste `sides`, même les faces que son rectangle n'atteint jamais. Une longue liste coûte des fragments et du temps de compilation, et le moteur refuse un overlay sur plus de 64 faces. Le conseiller signale les overlays sur plus de 16 faces (plus de 64 : impact fort) et ceux qui listent 4 faces ou plus que leur rectangle ne touche pas, dans le thème **Overlays**. **Aller à** sélectionne l'overlay et le cadre. Le conseiller ne le modifie jamais : lancez **Outils > Opérations sur les brushes > Rogner les faces de l'overlay** (aussi dans le menu du clic droit des vues) sur les overlays sélectionnés pour retirer les faces que leur rectangle ne touche pas, en une étape d'annulation. Les faces touchées et les identifiants de faces qui n'existent plus sont gardés ; un overlay qui ne touche aucune de ses faces n'est pas modifié.
+Un overlay (`info_overlay`) est découpé en un fragment par face de brush de sa liste `sides`, même les faces que son rectangle n'atteint jamais. Une longue liste coûte des fragments et du temps de compilation, et le moteur refuse un overlay sur plus de 64 faces. Le conseiller signale les overlays sur plus de 16 faces (plus de 64 : impact fort) et ceux qui listent des faces que leur rectangle ne touche pas, dans le thème **Overlays**. **Aller à** sélectionne l'overlay et le cadre. Le conseiller ne modifie rien de lui même ; chaque constat d'overlay a un bouton **Corriger**, et **Corriger tous les overlays (N)** au dessus de la liste corrige tous les constats d'overlay d'un coup. Une correction, en une étape d'annulation (**Correction des faces d'overlay**) :
+
+- retire de la liste `sides` les faces que le rectangle de l'overlay ne touche pas (les faces touchées sont gardées ; un overlay qui ne touche aucune de ses faces n'est pas modifié) ;
+- découpe un overlay qui couvre vraiment plus de 64 faces en plusieurs overlays de 64 faces au plus : même matériau, mêmes clés, nom et sorties, chaque morceau reçoit sa part du rectangle et de `StartU`, `EndU`, `StartV`, `EndV`, la texture continue donc d'un morceau à l'autre sans raccord.
+
+Un message donne les chiffres : overlays corrigés, faces de brush avant et après, overlays ajoutés par découpe. Les constats corrigés quittent la liste. **Outils > Opérations sur les brushes > Rogner les faces de l'overlay** rogne toujours les overlays sélectionnés sans le conseiller, et [Vérifier les problèmes](../features/check-problems.md) corrige de la même façon un overlay sur plus de 64 faces.
 
 ## La fenêtre Optimiser la map
 
@@ -93,7 +98,7 @@ Les vérifications :
 | Areaportals | Chaque areaportal : un seul brush, fin, ouverture étroite, scellé sur les quatre côtés, ne touchant pas un autre, lien et état de départ de la porte, séparant vraiment deux zones. Les portes sans areaportal et les ouvertures sans porte qui sont le seul passage entre deux groupes de visleaves reçoivent un areaportal suggéré, ajusté à l'ouverture. |
 | Lumières | Lumières flottantes, lampes sans lumière, lumières bloquées, lampes du même modèle avec des lumières différentes, lumières redondantes, spots dirigés dans les murs, trop de lumières commutables, light_environment manquant, valeurs d'atténuation incorrectes. |
 | Cubemaps | Pièces avec des matériaux réfléchissants et aucun cubemap qui les voit, faces qui prennent le cubemap d'une autre pièce ou derrière un mur, faces loin de leur cubemap, cubemaps dans des brushes, dans le vide, au ras du sol, trop proches, trop grands ou trop petits, trop de cubemaps. Les corrections se placent avec l'[outil Cubemaps](../features/cubemaps.md). |
-| Overlays | Overlays sur plus de 16 faces de brush (au delà de 64 le moteur les refuse) et overlays qui listent des faces que leur rectangle ne touche pas. Se corrige avec **Rogner les faces de l'overlay**. |
+| Overlays | Overlays sur plus de 16 faces de brush (au delà de 64 le moteur les refuse) et overlays qui listent des faces que leur rectangle ne touche pas. **Corriger** et **Corriger tous les overlays** rognent les listes de faces et découpent les overlays au delà de la limite. |
 
 ## Avec un assistant IA (MCP)
 
@@ -113,6 +118,7 @@ Les mêmes vérifications sont des outils MCP, et là elles peuvent appliquer le
 | `suggest_cubemaps` | Cubemaps suggérés à hauteur des yeux et corrections de sides ; `apply` les place. |
 | `show_cubemap_assignment` | Affiche les faces colorées selon leur cubemap dans les vues. |
 | `trim_overlay_faces` | Retire des overlays les faces que leur rectangle ne touche pas (`ids`, `all`, `preview`), en une étape d'annulation. |
+| `fix_overlay_faces` | Le bouton **Corriger** : rogne les listes de faces et découpe les overlays sur plus de 64 faces (`ids`, `all`, `preview`), en une étape d'annulation, avec le nombre de faces avant et après. `optimize_map` avec `apply` safe ou all le fait aussi. |
 
 Sur une grande map l'analyse peut durer plus longtemps qu'un appel : l'outil répond alors `running: true` et l'analyse continue en arrière-plan ; rappeler l'outil avec les mêmes arguments (sans modifier la map) renvoie le résultat. `vis: "auto"` (par défaut) utilise la visibilité exacte jusqu'à 4000 brushes et la rapide au-delà.
 

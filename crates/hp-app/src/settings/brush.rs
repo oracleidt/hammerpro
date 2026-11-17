@@ -26,6 +26,22 @@ pub struct BrushSettings {
     pub extrude_mode: ExtrudeDirectionSetting,
     pub extrude_axis: ExtrudeAxisSetting,
     pub extrude_grow: bool,
+    pub block_draw: BlockDrawSettings,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BlockDrawSettings {
+    pub snap_contact: bool,
+    pub limit_to_face: bool,
+    pub no_overlap: bool,
+    pub direction_preview: bool,
+}
+
+impl Default for BlockDrawSettings {
+    fn default() -> Self {
+        Self { snap_contact: true, limit_to_face: false, no_overlap: false, direction_preview: true }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -157,6 +173,7 @@ impl Default for BrushSettings {
             extrude_mode: ExtrudeDirectionSetting::Normal,
             extrude_axis: ExtrudeAxisSetting::Auto,
             extrude_grow: false,
+            block_draw: BlockDrawSettings::default(),
         }
     }
 }
@@ -170,6 +187,8 @@ mod tests {
         let s: BrushSettings = toml::from_str("clip_measurements = false").expect("parse");
         assert_eq!(s, BrushSettings { clip_measurements: false, ..BrushSettings::default() });
         assert!(s.reorient_primitives);
+        assert!(s.block_draw.snap_contact && s.block_draw.direction_preview);
+        assert!(!s.block_draw.limit_to_face && !s.block_draw.no_overlap);
         let back: BrushSettings = toml::from_str(&toml::to_string(&s).expect("write")).expect("read");
         assert_eq!(back, s);
     }

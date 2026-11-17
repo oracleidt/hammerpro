@@ -294,15 +294,6 @@ pub const TR: TrTable = &[
         "Places env_cubemap entities with sizes that match the new lighting, only when the map has no env_cubemap of its own (-rtnocubemaps turns it off).",
         "Place des entités env_cubemap de tailles adaptées au nouvel éclairage, seulement quand la map n'a pas d'env_cubemap à elle (-rtnocubemaps le désactive).",
     ),
-    ("raytrace.reflections", "Ray traced reflections", "Reflets ray tracés"),
-    (
-        "raytrace.reflections_tip",
-        "Renders every env_cubemap (placed or automatic) and the default cubemap with the ray tracer from the lit map and writes them into the BSP like buildcubemaps, so reflections are right the first time the map loads. Auto: on with the Final and Optimal qualities (-rtreflections forces it on, -rtnoreflections off).",
-        "Rend chaque env_cubemap (placé ou automatique) et la cubemap par défaut avec le ray tracer à partir de la map éclairée et les écrit dans le BSP comme buildcubemaps, pour des reflets justes dès le premier chargement de la map. Auto : activé avec les qualités Final et Optimal (-rtreflections force l'activation, -rtnoreflections désactive).",
-    ),
-    ("raytrace.reflections.auto", "Auto (Final and Optimal)", "Auto (Final et Optimal)"),
-    ("raytrace.reflections.on", "Always", "Toujours"),
-    ("raytrace.reflections.off", "Off (run buildcubemaps in game)", "Désactivé (buildcubemaps en jeu)"),
     ("raytrace.tonemap", "Tonemap hints", "Réglages de tonemap"),
     (
         "raytrace.tonemap_tip",

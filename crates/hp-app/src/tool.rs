@@ -219,6 +219,15 @@ pub trait Tool {
         ToolFlow::Ignored
     }
 
+    fn secondary_click(
+        &mut self,
+        _state: &mut crate::state::AppState,
+        _view: &crate::view::ViewInfo,
+        _pos: egui::Pos2,
+    ) -> bool {
+        false
+    }
+
     fn key_input(&mut self, _state: &mut crate::state::AppState, _ctx: &egui::Context) -> bool {
         false
     }

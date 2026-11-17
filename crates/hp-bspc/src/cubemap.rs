@@ -4,6 +4,7 @@ use glam::DVec3;
 use crate::materials::{MaterialFacts, MaterialSource};
 use crate::winding::Winding;
 
+pub mod boxproj;
 mod sky;
 
 pub const MAX_SAMPLES: usize = 1024;
@@ -24,6 +25,7 @@ struct MaterialInfo {
     dependent: Option<(String, String)>,
     raw: Option<hp_kv::Block>,
     flattened: Option<hp_vmt::Material>,
+    resolved: Option<hp_vmt::Material>,
 }
 
 pub struct Cubemaps<'a> {
@@ -45,6 +47,10 @@ pub struct Cubemaps<'a> {
     auto: bool,
     props: Vec<DVec3>,
     served: Vec<Served>,
+    boxes: Vec<Option<(DVec3, DVec3)>>,
+    box_on: bool,
+    box_patches: AHashMap<String, (usize, String)>,
+    shaders_added: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -222,6 +228,10 @@ impl<'a> Cubemaps<'a> {
             auto: false,
             props: Vec::new(),
             served: Vec::new(),
+            boxes: Vec::new(),
+            box_on: false,
+            box_patches: AHashMap::new(),
+            shaders_added: false,
         };
         for e in entities.iter().skip(1) {
             if e.classname.to_ascii_lowercase().starts_with("prop_") {
@@ -242,6 +252,7 @@ impl<'a> Cubemaps<'a> {
             });
             c.parallax_names.push(e.get("parallaxobb").unwrap_or("").trim().to_owned());
             c.parallax.push(None);
+            c.boxes.push(e.get(boxproj::BOX_KEY).and_then(boxproj::parse_box));
             for id in e.get("sides").unwrap_or("").split_whitespace() {
                 let Ok(id) = id.parse::<i64>() else { continue };
                 let id = id as u32;
@@ -273,6 +284,91 @@ impl<'a> Cubemaps<'a> {
         self.auto = on;
     }
 
+    pub fn set_box_projection(&mut self, on: bool) {
+        self.box_on = on;
+    }
+
+    pub fn box_patch(&self, patched: &str) -> Option<(usize, &str)> {
+        self.box_patches.get(&lower_name(patched)).map(|(s, m)| (*s, m.as_str()))
+    }
+
+    pub fn box_count(&self) -> usize {
+        self.box_patches.len()
+    }
+
+    pub fn overlay_name(&self, material: &str, sample: usize) -> String {
+        let o = self.samples[sample].origin;
+        lower_name(&format!(
+            "maps/{}/hpbox/{}_{}_{}_{}",
+            self.map,
+            crate::materials::material_path(&material.replace('\\', "/")),
+            o[0],
+            o[1],
+            o[2]
+        ))
+    }
+
+    pub fn plain_patch(&mut self, material: &str, sample: usize) -> Option<String> {
+        self.patch(material, sample, 0)
+    }
+
+    fn box_ok(&mut self, material: &str, sample: usize, winding: Option<&Winding>, offset: DVec3) -> bool {
+        if !self.box_on {
+            return false;
+        }
+        let Some(b) = self.boxes.get(sample).copied().flatten() else { return false };
+        let Some(w) = winding.filter(|w| !w.points.is_empty()) else { return false };
+        let center = w.points.iter().fold(DVec3::ZERO, |a, p| a + *p) / w.points.len() as f64 + offset;
+        if !boxproj::inside(b, center) {
+            return false;
+        }
+        let info = self.info(material, None);
+        info.env_cubemap && info.dependent.is_none() && info.resolved.as_ref().is_some_and(boxproj::supported)
+    }
+
+    fn box_variant(&mut self, material: &str, sample: usize) -> Option<String> {
+        let memo = (format!("{}\u{1}box", lower_name(material)), sample);
+        if let Some(done) = self.patched.get(&memo) {
+            return done.clone();
+        }
+        let result = self.make_box_patch(material, sample);
+        self.patched.insert(memo, result.clone());
+        result
+    }
+
+    fn make_box_patch(&mut self, material: &str, sample: usize) -> Option<String> {
+        let origin = self.samples[sample].origin;
+        let b = self.boxes.get(sample).copied().flatten()?;
+        let resolved = self.info(material, None).resolved.clone()?;
+        let patched = format!("{}_pc", self.patched_name(&material.replace('\\', "/"), origin));
+        let overlay = self.overlay_name(material, sample);
+        if patched.len() >= TEXTURE_NAME_LENGTH - 1 || overlay.len() >= TEXTURE_NAME_LENGTH - 1 {
+            return None;
+        }
+        let cubemap = lower_name(&format!("maps/{}/c{}_{}_{}", self.map, origin[0], origin[1], origin[2]));
+        let mut insert = PatchBlock::default();
+        insert.set("$envmap", &cubemap);
+        insert.set("$envmaptint", "[0 0 0]");
+        let mut root = PatchBlock::default();
+        root.set("include", &format!("materials/{}.vmt", keep_separators(material)));
+        root.children.push(("insert".to_owned(), insert));
+        let mut text = String::new();
+        root.write("patch", 0, &mut text);
+        let text = text.replace("\r\n", "\n").replace('\n', "\r\n");
+        self.add_file(&format!("materials/{patched}.vmt"), text.into_bytes(), true);
+        let (look, mask) = boxproj::look_of(&resolved);
+        let vmt = boxproj::overlay_vmt(&look, mask.as_deref(), &cubemap, b, origin);
+        self.add_file(&format!("materials/{overlay}.vmt"), vmt.into_bytes(), true);
+        if !self.shaders_added {
+            for (path, data) in boxproj::SHADER_FILES {
+                self.add_file(path, data.to_vec(), true);
+            }
+            self.shaders_added = true;
+        }
+        self.box_patches.insert(lower_name(&patched), (sample, material.to_owned()));
+        Some(patched)
+    }
+
     pub fn parallax_of(&self, sample: usize) -> Option<&str> {
         self.parallax.get(sample).and_then(|p| p.as_deref())
     }
@@ -301,6 +397,20 @@ impl<'a> Cubemaps<'a> {
         offset: DVec3,
         normal: DVec3,
     ) -> Option<String> {
+        self.side_material_with(material, facts, side_id, winding, offset, normal, true)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn side_material_with(
+        &mut self,
+        material: &str,
+        facts: &MaterialFacts,
+        side_id: u32,
+        winding: Option<&Winding>,
+        offset: DVec3,
+        normal: DVec3,
+        allow_box: bool,
+    ) -> Option<String> {
         self.seen.insert(side_id);
         if self.samples.is_empty() || self.map.is_empty() {
             return None;
@@ -313,7 +423,11 @@ impl<'a> Cubemaps<'a> {
             Some(&(s, m)) => (s, m),
             None => (self.nearest(winding, offset, normal), false),
         };
-        let name = self.patch(material, sample, 0);
+        let boxed = allow_box && side_id != u32::MAX && self.box_ok(material, sample, winding, offset);
+        let name = match boxed.then(|| self.box_variant(material, sample)).flatten() {
+            Some(n) => Some(n),
+            None => self.patch(material, sample, 0),
+        };
         self.note_used(sample, name.is_some());
         if self.auto
             && name.is_some()
@@ -525,6 +639,7 @@ impl<'a> Cubemaps<'a> {
             info.dependent = Some((var.to_owned(), dep.to_owned()));
             break;
         }
+        info.resolved = Some(resolved);
         info.raw = Some(raw);
         info
     }
@@ -1507,6 +1622,81 @@ mod tests {
         let center = to_cube(&m, DVec3::new(256.0, 128.0, 128.0));
         assert!((center - DVec3::splat(0.5)).length() < 1e-4, "{center}");
         assert!(crate::validate::validate(&out.bsp).is_empty());
+    }
+
+    #[test]
+    fn box_projected_cubemaps_get_overlays_and_the_shader() {
+        let files = Files(
+            vec![
+                (
+                    "materials/tile/floor.vmt",
+                    "\"LightmappedGeneric\" { \"$basetexture\" \"tile/floor\" \"$bumpmap\" \"tile/floor_normal\" \"$normalmapalphaenvmapmask\" \"1\" \"$envmap\" \"env_cubemap\" \"$envmaptint\" \"[.5 .5 .5]\" }",
+                ),
+                (
+                    "materials/glass/pane.vmt",
+                    "\"LightmappedGeneric\" { \"$basetexture\" \"glass/pane\" \"$envmap\" \"env_cubemap\" \"$translucent\" \"1\" }",
+                ),
+                ("materials/dev/wall.vmt", "\"LightmappedGeneric\" { \"$basetexture\" \"dev/wall\" }"),
+            ],
+            sky("sky_day01_01", 3, 0x34c),
+        );
+        let mut id = 1;
+        let t = 16.0;
+        let (lo, hi) = (DVec3::ZERO, DVec3::new(512.0, 256.0, 256.0));
+        let mut solids = String::new();
+        let boxes = [
+            (DVec3::new(lo.x - t, lo.y - t, lo.z - t), DVec3::new(hi.x + t, hi.y + t, lo.z), "tile/floor"),
+            (DVec3::new(lo.x - t, lo.y - t, hi.z), DVec3::new(hi.x + t, hi.y + t, hi.z + t), "dev/wall"),
+            (DVec3::new(lo.x - t, lo.y - t, lo.z), DVec3::new(lo.x, hi.y + t, hi.z), "glass/pane"),
+            (DVec3::new(hi.x, lo.y - t, lo.z), DVec3::new(hi.x + t, hi.y + t, hi.z), "dev/wall"),
+            (DVec3::new(lo.x, lo.y - t, lo.z), DVec3::new(hi.x, lo.y, hi.z), "dev/wall"),
+            (DVec3::new(lo.x, hi.y, lo.z), DVec3::new(hi.x, hi.y + t, hi.z), "dev/wall"),
+        ];
+        for (a, b, m) in boxes {
+            solids += &block(&mut id, a, b, m);
+        }
+        let text = format!(
+            "world\n{{\n\t\"id\" \"1\"\n\t\"classname\" \"worldspawn\"\n\t\"skyname\" \"sky_day01_01\"\n{solids}}}\nentity\n{{\n\t\"id\" \"9001\"\n\t\"classname\" \"env_cubemap\"\n\t\"origin\" \"256 128 64\"\n\t\"hp_pcbox\" \"0 0 0 512 256 256\"\n}}\nentity\n{{\n\t\"id\" \"9000\"\n\t\"classname\" \"info_player_start\"\n\t\"origin\" \"32 32 16\"\n}}\n"
+        );
+        let map = hp_vmf::parse(&text).unwrap();
+        let run = |on: bool| {
+            let opts = crate::CompileOptions {
+                map_name: Some("pc_room".to_owned()),
+                parallax_cubemaps: on,
+                ..Default::default()
+            };
+            let mut lines = Vec::new();
+            let out = crate::compile(&map, &files, &crate::props::NoModels, &opts, &mut |l| lines.push(l.to_owned()))
+                .unwrap();
+            (out, lines)
+        };
+        let (plain, _) = run(false);
+        let (out, lines) = run(true);
+        assert!(lines.iter().any(|l| l.contains("Parallax corrected cubemaps: 1 faces")), "{lines:?}");
+        let bsp = hp_bsp::Bsp::from_vec(out.bsp.clone()).unwrap();
+        let pak = bsp.pakfile().unwrap();
+        let read = |n: &str| pak.read_name(n).ok().flatten().map(|d| String::from_utf8_lossy(&d).into_owned());
+        let patched = read("materials/maps/pc_room/tile/floor_256_128_64_pc.vmt").expect("patched floor");
+        assert!(
+            patched.contains("\"$envmaptint\"\t\t\"[0 0 0]\"") && patched.contains("maps/pc_room/c256_128_64"),
+            "{patched}"
+        );
+        let overlay = read("materials/maps/pc_room/hpbox/tile/floor_256_128_64.vmt").expect("overlay material");
+        assert!(overlay.contains("screenspace_general") && overlay.contains("tile/floor_normal"), "{overlay}");
+        assert!(pak.read_name("shaders/fxc/hp_boxcube_ps20b.vcs").ok().flatten().is_some());
+        assert!(pak.read_name("shaders/fxc/hp_boxcube_vs20.vcs").ok().flatten().is_some());
+        assert!(
+            read("materials/maps/pc_room/glass/pane_256_128_64.vmt").is_some(),
+            "translucent glass keeps the plain patch"
+        );
+        assert!(read("materials/maps/pc_room/glass/pane_256_128_64_pc.vmt").is_none());
+        let overlays = bsp.lump(hp_bsp::lump::OVERLAYS).unwrap().len();
+        let before = hp_bsp::Bsp::from_vec(plain.bsp.clone()).unwrap().lump(hp_bsp::lump::OVERLAYS).unwrap().len();
+        assert_eq!((before, overlays), (0, 352), "one overlay record for the floor");
+        assert!(crate::validate::validate(&out.bsp).is_empty(), "{:?}", crate::validate::validate(&out.bsp));
+        let mut big = crate::cubemap::Cubemaps::new(&[], Some("x"), &files);
+        big.set_box_projection(true);
+        assert_eq!(big.box_count(), 0);
     }
 
     #[test]

@@ -162,28 +162,34 @@ impl RayShaftSourceSetting {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum RayReflectionsSetting {
+pub enum CubemapBuildSetting {
     #[default]
     Auto,
     On,
     Off,
 }
 
-impl RayReflectionsSetting {
-    pub const ALL: [RayReflectionsSetting; 3] =
-        [RayReflectionsSetting::Auto, RayReflectionsSetting::On, RayReflectionsSetting::Off];
+pub type RayReflectionsSetting = CubemapBuildSetting;
+
+impl CubemapBuildSetting {
+    pub const ALL: [CubemapBuildSetting; 3] =
+        [CubemapBuildSetting::Auto, CubemapBuildSetting::On, CubemapBuildSetting::Off];
 
     pub fn name(self) -> &'static str {
         match self {
-            RayReflectionsSetting::Auto => "auto",
-            RayReflectionsSetting::On => "on",
-            RayReflectionsSetting::Off => "off",
+            CubemapBuildSetting::Auto => "auto",
+            CubemapBuildSetting::On => "on",
+            CubemapBuildSetting::Off => "off",
         }
     }
 
-    pub fn parse(text: &str) -> Option<RayReflectionsSetting> {
-        let t = text.trim();
-        RayReflectionsSetting::ALL.into_iter().find(|c| c.name().eq_ignore_ascii_case(t))
+    pub fn parse(text: &str) -> Option<CubemapBuildSetting> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "auto" => Some(CubemapBuildSetting::Auto),
+            "on" | "always" | "true" => Some(CubemapBuildSetting::On),
+            "off" | "never" | "false" => Some(CubemapBuildSetting::Off),
+            _ => None,
+        }
     }
 }
 
@@ -433,6 +439,8 @@ pub struct CompileSettings {
     pub rad_file_enabled: bool,
     pub rad_file: String,
     pub raytracing: RayTracingSettings,
+    pub build_cubemaps: CubemapBuildSetting,
+    pub parallax_cubemaps: CubemapBuildSetting,
     pub bsp_flag_choices: BTreeMap<String, FlagChoiceSetting>,
     pub rad_flag_choices: BTreeMap<String, FlagChoiceSetting>,
     pub expert: bool,
@@ -502,6 +510,8 @@ impl Default for CompileSettings {
             rad_file_enabled: false,
             rad_file: String::new(),
             raytracing: RayTracingSettings::default(),
+            build_cubemaps: CubemapBuildSetting::Auto,
+            parallax_cubemaps: CubemapBuildSetting::Off,
             bsp_flag_choices: BTreeMap::new(),
             rad_flag_choices: BTreeMap::new(),
             expert: false,
@@ -516,6 +526,13 @@ impl Default for CompileSettings {
 }
 
 impl CompileSettings {
+    pub fn merge_legacy_reflections(&mut self) {
+        let legacy = std::mem::take(&mut self.raytracing.reflections);
+        if legacy != CubemapBuildSetting::Auto && self.build_cubemaps == CubemapBuildSetting::Auto {
+            self.build_cubemaps = legacy;
+        }
+    }
+
     pub fn game_key(&self) -> String {
         self.target.as_deref().map(str::trim).filter(|t| !t.is_empty()).unwrap_or(hp_fs::GMOD_ID).to_ascii_lowercase()
     }
@@ -624,6 +641,23 @@ impl CompileSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_old_ray_traced_reflections_setting_moves_to_build_cubemaps() {
+        let mut s = CompileSettings::default();
+        assert_eq!((s.build_cubemaps, s.parallax_cubemaps), (CubemapBuildSetting::Auto, CubemapBuildSetting::Off));
+        s.raytracing.reflections = CubemapBuildSetting::On;
+        s.merge_legacy_reflections();
+        assert_eq!((s.build_cubemaps, s.raytracing.reflections), (CubemapBuildSetting::On, CubemapBuildSetting::Auto));
+        s.raytracing.reflections = CubemapBuildSetting::Off;
+        s.merge_legacy_reflections();
+        assert_eq!(s.build_cubemaps, CubemapBuildSetting::On, "a choice made in the new setting wins");
+        let old: CompileSettings = toml::from_str("[raytracing]\nreflections = \"Off\"\n").expect("old settings");
+        let mut all = crate::settings::Settings { compile: old, ..Default::default() };
+        all.migrate();
+        assert_eq!(all.compile.build_cubemaps, CubemapBuildSetting::Off);
+        assert_eq!(CubemapBuildSetting::parse("Always"), Some(CubemapBuildSetting::On));
+    }
 
     #[test]
     fn the_lights_file_comes_from_the_rad_setting_first() {

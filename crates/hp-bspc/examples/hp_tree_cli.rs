@@ -199,3 +199,10 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     std::process::exit(bspc_cli::run(&args));
 }
+
+#[allow(dead_code)]
+mod bspc_parallax {
+    pub(crate) fn place_boxes(_map: &mut hp_vmf::Map) -> String {
+        String::new()
+    }
+}

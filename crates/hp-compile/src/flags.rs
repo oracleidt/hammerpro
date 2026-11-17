@@ -190,6 +190,12 @@ pub const FLAGS: &[FlagInfo] = &[
     ),
     info(
         StepKind::Bsp,
+        "-parallaxcubemaps",
+        false,
+        "Parallax corrected cubemaps: reflective world faces get a box projected reflection drawn by a shader packed in the map (the reflection lines up with the room like in CS:GO), each env_cubemap gets the box of its room.",
+    ),
+    info(
+        StepKind::Bsp,
         "-autocubemaps",
         false,
         "Pick the size of each env_cubemap left at the default size from the area it reflects, and remove the cubemaps no face or prop uses.",
@@ -421,13 +427,25 @@ pub const FLAGS: &[FlagInfo] = &[
         StepKind::Rad,
         "-rtreflections",
         false,
-        "Ray tracing: render every env_cubemap and the default cubemap with the ray tracer and write them into the BSP like buildcubemaps, at every quality (by default on with Final and Optimal).",
+        "Ray tracing: build the cubemaps on compile (same as -buildcubemaps), at every quality (by default on with Final and Optimal).",
     ),
     info(
         StepKind::Rad,
         "-rtnoreflections",
         false,
-        "Ray tracing: no ray traced cubemaps (the cubemaps stay placeholders until buildcubemaps runs in game).",
+        "Ray tracing: do not build the cubemaps on compile (same as -nobuildcubemaps; the cubemaps stay placeholders until buildcubemaps runs in game).",
+    ),
+    info(
+        StepKind::Rad,
+        "-buildcubemaps",
+        false,
+        "Build cubemaps on compile: render every env_cubemap and the default cubemap from the lit map and write them into the BSP like buildcubemaps, so reflections are right the first time the map loads.",
+    ),
+    info(
+        StepKind::Rad,
+        "-nobuildcubemaps",
+        false,
+        "Do not build the cubemaps on compile (they stay placeholders until buildcubemaps runs in game).",
     ),
     info(
         StepKind::Rad,
@@ -626,6 +644,7 @@ pub enum ManagedBy {
     Game,
     StaticPropShadows,
     RayTracing,
+    Cubemaps,
 }
 
 impl ManagedBy {
@@ -639,6 +658,7 @@ impl ManagedBy {
             ManagedBy::Game => "the game configuration (Settings > Game)",
             ManagedBy::StaticPropShadows => "static_prop_shadows",
             ManagedBy::RayTracing => "raytracing and the rt_ options",
+            ManagedBy::Cubemaps => "build_cubemaps and parallax_cubemaps",
         }
     }
 
@@ -652,6 +672,7 @@ impl ManagedBy {
             ManagedBy::Game => "game",
             ManagedBy::StaticPropShadows => "static_prop_shadows",
             ManagedBy::RayTracing => "raytracing",
+            ManagedBy::Cubemaps => "cubemaps",
         }
     }
 }
@@ -671,6 +692,9 @@ pub fn managed_by(step: StepKind, flag: &str) -> Option<ManagedBy> {
         (StepKind::Rad, "-nostaticpropshadows") => Some(ManagedBy::StaticPropShadows),
         (StepKind::Rad, f) if crate::raytracing::is_raytracing_flag(f) => Some(ManagedBy::RayTracing),
         (StepKind::Bsp, "-rtautocubemaps") => Some(ManagedBy::RayTracing),
+        (StepKind::Bsp, "-parallaxcubemaps") | (StepKind::Rad, "-buildcubemaps" | "-nobuildcubemaps") => {
+            Some(ManagedBy::Cubemaps)
+        }
         _ => None,
     })
 }

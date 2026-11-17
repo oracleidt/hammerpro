@@ -67,6 +67,26 @@ fn z_is_left_to_a_modal_transform() {
 }
 
 #[test]
+fn z_is_left_to_a_block_draw_axis_lock() {
+    register_translations();
+    let ctx = egui::Context::default();
+    let mut vp = Viewports::new();
+    let mut state = test_state();
+    let mut time = 0.0;
+    frame(&ctx, &mut vp, &mut state, &mut time, vec![]);
+    frame(&ctx, &mut vp, &mut state, &mut time, vec![]);
+    let Some((_, rect)) = vp.view_rects()[0] else { panic!("the 3D view is visible") };
+    frame(&ctx, &mut vp, &mut state, &mut time, vec![Event::PointerMoved(rect.center())]);
+    state.runtime.brush.block_axis_keys = true;
+    frame(&ctx, &mut vp, &mut state, &mut time, vec![z_press()]);
+    assert!(!vp.is_mouselook(), "Z locks the block draw to Z");
+    frame(&ctx, &mut vp, &mut state, &mut time, vec![z_release()]);
+    state.runtime.brush.block_axis_keys = false;
+    frame(&ctx, &mut vp, &mut state, &mut time, vec![z_press()]);
+    assert!(vp.is_mouselook());
+}
+
+#[test]
 fn digits_are_left_to_a_typed_rotation_in_2d() {
     register_translations();
     let ctx = egui::Context::default();

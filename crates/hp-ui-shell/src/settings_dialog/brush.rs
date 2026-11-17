@@ -36,6 +36,16 @@ impl SettingsPage for BrushPage {
             .checkbox(&mut s.reorient_primitives, t!("shell.brush.reorient"))
             .on_hover_text(t!("shell.brush.reorient_tip"))
             .changed();
+        heading(ui, t!("shell.brush.block_draw"));
+        let b = &mut s.block_draw;
+        for (value, key, tip) in [
+            (&mut b.direction_preview, "create.block.direction_preview", "create.block.direction_preview_tip"),
+            (&mut b.snap_contact, "create.block.snap_contact", "create.block.snap_contact_tip"),
+            (&mut b.limit_to_face, "create.block.limit_face", "create.block.limit_face_tip"),
+            (&mut b.no_overlap, "create.block.no_overlap", "create.block.no_overlap_tip"),
+        ] {
+            changed |= ui.checkbox(value, t!(key)).on_hover_text(t!(tip)).changed();
+        }
         heading(ui, t!("shell.brush.clipping"));
         changed |= ui
             .checkbox(&mut s.clip_measurements, t!("shell.brush.clip_measurements"))
@@ -91,6 +101,7 @@ pub(crate) const TR: TrTable = &[
         "A cylinder, arch or spike drawn in the Front or Side view (or on a wall in 3D) stands along the view depth axis, like Hammer's \"Reorient primitives on creation in the active 2D view\"",
         "Un cylindre, une arche ou une pointe tracés dans la vue de face ou de côté (ou sur un mur en 3D) s'alignent sur l'axe de profondeur de la vue, comme l'option de Hammer « Réorienter les primitives à la création dans la vue 2D active »",
     ),
+    ("shell.brush.block_draw", "Block tool in the 3D view", "Outil bloc dans la vue 3D"),
     ("shell.brush.clipping", "Clipping tool", "Outil de découpe"),
     (
         "shell.brush.clip_measurements",

@@ -353,7 +353,7 @@ fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
     }
     let detail = detail_sample(uv);
     if material.detail_mode != DETAIL_NONE {
-        albedo = detail_combine(albedo, detail);
+        albedo = detail_combine(albedo, detail, cover);
     }
     var grid = vec2<f32>(0.0);
     if (view.opts.x & OPT_GRID_3D) != 0u {

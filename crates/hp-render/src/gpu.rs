@@ -115,6 +115,7 @@ pub(crate) struct MaterialUniform {
     pub bump2_uv: [f32; 4],
     pub bump2_cross_scroll: [f32; 4],
     pub detail_env_scroll: [f32; 4],
+    pub fw_detail: [f32; 4],
 }
 
 #[repr(C)]
@@ -231,7 +232,7 @@ mod tests {
         assert_eq!(size_of::<SpriteGpu>(), 24);
         assert_eq!(size_of::<InstanceGpu>(), 124);
         assert_eq!(size_of::<ObjState>(), 16);
-        assert_eq!(size_of::<MaterialUniform>(), 464);
+        assert_eq!(size_of::<MaterialUniform>(), 480);
         assert_eq!(size_of::<LightGpu>(), 112);
         assert_eq!(size_of::<ViewUniform>(), 64 * 3 + 16 * 60);
         assert_eq!(std::mem::offset_of!(ViewUniform, sky_march), 752);

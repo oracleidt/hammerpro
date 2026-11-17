@@ -39,6 +39,7 @@ struct Material {
     bump2_uv: vec4<f32>,
     bump2_cross_scroll: vec4<f32>,
     detail_env_scroll: vec4<f32>,
+    fw_detail: vec4<f32>,
 };
 
 fn affine_uv(uv: vec2<f32>, diagonal: vec4<f32>, cross_terms: vec2<f32>) -> vec2<f32> {
@@ -387,8 +388,15 @@ fn detail_sample(uv: vec2<f32>) -> vec4<f32> {
     return vec4<f32>(d.rgb * material.detail_tint.rgb, d.a);
 }
 
-fn detail_combine(base: vec4<f32>, d: vec4<f32>) -> vec4<f32> {
-    let f = material.detail_tint.w;
+fn detail_factor(cover: vec4<f32>) -> f32 {
+    if material.blend4 != 0u {
+        return dot(cover, material.fw_detail);
+    }
+    return material.detail_tint.w;
+}
+
+fn detail_combine(base: vec4<f32>, d: vec4<f32>, cover: vec4<f32>) -> vec4<f32> {
+    let f = detail_factor(cover);
     var c = base;
     switch material.detail_mode {
         case 0u: {

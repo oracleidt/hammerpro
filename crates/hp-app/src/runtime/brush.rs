@@ -10,4 +10,5 @@ pub struct BrushRuntime {
     pub curve_edit: Option<hp_editor::Id>,
     pub road_edit: Option<hp_editor::Id>,
     pub road_history: Option<(bool, bool)>,
+    pub block_axis_keys: bool,
 }

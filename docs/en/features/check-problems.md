@@ -58,6 +58,7 @@ Messages at the top tell you when the map is being checked, when the leak check 
 | invalid texture axes | Realign the textures to the world |
 | duplicate plane | Remove the duplicate faces |
 | overlay faces missing | Remove the faces that do not exist from the lists (an overlay left on no face is deleted) |
+| overlay on too many faces | Trim the faces the overlay does not touch and split an overlay that really covers more than 64 faces into several overlays (`info_overlay` only), like **Fix** in **Map > Optimize the map...** |
 | displacement on a brush entity | Move the solids to the world |
 | tiny brush | Delete the tiny solids |
 | origin brush in the world | Delete the origin brushes of the world |

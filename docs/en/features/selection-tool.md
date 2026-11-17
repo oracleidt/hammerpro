@@ -22,10 +22,10 @@ Toggle **View > Display options > Show brush centers in 2D**, or **Settings > He
 | Gesture | 2D views | 3D view |
 |---|---|---|
 | Click an object | Selects it (replaces the selection) | Selects the nearest object you see under the pointer: models by their real shape (not their box), and what the view hides is skipped (hidden objects, tool textures hidden with the View menu, hidden displacements) |
-| Click the same spot again | Within 2 seconds, while the last pick is still the selection: the next overlapping object (up to 64 are cycled) | Same: the next object behind. Later, or after the selection changed, the click starts over with the nearest object |
+| Click the same spot again | Within 2 seconds, while the last pick is still the selection: the next overlapping object (up to 64 are cycled) | With **Click the selection to switch the gizmo mode** on (the default), a click on the selection switches the gizmo instead: the middle click and `Page Down` reach the object behind. With it off: the next object behind, and later, or after the selection changed, the click starts over with the nearest object |
 | `Ctrl+click` | Adds the object to the selection, or removes it when it is already selected | Same; `Ctrl+click` also picks through the gizmo |
 | Click on empty space | Clears the selection (a click inside the selection box switches the handle mode instead) | Clears the selection (not with `Ctrl`) |
-| Click an object that is already the whole selection | Switches the handle mode (Scale, Rotate, Skew, then Scale again), like Hammer | |
+| Click an object that is already the whole selection | Switches the handle mode (Scale, Rotate, Skew, then Scale again), like Hammer | Switches the gizmo mode (Move, Rotate, Scale, then Move again), like Hammer++. A double click keeps the mode it had |
 | Middle click | The next object at the spot of the last click, or the first one under the pointer | Same |
 | Double click | Selects the object; for an entity (or a brush entity) it also opens its properties | Same |
 | `Page Down` / `Page Up` | For 2 seconds after a click: the object behind / in front | Same |
@@ -142,6 +142,26 @@ The gizmo sits on the pivot of the selection (the movable pivot, the origin of a
 
 `Shift` clones, `Alt` turns snapping off. **Local** (or `Ctrl+J`, **Gizmo in local space**, in the command palette) aligns the gizmo with the angles of a single selected point entity instead of the world axes. Untick **Show** to hide the gizmo.
 
+Switching the gizmo mode quickly, like Hammer++:
+
+- Click the selection in the 3D view (an object that is the whole selection, or the gizmo itself without dragging it): Move, then Rotate, then Scale, then Move again. When several objects are selected, a click on one of them selects only that one, as before: use the right click on the gizmo. A click on an object that is not selected still selects it, a drag on the gizmo still transforms, and a drag that starts on an object does not switch anything.
+- Right click on the gizmo does the same (a right click anywhere else opens the context menu as before).
+- The action **Cycle gizmo mode** (`cycle_gizmo_mode`, no key by default, bind one in **Settings > Keyboard**) does it from the keyboard and shows the gizmo when it was hidden.
+- The new mode shows next to the gizmo for a moment and in the status bar, and the gizmo changes shape (arrows, rings, cubes). The status bar names the current mode while the pointer is in the 3D view.
+- Turn **Click the selection to switch the gizmo mode** off in **Tools > Options > Selection** to keep clicks for selecting only (a click on the same spot then digs to the object behind, as before).
+
+**Cycle 3D edit mode** (`cycle_edit_mode`, `X` with the **Hammer++** keyboard preset, like Hammer++) goes through none (no gizmo and no 3D stretch arrows), box (the old workflow: 2D handles and 3D stretch arrows, no gizmo) and gizmo. The **Hammer Pro** and **Hammer** presets leave it without a key.
+
+### Live preview while transforming
+
+Like Hammer++, the objects you transform are shown live: while you drag, rotate or scale (gizmo, 2D handles, 3D stretch arrows, `G`, `R`, `E`, a `Shift` clone drag), the real brushes, props, models and entity helpers are drawn at their new place every frame in the 3D view, textured and lit like the rest of the map, and the 2D views show their transformed wireframe. The original stays as a faint outline. A clone drag shows the copy live and keeps the original in place.
+
+- Releasing the mouse (or `Enter` for `G`, `R`, `E`) makes the change one undo step, exactly as before; `Escape` or switching tools puts everything back.
+- Selections bigger than **Outline only above** (1500 objects by default) keep the light outline preview, and a selection whose live preview gets too slow for a smooth frame falls back to the outline by itself for the rest of the drag.
+- Running a command during a drag (a menu, a shortcut) also falls back to the outline for that drag.
+- Turn **Show objects live while moving them** off in **Tools > Options > Selection** to always get the outline preview.
+- Picked faces, edges and vertices (element picking) keep their own outline preview.
+
 ### 3D stretch handles
 
 With **3D stretch** on (default), each face of the selection bounds gets an arrow in the axis colors. Drag one to move that face along its axis while the opposite face stays, like the 2D scale handles (texture lock included, undo step "Stretch").
@@ -227,7 +247,7 @@ With a selection, a right click in a view adds at the top: **Move to floor**, **
 | **Pivot** | Shows the movable pivot | Off |
 | **Class** / **Material**, field, **Select** | Select by class or material | Class |
 
-The box, handle and gizmo choices last for the session. These options are also reachable by name through scripts (`tool_option`) and the MCP tools `get_tool_options` / `set_tool_options` (`handles`, `box`, `gizmo`, `gizmo_mode`, `gizmo_local`, `stretch_handles`, `box_confirm`, `pending_box`). `pending_box` reads the waiting box, takes `x1 y1 x2 y2` to draw one in a 2D view, `confirm`, `add` or `cancel`.
+The box, handle and gizmo choices last for the session. These options are also reachable by name through scripts (`tool_option`) and the MCP tools `get_tool_options` / `set_tool_options` (`handles`, `box`, `gizmo`, `edit_mode`, `gizmo_mode`, `gizmo_local`, `stretch_handles`, `box_confirm`, `pending_box`). `edit_mode` takes gizmo, box or none. `pending_box` reads the waiting box, takes `x1 y1 x2 y2` to draw one in a 2D view, `confirm`, `add` or `cancel`.
 
 ## Settings
 
@@ -243,20 +263,23 @@ In **Tools > Options...**, page **Selection** (`[selection]` in `settings.toml`)
 | **Adjustable box selection (Enter to confirm)** | Same as the **Enter** checkbox of the options bar | Off |
 | **3D stretch handles** | Same as the options bar checkbox | On |
 | **Gizmo in local space** | Same as the Local button | Off |
+| **Click the selection to switch the gizmo mode** | In the 3D view, a click on the selection or a right click on the gizmo cycles Move, Rotate, Scale (`click_cycles_gizmo`) | On |
+| **Show objects live while moving them** | Live preview of the transformed objects during drags (`live_transform`) | On |
+| **Outline only above (objects)** | Bigger selections keep the outline preview (`live_transform_limit`, 1 to 100000) | 1500 |
 
 Page **Editing**: **Nudge with arrow keys** (on) and **Undo restores the selection** (on: selection changes are undo steps, see [Undo and history](undo-history.md)). Page **Viewports**: **Outline objects under the mouse** (off) outlines what is under the pointer in the 3D view. Snapping follows **Map > Snap to grid** (`Shift+W`) and the active grid (see [Grids](grids.md)).
 
 ## Tips
 
-- In a crowded area, switch the box to **Centers**, or click the same spot several times to dig through overlapping objects.
+- In a crowded area, switch the box to **Centers**, or middle click the same spot several times to dig through overlapping objects (a plain click does it too when **Click the selection to switch the gizmo mode** is off).
 - `Shift+drag` a path node to lay out a path quickly: each clone links itself after its source.
 - For exact values, use the [Transform dialog](transform-align.md) (`Ctrl+M`).
 
 ## FAQ
 
-**Why does clicking my selection not select the object behind it?** A click on an object that is already the whole selection switches the handle mode. Click the same spot again within 2 seconds (or press `Page Down`) to reach the object behind.
+**Why does clicking my selection not select the object behind it?** In a 2D view a click on an object that is already the whole selection switches the handle mode, in the 3D view it switches the gizmo mode. Middle click the same spot (or press `Page Down`) to reach the object behind, or in a 2D view click the same spot again within 2 seconds.
 
-**I click a wall and something else gets selected.** A quick second click on the same spot digs to the object behind: wait 2 seconds, or click once. Brushes with a hidden tool texture (nodraw, clips, triggers, hints, see the View menu) and objects the 3D view does not draw are never picked there, but the 2D views still show and pick them.
+**I click a wall and something else gets selected.** A quick second click on the same spot digs to the object behind (in the 3D view only with **Click the selection to switch the gizmo mode** off): wait 2 seconds, or click once. Brushes with a hidden tool texture (nodraw, clips, triggers, hints, see the View menu) and objects the 3D view does not draw are never picked there, but the 2D views still show and pick them.
 
 **My rotation jumps by 15 degrees.** That is the rotation step. Hold `Ctrl` (or `Alt`, depending on **Free rotation key**) for a free angle, or change the step on the **Selection** settings page.
 

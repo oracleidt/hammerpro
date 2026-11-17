@@ -27,14 +27,18 @@ domain! { "overlays and decals";
             "render_order": integer("Render order (0 to 3).", 0, 3),
         }, ["face"];
     set_overlay: Edit, "Edit an overlay",
-        "Change an overlay: its faces (the whole list), material, size, rotation around its normal (added), or \
-        render order.",
+        "Change an overlay: its faces (the whole list), material, size, rotation around its normal (added), \
+        corners, texture range, position on its plane (added, its faces follow like a move in the 2D views), or \
+        render order. Same edits as the overlay tool handles in the 2D and 3D views.",
         {
             "id": integer("info_overlay id.", 1, i64::from(u32::MAX)),
             "faces": faces("Every face it covers."),
             "material": string("Material."),
             "size": vec2("Width and height in units."),
             "rotate_by": number("Degrees added around the normal.", -360.0, 360.0),
+            "corners": json!({ "type": "array", "description": "The four corners uv0 to uv3 as [u, v] on the overlay plane, relative to BasisOrigin.", "items": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 }, "minItems": 4, "maxItems": 4 }),
+            "texture_range": json!({ "type": "array", "description": "[StartU, EndU, StartV, EndV]: the part of the texture shown (0 to 1 is the whole texture once, 0 to 2 repeats it twice).", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 }),
+            "move_by": vec3("Offset added to its position, projected on its plane; the face list follows."),
             "render_order": integer("Render order (0 to 3).", 0, 3),
         }, ["id"];
     trim_overlay_faces: Edit, "Trim overlay faces",
@@ -42,6 +46,17 @@ domain! { "overlays and decals";
         undo step: fewer fragments, and back under the 64 face engine limit. Faces that touch the rectangle \
         and side ids that no longer exist are kept; an overlay touching none of its faces is left as is. \
         Default: the selected overlays. preview reports what would be removed without editing.",
+        {
+            "ids": ids("info_overlay ids (default: the selected overlays)."),
+            "all": boolean("Every overlay of the map."),
+            "preview": boolean("Only report, do not edit (default false)."),
+        }, [];
+    fix_overlay_faces: Edit, "Fix overlay faces",
+        "The Fix button of the Overlays findings of Map > Optimize the map: in one undo step, trim the face list of \
+        overlays (info_overlay) to the faces their rectangle touches, and split an overlay that really covers more \
+        than 64 faces into several overlays of 64 faces at most (same material, keys and texture continuity: each \
+        piece gets its part of the rectangle and of StartU, EndU, StartV, EndV). Returns the face counts before and \
+        after and the ids of the added overlays. Default: the selected overlays. preview reports without editing.",
         {
             "ids": ids("info_overlay ids (default: the selected overlays)."),
             "all": boolean("Every overlay of the map."),
@@ -249,23 +264,60 @@ fn set_overlay(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         changes.push(("BasisU".to_owned(), fmt(u)));
         changes.push(("BasisV".to_owned(), fmt(v)));
     }
+    if let Some(c) = a.get("corners") {
+        let list = c.as_array().filter(|l| l.len() == 4).ok_or("corners must be 4 [u, v] pairs")?;
+        for (key, item) in hp_editor::side_index::overlay::UV_KEYS.iter().zip(list) {
+            let p = item
+                .as_array()
+                .filter(|p| p.len() == 2)
+                .and_then(|p| Some(DVec2::new(p[0].as_f64()?, p[1].as_f64()?)))
+                .filter(|p| p.is_finite() && p.abs().max_element() <= 65536.0)
+                .ok_or("corners must be 4 [u, v] pairs of numbers")?;
+            changes.push(((*key).to_owned(), hp_editor::side_index::overlay::format_uv(p)));
+        }
+    }
+    if let Some(r) = a.get("texture_range") {
+        let list: Vec<f64> = r
+            .as_array()
+            .filter(|l| l.len() == 4)
+            .and_then(|l| l.iter().map(Value::as_f64).collect::<Option<Vec<f64>>>())
+            .filter(|l| l.iter().all(|x| x.is_finite() && x.abs() <= 1.0e4))
+            .ok_or("texture_range must be 4 numbers [StartU, EndU, StartV, EndV]")?;
+        for (key, x) in ["StartU", "EndU", "StartV", "EndV"].iter().zip(list) {
+            changes.push(((*key).to_owned(), fmt(DVec3::new(x, 0.0, 0.0)).split(' ').next().unwrap_or("0").to_owned()));
+        }
+    }
+    let mut moved = false;
+    if let Some(d) = a.opt_vec3("move_by")? {
+        let get = |k: &str| e.get(k).and_then(hp_vmf::parse_vec3);
+        let n = get("BasisNormal").and_then(DVec3::try_normalize).unwrap_or(DVec3::Z);
+        let d = d - n * n.dot(d);
+        let basis = get("BasisOrigin").or_else(|| e.origin()).unwrap_or(DVec3::ZERO);
+        changes.push(("BasisOrigin".to_owned(), fmt(basis + d)));
+        changes.push(("origin".to_owned(), fmt(e.origin().unwrap_or(basis) + d)));
+        moved = true;
+    }
     if let Some(o) = a.opt_u64("render_order", 0, 3)? {
         changes.push(("RenderOrder".to_owned(), o.to_string()));
     }
     if changes.is_empty() {
-        return Err("give faces, material, size, rotate_by or render_order".to_owned());
+        return Err("give faces, material, size, rotate_by, corners, texture_range, move_by or render_order".to_owned());
     }
     edit(state, "set_overlay", |doc| {
         doc.edit_entity(id, |e| {
             for (k, v) in &changes {
                 e.set(k, v.clone());
             }
-        })
+        })?;
+        if moved {
+            doc.refit_overlay_faces(&[id])?;
+        }
+        Ok::<_, hp_editor::EditError>(())
     })?;
     Ok(ToolResult::json(json!({ "id": id, "changed": changes.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>() })))
 }
 
-fn trim_overlay_faces(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+fn chosen_overlays(state: &AppState, a: &Args<'_>) -> R<Vec<u32>> {
     let ids: Vec<u32> = if a.opt_bool("all")?.unwrap_or(false) {
         state.doc.scene().entities().iter().filter(|(_, e)| is_overlay(&e.entity)).map(|(id, _)| *id).collect()
     } else if a.get("ids").is_some() {
@@ -285,6 +337,40 @@ fn trim_overlay_faces(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     if ids.is_empty() {
         return Err("no overlay: give ids, all, or select overlays first".to_owned());
     }
+    Ok(ids)
+}
+
+fn fix_overlay_faces(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let ids = chosen_overlays(state, a)?;
+    let survey: Vec<Value> = ids
+        .iter()
+        .filter_map(|id| hp_editor::optimize::overlays::overlay_faces(&state.doc, *id))
+        .filter(|o| o.fixable())
+        .map(|o| {
+            json!({
+                "id": o.id,
+                "faces": o.listed,
+                "touched": o.touched.len(),
+                "untouched": o.untouched.len(),
+                "split": o.needs_split(),
+            })
+        })
+        .collect();
+    if a.opt_bool("preview")?.unwrap_or(false) {
+        return Ok(ToolResult::json(json!({ "preview": true, "fixable": survey })));
+    }
+    let r = edit(state, "fix_overlay_faces", |doc| doc.fix_overlay_faces(&ids))?;
+    Ok(ToolResult::json(json!({
+        "fixed": r.overlays.iter().map(|o| json!({ "id": o.id, "faces_before": o.before, "faces_after": o.after, "added_overlays": o.pieces })).collect::<Vec<_>>(),
+        "faces_before": r.faces_before,
+        "faces_after": r.faces_after,
+        "overlays_added": r.created,
+        "undo": if r.overlays.is_empty() { "nothing changed" } else { "one undo step: MCP: fix_overlay_faces" },
+    })))
+}
+
+fn trim_overlay_faces(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let ids = chosen_overlays(state, a)?;
     let survey: Vec<Value> = ids
         .iter()
         .filter_map(|id| hp_editor::optimize::overlays::overlay_faces(&state.doc, *id))
@@ -387,6 +473,27 @@ mod tests {
         let e = s.doc.scene().entity(id as u32).unwrap().entity.clone();
         assert_eq!(e.get("sides").unwrap().split(' ').count(), 2);
         assert_eq!(e.get("RenderOrder"), Some("1"));
+        let before = hp_vmf::parse_vec3(e.get("BasisOrigin").unwrap()).unwrap();
+        ok(
+            &mut s,
+            "set_overlay",
+            json!({ "id": id, "corners": [[-10, -20], [-10, 20], [30, 20], [30, -20]], "texture_range": [0, 2, 0.5, 1], "move_by": [16, 0, 50] }),
+        );
+        let e = s.doc.scene().entity(id as u32).unwrap().entity.clone();
+        assert_eq!(e.get("uv2"), Some("30 20 0"));
+        assert_eq!(
+            (e.get("StartU"), e.get("EndU"), e.get("StartV"), e.get("EndV")),
+            (Some("0"), Some("2"), Some("0.5"), Some("1"))
+        );
+        let after = hp_vmf::parse_vec3(e.get("BasisOrigin").unwrap()).unwrap();
+        assert_eq!(after - before, glam::DVec3::new(16.0, 0.0, 0.0), "moved on its plane only");
+        err(&mut s, "set_overlay", json!({ "id": id, "corners": [[1, 2]] }));
+        err(&mut s, "set_overlay", json!({ "id": id, "texture_range": [0, 1] }));
+        let p = ok(&mut s, "fix_overlay_faces", json!({ "ids": [id], "preview": true }));
+        assert_eq!(p["preview"], true);
+        let f = ok(&mut s, "fix_overlay_faces", json!({ "ids": [id] }));
+        assert!(f["faces_before"].is_u64() && f["overlays_added"] == 0);
+        err(&mut s, "fix_overlay_faces", json!({ "ids": [5] }));
         err(&mut s, "set_overlay", json!({ "id": 5, "render_order": 1 }));
         err(&mut s, "set_overlay", json!({ "id": id }));
         err(&mut s, "create_overlay", json!({ "face": [] }));

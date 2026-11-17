@@ -648,6 +648,10 @@ impl ModelSource for MapPak<'_> {
         self.inner.bounds(path)
     }
 
+    fn prepare(&self) {
+        self.inner.prepare();
+    }
+
     fn hull_center(&self, path: &str) -> Option<glam::DVec3> {
         match self.packed(path) {
             Some(mdl) => hull_center(&mdl),

@@ -180,6 +180,7 @@ pub const VIEW_ACCENT_BG: Color32 = Color32::from_rgb(110, 62, 22);
 pub const VIEW_SUCCESS: Color32 = Color32::from_rgb(110, 210, 120);
 pub const VIEW_WARNING: Color32 = Color32::from_rgb(240, 200, 80);
 pub const VIEW_ERROR: Color32 = Color32::from_rgb(255, 95, 90);
+pub const VIEW_INFO: Color32 = Color32::from_rgb(80, 220, 255);
 
 pub const RADIUS: u8 = 4;
 pub const WINDOW_RADIUS: u8 = 8;

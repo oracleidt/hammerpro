@@ -217,6 +217,9 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `gizmo_local` | `false` | Le gizmo d'une seule entité ponctuelle suit ses angles (`Ctrl+J`). |
 | `click_to_zoom` | `false` | L'outil caméra zoome les vues 2D au clic (`Ctrl` + clic dézoome). |
 | `stretch_handles` | `true` | Des flèches sur les faces de la sélection, dans la vue 3D, l'étirent. |
+| `live_transform` | `true` | Comme dans Hammer++, les vrais objets sont dessinés à leur nouvelle place dans toutes les vues pendant qu'on les déplace, les pivote ou les met à l'échelle (l'original en contour léger). `false` : aperçu en contour seulement. |
+| `live_transform_limit` | `1500` | Les sélections de plus d'objets gardent l'aperçu en contour (1 à 100000). Un aperçu en direct trop lent pour une image fluide revient aussi au contour. |
+| `click_cycles_gizmo` | `true` | Dans la vue 3D, un clic sur la sélection ou un clic droit sur le gizmo fait passer le gizmo entre déplacer, pivoter et échelle, comme dans Hammer++. `false` : un clic au même endroit passe à l'objet derrière. |
 | `box_confirm` | `false` | Sélection par cadre ajustable : un cadre tracé dans une vue 2D attend `Entrée` (comme Hammer++), ses poignées le redimensionnent, un glisser à l'intérieur le déplace, `Échap` l'abandonne. `false` (par défaut depuis la 2.0.3) sélectionne au relâchement. Les paramètres enregistrés par la 2.0.2 passent une fois à `false` lors de la mise à jour. |
 | `random_yaw_min` | `0.0` | **Rotation Z aléatoire** : plus petite rotation, en degrés (-360 à 360). |
 | `random_yaw_max` | `360.0` | **Rotation Z aléatoire** : plus grande rotation, en degrés (au plus 360 au-dessus de la plus petite). |
@@ -231,6 +234,10 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | Clé | Défaut | Effet |
 | --- | --- | --- |
 | `reorient_primitives` | `true` | Les primitives dessinées dans la vue Face ou Côté suivent l'axe de profondeur de cette vue. |
+| `block_draw.direction_preview` | `true` | Outil bloc en 3D : flèche avec l'axe et face surlignée avant le glisser. |
+| `block_draw.snap_contact` | `true` | Outil bloc en 3D : la hauteur s'arrête au ras de la première surface touchée par les rayons de l'empreinte. |
+| `block_draw.limit_to_face` | `false` | Outil bloc en 3D : l'empreinte reste dans la face de départ. |
+| `block_draw.no_overlap` | `false` | Outil bloc en 3D : la hauteur s'arrête au premier brush coupé ; une boîte qui chevauche ne peut pas être créée. |
 | `clip_measurements` | `true` | L'outil de découpe affiche la longueur et l'angle de la ligne de coupe. |
 | `clip_current_material` | `false` | Les faces coupées reçoivent le matériau actuel (désactivé : elles copient la face la plus proche). |
 | `detail.split` | `"selection"` | **Transformer en func_detail** : un func_detail par sélection (`"selection"`) ou par ensemble de brushes qui se touchent (`"cluster"`). |
@@ -301,8 +308,8 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `helper_scope` | `"Selected"` | Aides (rayons, cônes, lignes vers les cibles) des entités sélectionnées (`Selected`) ou de toutes (`All`). Les liens de chemin des aides `line()` et `cylinder()` (`path_track`, `path_corner`) sont dessinés pour toutes les entités dans les deux modes, comme dans Hammer. |
 | `connections` | `"Selected"` | Lignes d'entrées/sorties : `Off`, `Selected`, `All`. |
 | `show_overlays` | `true` | Dessine les `info_overlay` sur leurs faces. |
-| `show_editor_objects` | `true` | Icônes des entités et géométrie des aides. |
-| `show_entity_icons` | `true` | Les entités ponctuelles affichent l'iconsprite de leur FGD dans les vues 3D comme dans Hammer ; désactivé, des boîtes colorées. Demande `show_editor_objects`. |
+| `show_editor_objects` | `true` | Géométrie des aides et étiquettes (pas les icônes des entités). |
+| `show_entity_icons` | `true` | Les entités ponctuelles affichent l'iconsprite de leur FGD dans les vues 3D comme dans Hammer, ou une icône intégrée quand le contenu du jeu ne l'a pas ; désactivé, des boîtes colorées. Indépendant de `show_editor_objects`. |
 | `show_entity_names` | `true` | Noms des entités ponctuelles dans les vues 2D. |
 | `show_brush_centers` | `true` | Petit x au centre des brushes visibles en 2D, de taille constante à l’écran. |
 | `show_ropes` | `true` | Dessine les cordes comme elles pendent en jeu. |

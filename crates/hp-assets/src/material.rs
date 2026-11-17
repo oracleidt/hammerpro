@@ -573,6 +573,7 @@ fn four_way_desc(f: hp_vmt::FourWayBlend) -> hp_render::FourWayDesc {
         lum_blend_factor: f.lum_blend_factor,
         uv_scale: f.uv_scale,
         modulate_2x: f.modulate_2x,
+        detail_blend: f.detail_blend,
     }
 }
 
@@ -621,6 +622,12 @@ pub(crate) fn load_fresh(fs: &hp_fs::GameFs, name: &str) -> Option<Material> {
 }
 
 pub(crate) fn material_job(fs: &hp_fs::GameFs, name: &str, fresh: bool, hdr: bool) -> MaterialData {
+    if let Some(m) = crate::builtin_icons::material(name) {
+        let analysis = analyze_resolved(name, &m, &|_| 0);
+        let size = crate::builtin_icons::size(name).unwrap_or((0, 0));
+        let info = make_info(name, Some(&m), Some(&analysis), size, 0);
+        return MaterialData { analysis: Some(Arc::new(analysis)), info: Arc::new(info) };
+    }
     let mat: Option<Arc<Material>> = if fresh { load_fresh(fs, name).map(Arc::new) } else { fs.material(name) };
     match mat {
         None => MaterialData { analysis: None, info: Arc::new(make_info(name, None, None, (0, 0), 0)) },

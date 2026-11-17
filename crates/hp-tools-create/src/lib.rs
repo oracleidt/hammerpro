@@ -2,6 +2,7 @@
 
 pub mod bevel;
 mod block;
+mod block_limits;
 mod block_preview;
 mod block_structures;
 mod clip;
@@ -45,7 +46,8 @@ mod tests_wheel;
 
 pub use bevel::{BEVEL_TR, BevelOptions, BevelTool};
 pub use block::{
-    BlockOptions, BlockTool, CreateAs, DEFAULT_DEPTH, Primitive, ShapeCount, WHEEL_FAST_STEP, new_depth_range,
+    BlockOptions, BlockTool, CreateAs, DEFAULT_DEPTH, FLIP_KEY, Limit, Primitive, ShapeCount, WHEEL_FAST_STEP,
+    axis_label, new_depth_range, sync_block_options,
 };
 pub use clip::{ClipTool, clip_plane_2d, next_keep};
 pub use clip3d::{CutAxis, SnapKind, auto_axis, axis_plane, face_cut_plane};

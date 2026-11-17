@@ -1,7 +1,6 @@
 use egui::{RichText, Ui};
 use hp_app::settings::{
-    CompileSettings, FlagChoiceSetting, RayConfigSetting, RayDeviceSetting, RayQualitySetting, RayReflectionsSetting,
-    RayShaftSourceSetting,
+    CompileSettings, FlagChoiceSetting, RayConfigSetting, RayDeviceSetting, RayQualitySetting, RayShaftSourceSetting,
 };
 use hp_app::{t, tf, theme};
 use hp_compile::RayTracingOptions;
@@ -61,7 +60,7 @@ pub(crate) fn plan_options(s: &CompileSettings) -> Option<RayTracingOptions> {
             glow: rt.glow,
             glow_intensity: rt.glow_intensity,
             auto_cubemaps: rt.auto_cubemaps,
-            reflections: rt.reflections.name().to_owned(),
+            reflections: "auto".to_owned(),
             tonemap: rt.tonemap,
             color_correction: rt.color_correction,
         },
@@ -147,14 +146,6 @@ fn shaft_source_label(v: RayShaftSourceSetting) -> &'static str {
     match v {
         RayShaftSourceSetting::Sun => t!("raytrace.shaft_source.sun"),
         RayShaftSourceSetting::SunAndSpots => t!("raytrace.shaft_source.sun_and_spots"),
-    }
-}
-
-fn reflections_label(v: RayReflectionsSetting) -> &'static str {
-    match v {
-        RayReflectionsSetting::Auto => t!("raytrace.reflections.auto"),
-        RayReflectionsSetting::On => t!("raytrace.reflections.on"),
-        RayReflectionsSetting::Off => t!("raytrace.reflections.off"),
     }
 }
 
@@ -262,18 +253,6 @@ fn effects_grid(ui: &mut Ui, s: &mut CompileSettings, salt: &str) {
         let tip = t!("raytrace.cubemaps_tip");
         label(ui, "raytrace.cubemaps", tip);
         ui.checkbox(&mut rt.auto_cubemaps, t!("raytrace.on")).on_hover_text(tip);
-        ui.end_row();
-        let tip = t!("raytrace.reflections_tip");
-        label(ui, "raytrace.reflections", tip);
-        egui::ComboBox::from_id_salt((salt, "rt_reflections"))
-            .selected_text(reflections_label(rt.reflections))
-            .show_ui(ui, |ui| {
-                for v in RayReflectionsSetting::ALL {
-                    ui.selectable_value(&mut rt.reflections, v, reflections_label(v));
-                }
-            })
-            .response
-            .on_hover_text(tip);
         ui.end_row();
         let tip = t!("raytrace.tonemap_tip");
         label(ui, "raytrace.tonemap", tip);

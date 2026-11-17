@@ -26,6 +26,14 @@ pub enum GizmoMode {
 impl GizmoMode {
     pub const ALL: [GizmoMode; 3] = [GizmoMode::Move, GizmoMode::Rotate, GizmoMode::Scale];
 
+    pub fn next(self) -> Self {
+        match self {
+            GizmoMode::Move => GizmoMode::Rotate,
+            GizmoMode::Rotate => GizmoMode::Scale,
+            GizmoMode::Scale => GizmoMode::Move,
+        }
+    }
+
     pub fn label_key(self) -> &'static str {
         match self {
             GizmoMode::Move => "seltool.gizmo.move",

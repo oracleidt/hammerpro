@@ -1618,6 +1618,21 @@ pub const TR: TrTable = &[
         "Ray tracing : pas de cubemaps ray tracées (les cubemaps restent des textures provisoires jusqu'à buildcubemaps en jeu).",
     ),
     (
+        "compile.flag.buildcubemaps",
+        "Build cubemaps on compile: render every env_cubemap and the default cubemap from the lit map and write them into the BSP, so buildcubemaps is not needed in game.",
+        "Construire les cubemaps : rend chaque env_cubemap et la cubemap par défaut depuis la map éclairée et les écrit dans le BSP, buildcubemaps n'est plus nécessaire en jeu.",
+    ),
+    (
+        "compile.flag.nobuildcubemaps",
+        "Do not build cubemaps on compile (they stay placeholders until buildcubemaps runs in game).",
+        "Ne pas construire les cubemaps à la compilation (elles restent provisoires jusqu'à buildcubemaps en jeu).",
+    ),
+    (
+        "compile.flag.parallaxcubemaps",
+        "Parallax corrected cubemaps: reflective world faces get box projected reflections from a shader packed in the map, matching the room around each env_cubemap (Hammer Pro compiler only).",
+        "Cubemaps à correction de parallaxe : les faces réfléchissantes reçoivent des reflets projetés sur la boîte de la pièce, par un shader intégré à la map (compilateur Hammer Pro seulement).",
+    ),
+    (
         "compile.flag.rtnotonemap",
         "Ray tracing: no automatic tonemap hints (by default an env_tonemap_controller with sensible bloom and exposure for HDR is added when the map has none).",
         "Ray tracing : pas de réglages de tonemap automatiques (par défaut un env_tonemap_controller avec un bloom et une exposition adaptés au HDR est ajouté quand la map n'en a pas).",
@@ -1627,4 +1642,28 @@ pub const TR: TrTable = &[
         "Ray tracing: subtle automatic color correction (default off).",
         "Ray tracing : correction colorimétrique automatique discrète (désactivée par défaut).",
     ),
+    ("compile.cubemaps_row", "Cubemaps", "Cubemaps"),
+    ("compile.build_cubemaps", "Build cubemaps on compile", "Cubemaps à la compilation"),
+    (
+        "compile.build_cubemaps_tip",
+        "Renders every env_cubemap (placed or automatic) and the default cubemap from the lit map at the end of the compile and writes them into the BSP like buildcubemaps, so reflections are right the first time the map loads. Works with the Hammer Pro compiler (classic or ray traced lighting, on the GPU or the CPU) and with Valve compilers (Hammer Pro runs it on the BSP after vrad). Auto: on with the Final preset and with ray tracing Final or Optimal (-buildcubemaps forces it on, -nobuildcubemaps off; -rtreflections and -rtnoreflections do the same).",
+        "Rend chaque env_cubemap (placé ou automatique) et la cubemap par défaut à partir de la map éclairée à la fin de la compilation et les écrit dans le BSP comme buildcubemaps, pour des reflets justes dès le premier chargement de la map. Marche avec le compilateur Hammer Pro (éclairage classique ou ray tracé, sur la carte graphique ou le processeur) et avec les compilateurs Valve (Hammer Pro le lance sur le BSP après vrad). Auto : activé avec le préréglage Final et avec le ray tracing Final ou Optimal (-buildcubemaps force l'activation, -nobuildcubemaps désactive ; -rtreflections et -rtnoreflections font pareil).",
+    ),
+    ("compile.build_cubemaps.auto", "Auto (Final, ray tracing Final or Optimal)", "Auto (Final, RT Final ou Optimal)"),
+    ("compile.build_cubemaps.on", "Always", "Toujours"),
+    ("compile.build_cubemaps.off", "Off (run buildcubemaps in game)", "Désactivé (buildcubemaps en jeu)"),
+    ("compile.parallax_cubemaps", "Parallax corrected cubemaps", "Correction de parallaxe"),
+    ("compile.parallax_cubemaps.auto", "Auto (ray tracing Final or Optimal)", "Auto (RT Final ou Optimal)"),
+    ("compile.parallax_cubemaps.off", "Off (plain reflections)", "Désactivé (reflets simples)"),
+    (
+        "compile.parallax_cubemaps_tip",
+        "Reflective world faces get a box projected reflection (like CS:GO and Mapbase): each env_cubemap gets the box of its room and a shader packed in the map bends the reflection so floors and walls reflect the room where it really is instead of sliding with the camera. Works in Garry's Mod without any addon. Needs the Hammer Pro compiler; turn Build cubemaps on compile on too so the cubemaps are real. Auto: on with ray tracing Final or Optimal (-parallaxcubemaps forces it on).",
+        "Les faces réfléchissantes du monde reçoivent un reflet projeté sur une boîte (comme CS:GO et Mapbase) : chaque env_cubemap reçoit la boîte de sa pièce et un shader intégré à la map corrige le reflet pour que sols et murs reflètent la pièce là où elle est vraiment, au lieu de glisser avec la caméra. Marche dans Garry's Mod sans addon. Demande le compilateur Hammer Pro ; activez aussi Construire les cubemaps à la compilation pour des cubemaps réelles. Auto : activé avec le ray tracing Final ou Optimal (-parallaxcubemaps force l'activation).",
+    ),
+    (
+        "compile.parallax_cubemaps_builtin",
+        "Parallax corrected cubemaps need the Hammer Pro compiler (the faces are set up by its geometry step).",
+        "Les cubemaps à correction de parallaxe demandent le compilateur Hammer Pro (les faces sont préparées par son étape de géométrie).",
+    ),
+    ("compile.managed.cubemaps", "set by the Cubemaps options", "réglée par les options Cubemaps"),
 ];

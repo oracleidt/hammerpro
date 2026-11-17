@@ -1,6 +1,5 @@
 use hp_app::settings::{
-    CompileSettings, RayConfigSetting, RayDeviceSetting, RayQualitySetting, RayReflectionsSetting,
-    RayShaftSourceSetting, RayTracingSettings,
+    CompileSettings, RayConfigSetting, RayDeviceSetting, RayQualitySetting, RayShaftSourceSetting, RayTracingSettings,
 };
 use serde_json::{Value, json};
 
@@ -136,7 +135,7 @@ pub(super) fn schema(key: &str) -> Value {
             json!({ "type": "string", "enum": ["auto", "classic", "cinematic"], "description": "Ray tracing look (-rtlook): auto (default: cinematic in final and optimal, classic otherwise), classic (the authored falloff of every light, like VRAD) or cinematic (true inverse square light pools from area sources at the same reference brightness, ceiling lamps shining downward with a darker ceiling above, richer colour bleeding, deep contact shadows)." })
         }
         "rt_reflections" => {
-            json!({ "type": "string", "enum": ["auto", "on", "off"], "description": "Ray traced reflections: at the end of the ray traced lighting, every env_cubemap of the map (placed and automatic) and the default cubemap are rendered with the path tracer from the lit map (final lightmaps and textures, static props, the 2D and 3D sky, self illuminated and unlit surfaces, light sources as bright spots, bounced light), in LDR and HDR as the map has them, at each cubemap's size with mipmaps, and written into the BSP pakfile where buildcubemaps writes them (materials/maps/<map>/c<x>_<y>_<z>.vtf and .hdr.vtf, cubemapdefault), so reflections are right the first time the map loads. auto (default): on with the final and optimal qualities; on (-rtreflections): every quality; off (-rtnoreflections): placeholders until buildcubemaps runs in game." })
+            json!({ "type": "string", "enum": ["auto", "on", "off"], "description": "Same as build_cubemaps (kept for older scripts; the two are one setting). Ray traced reflections: at the end of the ray traced lighting, every env_cubemap of the map (placed and automatic) and the default cubemap are rendered with the path tracer from the lit map (final lightmaps and textures, static props, the 2D and 3D sky, self illuminated and unlit surfaces, light sources as bright spots, bounced light), in LDR and HDR as the map has them, at each cubemap's size with mipmaps, and written into the BSP pakfile where buildcubemaps writes them (materials/maps/<map>/c<x>_<y>_<z>.vtf and .hdr.vtf, cubemapdefault), so reflections are right the first time the map loads. auto (default): on with the final and optimal qualities; on (-rtreflections): every quality; off (-rtnoreflections): placeholders until buildcubemaps runs in game." })
         }
         "rt_shaft_source" => {
             json!({ "type": "string", "enum": ["sun", "sun_and_spots"], "description": "Ray tracing: lights that make shafts, the sun only or the sun and strong spot lights (default) (-rtshaftsource)." })
@@ -221,9 +220,6 @@ pub(super) fn apply(s: &mut CompileSettings, a: &Args<'_>) -> R<()> {
     }
     if let Some(v) = a.opt_enum("rt_look", &["auto", "classic", "cinematic"])? {
         rt.look = if v == "auto" { String::new() } else { v };
-    }
-    if let Some(v) = a.opt_enum("rt_reflections", &["auto", "on", "off"])? {
-        rt.reflections = RayReflectionsSetting::parse(&v).unwrap_or_default();
     }
     if let Some(v) = a.opt_enum("rt_shaft_source", &["sun", "sun_and_spots"])? {
         rt.shaft_source = RayShaftSourceSetting::parse(&v).unwrap_or_default();
@@ -331,7 +327,7 @@ pub(super) fn json(s: &CompileSettings) -> Value {
         "rt_glow": rt.glow,
         "rt_glow_intensity": real(rt.glow_intensity),
         "rt_cubemaps": rt.auto_cubemaps,
-        "rt_reflections": rt.reflections.name(),
+        "rt_reflections": s.build_cubemaps.name(),
         "rt_tonemap": rt.tonemap,
         "rt_color_correction": rt.color_correction,
         "raytracing_qualities": ["draft", "normal", "final", "optimal"],

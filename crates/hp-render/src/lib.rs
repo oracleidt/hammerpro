@@ -548,6 +548,7 @@ fn four_way_uniform(f: Option<&FourWayDesc>, base: MaterialUniform) -> MaterialU
         fw_mod2x: f.modulate_2x.map(|m| if m { 1.0 } else { 0.0 }),
         fw_uv12: uv(0, 1),
         fw_uv34: uv(2, 3),
+        fw_detail: f.detail_blend.map(|v| if v.is_finite() { v.clamp(0.0, 4.0) } else { 1.0 }),
         ..base
     }
 }
@@ -5133,8 +5134,10 @@ mod tests {
             lum_blend_factor: [0.0, 0.5, 0.7, 1.0],
             uv_scale: [[1.0, 1.0], [2.0, 3.0], [0.0, f32::NAN], [0.5, 0.5]],
             modulate_2x: [false, true, false, false],
+            detail_blend: [0.25, 0.0, 1.0, f32::NAN],
         };
         let u = material_uniform(Some(&MaterialDesc { four_way: Some(f), ..Default::default() }), u32::MAX);
+        assert_eq!(u.fw_detail, [0.25, 0.0, 1.0, 1.0]);
         assert_eq!(u.fw_lum_start, [0.1, 0.0, 0.0, 4.0]);
         assert_eq!(u.fw_lum_end, [0.5, 0.2, 1.0, 0.0]);
         assert_eq!(u.fw_blend_start, [0.0, 0.8, 0.75, 0.9]);

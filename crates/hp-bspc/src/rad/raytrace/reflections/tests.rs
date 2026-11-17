@@ -206,7 +206,7 @@ fn compiled_map_gets_ray_traced_cubemaps_in_its_pakfile() {
     let mut lines = Vec::new();
     let out =
         crate::rad::light_bsp_with(&compiled.bsp, &rad, &Files, &mut |l| lines.push(l.to_owned())).expect("light");
-    assert!(lines.iter().any(|l| l.contains("ray traced reflections: 1 env_cubemap rendered (8 px)")), "{lines:?}");
+    assert!(lines.iter().any(|l| l.contains("cubemaps: 1 env_cubemap rendered (8 px)")), "{lines:?}");
     assert!(crate::validate::validate(&out).is_empty(), "{:?}", crate::validate::validate(&out));
     let bsp = hp_bsp::Bsp::from_vec(out.clone()).expect("bsp");
     let pak = bsp.pakfile().expect("pak");
@@ -247,7 +247,7 @@ fn compiled_map_gets_ray_traced_cubemaps_in_its_pakfile() {
     let mut lines = Vec::new();
     let plain =
         crate::rad::light_bsp_with(&compiled.bsp, &off, &Files, &mut |l| lines.push(l.to_owned())).expect("off");
-    assert!(!lines.iter().any(|l| l.contains("ray traced reflections")), "draft leaves them to buildcubemaps");
+    assert!(!lines.iter().any(|l| l.contains("env_cubemap rendered")), "draft leaves them to buildcubemaps");
     let pak = hp_bsp::Bsp::from_vec(plain).expect("bsp");
     let placeholder = pak
         .pakfile()
@@ -262,17 +262,62 @@ fn compiled_map_gets_ray_traced_cubemaps_in_its_pakfile() {
 
 #[test]
 fn reflections_are_on_by_default_only_for_final_and_optimal() {
+    let with = |rt: Option<RayTracing>, cubemaps: Option<bool>| RadOptions {
+        raytracing: rt,
+        cubemaps,
+        ..RadOptions::default()
+    };
     for (q, on) in [(Quality::Draft, false), (Quality::Normal, false), (Quality::Final, true), (Quality::Optimal, true)]
     {
-        assert_eq!(super::wanted(&RayTracing::with_quality(q)), on, "{q:?}");
+        assert_eq!(with(Some(RayTracing::with_quality(q)), None).builds_cubemaps(), on, "{q:?}");
     }
     let mut rt = RayTracing::with_quality(Quality::Normal);
     rt.effects.reflections = Some(true);
-    assert!(super::wanted(&rt));
+    assert!(with(Some(rt.clone()), None).builds_cubemaps());
     rt.quality = Quality::Final;
     rt.effects.reflections = Some(false);
-    assert!(!super::wanted(&rt));
-    assert!(!super::wanted(&RayTracing { effects: Effects::none(), ..RayTracing::with_quality(Quality::Final) }));
+    assert!(!with(Some(rt.clone()), None).builds_cubemaps());
+    assert!(with(Some(rt), Some(true)).builds_cubemaps(), "-buildcubemaps wins over -rtnoreflections");
+    let none = RayTracing { effects: Effects::none(), ..RayTracing::with_quality(Quality::Final) };
+    assert!(!with(Some(none), None).builds_cubemaps());
+    assert!(!with(None, None).builds_cubemaps(), "the classic compiler leaves them to buildcubemaps by default");
+    assert!(with(None, Some(true)).builds_cubemaps());
+    assert!(!with(Some(RayTracing::with_quality(Quality::Final)), Some(false)).builds_cubemaps());
+}
+
+#[test]
+fn classic_lighting_builds_cubemaps_without_ray_tracing() {
+    let cube = "entity
+{
+	\"id\" \"8000\"
+	\"classname\" \"env_cubemap\"
+	\"origin\" \"128 128 96\"
+	\"cubemapsize\" \"4\"
+}
+";
+    let light = crate::rad::tests::light_entity(500, "64 128 200", "");
+    let text = crate::rad::tests::room("DEV/SHINY", &format!("{light}{cube}"));
+    let map = hp_vmf::parse(&text).expect("vmf");
+    let opts = crate::CompileOptions { map_name: Some("gm_classic".to_owned()), ..Default::default() };
+    let compiled = crate::compile(&map, &Files, &crate::props::NoModels, &opts, &mut |_| {}).expect("compile");
+    let rad = RadOptions {
+        bounces: 2,
+        quality: RadQuality::Draft,
+        threads: Some(2),
+        hdr: false,
+        cubemaps: Some(true),
+        ..RadOptions::default()
+    };
+    let mut lines = Vec::new();
+    let out =
+        crate::rad::light_bsp_with(&compiled.bsp, &rad, &Files, &mut |l| lines.push(l.to_owned())).expect("light");
+    assert!(lines.iter().any(|l| l.contains("cubemaps: 1 env_cubemap rendered (8 px)")), "{lines:?}");
+    let bsp = hp_bsp::Bsp::from_vec(out.clone()).expect("bsp");
+    let pak = bsp.pakfile().expect("pak");
+    let data = pak.read_name("materials/maps/gm_classic/c128_128_96.vtf").ok().flatten().expect("cubemap").into_owned();
+    assert!(face_mean(&data, 5).max_element() > 4.0, "the lit floor shows in the bottom face");
+    let again = crate::rad::build_cubemaps(out, &Files, false, &mut |_| {}).expect("post step");
+    assert!(crate::validate::validate(&again).is_empty());
 }
 
 #[test]

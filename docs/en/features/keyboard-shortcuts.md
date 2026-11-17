@@ -74,6 +74,7 @@ The **Hammer++** set adds:
 | Sound browser | `Shift+F12` |
 | Show tool textures | `Ctrl+Shift+F2` |
 | Show editor objects | `Alt+O` |
+| Cycle 3D edit mode (gizmo, box, none) | `X` |
 
 The set does not touch the shortcuts you changed yourself: they stay on top of any set. The camera controls (mouse and fly keys) are chosen separately, with **Camera controls** in **Settings > Viewports** (see [Camera and navigation](camera-navigation.md)). The first run wizard sets both from the editor you come from (reopen it with **Help > Setup assistant...**).
 

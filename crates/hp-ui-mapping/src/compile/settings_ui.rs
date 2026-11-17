@@ -344,6 +344,7 @@ impl CompileDialog {
             t!("compile.steps"),
             t!("compile.cordon"),
             t!("compile.static_props"),
+            t!("compile.cubemaps_row"),
             t!("compile.before"),
             t!("compile.content"),
             t!("compile.after"),
@@ -547,6 +548,11 @@ impl CompileDialog {
                 ui.add_enabled_ui(!s.expert, |ui| super::options_ui::prop_toggles(ui, s));
             });
         }
+        form.row(ui, t!("compile.cubemaps_row"), |ui| {
+            ui.add_enabled_ui(!s.expert, |ui| {
+                ui.vertical(|ui| super::options_ui::cubemap_toggles(ui, s, !external));
+            });
+        });
         form.row(ui, t!("compile.rad_row"), |ui| {
             ui.add_enabled_ui(!s.expert, |ui| super::options_ui::rad_file_ui(ui, s, map_path.as_deref()));
         });

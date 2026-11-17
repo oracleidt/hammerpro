@@ -249,6 +249,7 @@ pub struct FourWayDesc {
     pub lum_blend_factor: [f32; 4],
     pub uv_scale: [[f32; 2]; 4],
     pub modulate_2x: [bool; 4],
+    pub detail_blend: [f32; 4],
 }
 
 impl Default for FourWayDesc {
@@ -259,6 +260,7 @@ impl Default for FourWayDesc {
             lum_blend_factor: [0.0; 4],
             uv_scale: [[1.0, 1.0]; 4],
             modulate_2x: [false; 4],
+            detail_blend: [1.0; 4],
         }
     }
 }

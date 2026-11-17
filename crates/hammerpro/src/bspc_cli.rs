@@ -5,6 +5,7 @@ use hp_bspc::materials::{MaterialFacts, MaterialOptions, facts_by_name, facts_fr
 pub const BSPC_ARG: &str = "--bspc";
 
 pub const RAD_ARG: &str = "--rad";
+pub const CUBEMAPS_ARG: &str = hp_compile::CUBEMAPS_ARG;
 
 pub(crate) struct GameMaterials {
     pub(crate) fs: hp_fs::GameFs,
@@ -196,6 +197,10 @@ pub(crate) struct LazyModels {
 impl hp_bspc::props::ModelSource for LazyModels {
     fn bounds(&self, _path: &str) -> Option<(glam::DVec3, glam::DVec3)> {
         None
+    }
+
+    fn prepare(&self) {
+        let _ = self.game_fs();
     }
 
     fn hull_center(&self, path: &str) -> Option<glam::DVec3> {
@@ -519,6 +524,7 @@ pub(crate) fn parse_bspc_args(args: &[String]) -> Result<BspcArgs, String> {
             "-cleanpak" => a.clean_pak = true,
             "-autolightmapscale" => a.opts.auto_lightmap_scale = true,
             "-autocubemaps" => a.opts.auto_cubemaps = true,
+            "-parallaxcubemaps" => a.opts.parallax_cubemaps = true,
             "-rtautocubemaps" => {
                 a.opts.auto_cubemaps = true;
                 a.rt_auto_cubemaps = true;
@@ -909,6 +915,9 @@ fn run_compile(a: &BspcArgs, map: &Path) -> i32 {
     if a.rt_auto_cubemaps && !a.only_ents && !a.only_props {
         say(&rt_place_cubemaps(&mut parsed, &fs));
     }
+    if a.opts.parallax_cubemaps && !a.only_ents && !a.only_props {
+        say(&crate::bspc_parallax::place_boxes(&mut parsed));
+    }
     let models = GameModels { fs: &fs, allow_dynamic: a.allow_dynamic };
     let materials = GameMaterials { fs: fs.clone(), opts: a.materials };
     let merged = if a.optimize.any() && (a.only_ents || a.only_props) {
@@ -1241,6 +1250,8 @@ pub(crate) fn parse_rad_args(args: &[String]) -> Result<RadArgs, String> {
             "-nostaticpropshadows" => opts.props.shadows = false,
             "-nodispshadows" => opts.no_disp_shadows = true,
             "-nostylebounce" => opts.no_style_bounce = true,
+            "-buildcubemaps" => opts.cubemaps = Some(true),
+            "-nobuildcubemaps" => opts.cubemaps = Some(false),
             "-raytracing" => {
                 let quality = args.get(i + 1).and_then(|v| hp_bspc::rad::RtQuality::parse(v));
                 let on = rt.get_or_insert_with(hp_bspc::rad::RayTracing::default);
@@ -1548,6 +1559,72 @@ pub fn run_rad(args: &[String]) -> i32 {
         return 1;
     }
     if let Err(e) = std::fs::write(&bsp, &lit) {
+        say(&format!("Error: cannot write {}: {e}", bsp.display()));
+        return 1;
+    }
+    say(&format!("Wrote {}", bsp.display()));
+    0
+}
+
+pub fn run_cubemaps(args: &[String]) -> i32 {
+    let parsed = match parse_rad_args(args) {
+        Ok(p) => p,
+        Err(e) => {
+            println!("Error: {e}");
+            return 1;
+        }
+    };
+    let RadArgs { opts, map, gmod, game, target, low, mount, search_paths, notes, .. } = parsed;
+    if low {
+        set_low_priority();
+    }
+    for n in &notes {
+        println!("{n}");
+    }
+    let cli = match crate::bspc_game::resolve(target.as_deref(), game.as_deref()) {
+        Ok(c) => c,
+        Err(e) => {
+            println!("Error: {e}");
+            return 1;
+        }
+    };
+    let models =
+        LazyModels { gmod, game, profile: cli.profile.clone(), mount, search_paths, fs: std::sync::OnceLock::new() };
+    let Some(map) = map else {
+        println!("Error: no map given (hammerpro --cubemaps [-final] <map.bsp>)");
+        return 1;
+    };
+    let map = std::path::absolute(&map).unwrap_or(map);
+    open_log(&map.with_extension(""));
+    say(&format!("Hammer Pro cubemaps (hp-bspc {})", env!("CARGO_PKG_VERSION")));
+    let bsp = map.with_extension("bsp");
+    let data = match std::fs::read(&bsp) {
+        Ok(d) => d,
+        Err(e) => {
+            say(&format!("Error: cannot read {}: {e}", bsp.display()));
+            return 1;
+        }
+    };
+    let fine = opts.quality == hp_bspc::rad::RadQuality::Final;
+    let out = match hp_bspc::rad::build_cubemaps(data.clone(), &models, fine, &mut |l| say(l)) {
+        Ok(d) => d,
+        Err(e) => {
+            say(&format!("Error: {e}"));
+            return 1;
+        }
+    };
+    if out == data {
+        return 0;
+    }
+    let before = hp_bspc::validate::validate(&data);
+    let new: Vec<String> = hp_bspc::validate::validate(&out).into_iter().filter(|p| !before.contains(p)).collect();
+    if !new.is_empty() {
+        for p in &new {
+            say(&format!("Error! {p}"));
+        }
+        return 1;
+    }
+    if let Err(e) = std::fs::write(&bsp, &out) {
         say(&format!("Error: cannot write {}: {e}", bsp.display()));
         return 1;
     }

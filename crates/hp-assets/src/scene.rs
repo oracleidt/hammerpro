@@ -77,7 +77,6 @@ pub(crate) struct SceneSync {
     pub force_entities: bool,
     pub initialized: bool,
     pub display: Option<RenderDisplay>,
-    pub editor_objects: Option<bool>,
     pub entity_icons: Option<bool>,
     pub game_look: bool,
     pub upload_queue: VecDeque<Id>,
@@ -491,12 +490,8 @@ impl AssetManager {
         self.scene.opts = Some(*opts);
         let display = render_display();
         let scene_display = scene_display();
-        let editor_objects = scene_display.editor_objects && !scene_display.game_look;
         let prev_display = self.scene.display.replace(display);
-        if self.scene.editor_objects.replace(editor_objects).is_some_and(|e| e != editor_objects) {
-            self.scene.force_entities = true;
-        }
-        let entity_icons = editor_objects && scene_display.entity_icons;
+        let entity_icons = scene_display.entity_icons && !scene_display.game_look;
         if self.scene.entity_icons.replace(entity_icons).is_some_and(|e| e != entity_icons) {
             self.scene.force_entities = true;
         }
@@ -1213,7 +1208,7 @@ impl AssetManager {
             None => (model, false),
         };
         let icons = self.scene.entity_icons.unwrap_or(true);
-        let sprite = match (&desc.sprite, opts.show_helpers && (icons || !desc.sprite_is_icon)) {
+        let sprite = match (&desc.sprite, if desc.sprite_is_icon { icons } else { opts.show_helpers }) {
             (Some(s), true) => {
                 let kind = if desc.sprite_is_icon {
                     MatKind::Sprite
@@ -1226,7 +1221,10 @@ impl AssetManager {
             }
             _ => None,
         };
-        let sprite = sprite.filter(|m| !desc.sprite_is_icon || !self.icon_missing(*m));
+        let sprite = match sprite {
+            Some(m) if desc.sprite_is_icon && self.icon_missing(m) => self.fallback_icon(&desc, m),
+            s => s,
+        };
         self.upsert_entity_box(renderer, id, &desc, model.is_some(), sprite.is_none());
         renderer.set_object_wire_colors(obj, desc.color, desc.classic);
         renderer.set_object_flags(obj, flags);
@@ -1608,21 +1606,31 @@ impl AssetManager {
         renderer.upsert_object(obj, box_mesh(min, max, mat, filled, desc.color));
     }
 
+    fn fallback_icon(&mut self, desc: &EntityDesc, missing: hp_render::MaterialId) -> Option<hp_render::MaterialId> {
+        let name = desc.fallback_icon.as_deref()?;
+        let m = self.asset_material(name, MatKind::Sprite);
+        (m != missing && !self.icon_missing(m)).then_some(m)
+    }
+
     fn drop_missing_icons(&mut self, renderer: &mut Renderer) {
         let mut verdicts: AHashMap<hp_render::MaterialId, bool> = AHashMap::new();
         let mut missing = Vec::new();
         for (id, s) in &self.scene.ents {
             let Some(m) = s.sprite.filter(|_| s.desc.sprite_is_icon) else { continue };
             if *verdicts.entry(m).or_insert_with(|| self.icon_missing(m)) {
-                missing.push(*id);
+                missing.push((*id, m));
             }
         }
-        for id in missing {
+        for (id, m) in missing {
+            let Some(desc) = self.scene.ents.get(&id).map(|s| s.desc.clone()) else { continue };
+            let replacement = self.fallback_icon(&desc, m);
             let Some(s) = self.scene.ents.get_mut(&id) else { continue };
-            s.sprite = None;
-            let (desc, model) = (s.desc.clone(), s.model.is_some());
-            self.upsert_entity_box(renderer, id, &desc, model, true);
-            renderer.set_object_wire_colors(entity_object(id), desc.color, desc.classic);
+            s.sprite = replacement;
+            if replacement.is_none() {
+                let model = s.model.is_some();
+                self.upsert_entity_box(renderer, id, &desc, model, true);
+                renderer.set_object_wire_colors(entity_object(id), desc.color, desc.classic);
+            }
         }
     }
 

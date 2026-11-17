@@ -444,6 +444,8 @@ Voir [Particules](../features/particles.md).
 | Commande | Id | Par défaut | Hammer | Hammer++ |
 |---|---|---|---|---|
 | Gizmo en repère local | `toggle_gizmo_local` | `Ctrl+J` |  |  |
+| Changer le mode du gizmo (déplacer, pivoter, échelle) | `cycle_gizmo_mode` |  |  |  |
+| Changer le mode d'édition 3D (gizmo, cadre, aucun) | `cycle_edit_mode` |  |  | `X` |
 | Installer la mise à jour disponible | `install_update` |  |  |  |
 | Créer un brush hint | `make_hint_brush` |  |  |  |
 | Mode caméra : appliquer la texture à la face visée | `fly_apply_texture` | `T` |  |  |

@@ -8,6 +8,8 @@ use crate::tree::Tree;
 pub trait ModelSource: Sync {
     fn bounds(&self, path: &str) -> Option<(DVec3, DVec3)>;
 
+    fn prepare(&self) {}
+
     fn loads(&self, _path: &str) -> Option<bool> {
         None
     }

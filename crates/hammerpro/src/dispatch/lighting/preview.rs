@@ -207,9 +207,11 @@ pub(super) fn dragged_lights(state: &AppState) -> Option<(u64, Vec<hp_vmf::Entit
         if !bake::lighting_entity(e) || (aimed && !moves_only) {
             return None;
         }
-        let p = m.transform_point3(e.origin()?);
         let mut copy = e.clone();
-        copy.set("origin", format!("{} {} {}", p.x, p.y, p.z));
+        if !drag.applied {
+            let p = m.transform_point3(e.origin()?);
+            copy.set("origin", format!("{} {} {}", p.x, p.y, p.z));
+        }
         moved.push(copy);
     }
     if moved.is_empty() {
@@ -1266,6 +1268,9 @@ impl Preview {
         }
         if let Some((key, moved)) = dragged_lights(state) {
             self.schedule_drag(state, key, &moved, now);
+            return;
+        }
+        if state.runtime.selection.drag.as_ref().is_some_and(|d| d.applied) {
             return;
         }
         self.drag_key = None;

@@ -21,6 +21,24 @@ pub(crate) fn preset_of(p: CompilePresetSetting) -> Preset {
     }
 }
 
+pub(crate) fn cubemap_mode_of(c: hp_app::settings::CubemapBuildSetting) -> hp_compile::CubemapMode {
+    match c {
+        hp_app::settings::CubemapBuildSetting::Auto => hp_compile::CubemapMode::Auto,
+        hp_app::settings::CubemapBuildSetting::On => hp_compile::CubemapMode::On,
+        hp_app::settings::CubemapBuildSetting::Off => hp_compile::CubemapMode::Off,
+    }
+}
+
+pub(crate) fn builds_cubemaps(s: &CompileSettings) -> bool {
+    let rt = super::raytrace_ui::plan_options(s);
+    cubemap_mode_of(s.build_cubemaps).resolve(effective_modes(s).rad, rt.as_ref())
+}
+
+pub(crate) fn parallax_cubemaps_on(s: &CompileSettings) -> bool {
+    let rt = super::raytrace_ui::plan_options(s);
+    cubemap_mode_of(s.parallax_cubemaps).resolve_parallax(rt.as_ref())
+}
+
 pub(crate) fn lighting_of(l: LightingSetting) -> Lighting {
     match l {
         LightingSetting::Ldr => Lighting::Ldr,
@@ -190,6 +208,8 @@ pub(crate) fn plan_options(
         lights_file: s.chosen_rad_file().map(PathBuf::from),
         target,
         raytracing: super::raytrace_ui::plan_options(s),
+        cubemaps: cubemap_mode_of(s.build_cubemaps),
+        parallax_cubemaps: cubemap_mode_of(s.parallax_cubemaps),
     }
 }
 

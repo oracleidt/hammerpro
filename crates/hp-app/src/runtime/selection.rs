@@ -17,6 +17,7 @@ pub struct PickSnapshot {
 pub struct DragTransform {
     pub objs: std::sync::Arc<[hp_editor::ObjRef]>,
     pub matrix: glam::DMat4,
+    pub applied: bool,
 }
 
 #[derive(Debug, Default)]

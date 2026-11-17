@@ -230,6 +230,9 @@ impl Autosaver {
             self.due.reverse();
         }
         if self.job.is_none() {
+            if state.doc.in_transaction() {
+                return;
+            }
             let Some(id) = self.due.pop() else { return };
             let Some(doc) = tabs.doc(state, id) else { return };
             if !doc.is_dirty() {

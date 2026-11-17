@@ -3,6 +3,7 @@ use hp_geom::Aabb;
 use hp_vmf::Entity;
 
 use super::{clean_vec, is_conformal};
+use crate::EditResult;
 use crate::Id;
 use crate::clipboard::{format_side_list, parse_side_list};
 use crate::document::Document;
@@ -169,6 +170,21 @@ impl Document {
         for (id, sides) in updates {
             self.update_entity(id, |e| e.set("sides", sides));
         }
+    }
+
+    pub fn refit_overlay_faces(&mut self, overlays: &[Id]) -> EditResult<()> {
+        let overlays: Vec<Id> = overlays
+            .iter()
+            .copied()
+            .filter(|id| self.scene.entities.get(id).is_some_and(|n| is_overlay(&n.entity)))
+            .collect();
+        if overlays.is_empty() {
+            return Ok(());
+        }
+        self.tx("Edit overlay", |doc| {
+            doc.fix_overlay_sides(&overlays, &crate::ids::id_set(0));
+            Ok(())
+        })
     }
 
     pub(crate) fn attach_pasted_overlays(&mut self, objs: &[ObjRef]) {

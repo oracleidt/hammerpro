@@ -68,6 +68,7 @@ pub struct RadOptions {
     pub ao: Option<AoOptions>,
     pub limits: hp_bsp::limits::LimitSet,
     pub raytracing: Option<RayTracing>,
+    pub cubemaps: Option<bool>,
 }
 
 impl Default for RadOptions {
@@ -96,8 +97,36 @@ impl Default for RadOptions {
             ao: None,
             limits: hp_bsp::limits::LimitSet::Gmod,
             raytracing: None,
+            cubemaps: None,
         }
     }
+}
+
+impl RadOptions {
+    pub fn builds_cubemaps(&self) -> bool {
+        let rt = self.raytracing.as_ref();
+        self.cubemaps
+            .or_else(|| rt.and_then(|r| r.effects.reflections))
+            .unwrap_or_else(|| rt.is_some_and(|r| matches!(r.quality, RtQuality::Final | RtQuality::Optimal)))
+    }
+
+    fn cubemap_quality(&self) -> (u32, bool) {
+        let rt = self.raytracing.as_ref();
+        let fine = match rt {
+            Some(r) => matches!(r.quality, RtQuality::Final | RtQuality::Optimal),
+            None => self.quality == RadQuality::Final,
+        };
+        (rt.map_or(0, |r| r.seed), fine)
+    }
+}
+
+pub fn build_cubemaps(
+    bsp: Vec<u8>,
+    models: &dyn crate::props::ModelSource,
+    fine: bool,
+    log: &mut dyn FnMut(&str),
+) -> Result<Vec<u8>, String> {
+    raytrace::reflections::bake(bsp, models, 0, fine, log)
 }
 
 pub fn light_bsp(bsp: &[u8], opts: &RadOptions, log: &mut dyn FnMut(&str)) -> Result<Vec<u8>, String> {
@@ -692,9 +721,11 @@ fn run_with(
         edit.replace_lump_with_version(lump::DISPINFO, d, version).map_err(fail)?;
     }
     let out = edit.to_vec().map_err(fail)?;
-    let out = match opts.raytracing.as_ref().filter(|rt| raytrace::reflections::wanted(rt)) {
-        Some(rt) => raytrace::reflections::bake(out, game_models, rt, log)?,
-        None => out,
+    let out = if opts.builds_cubemaps() {
+        let (seed, fine) = opts.cubemap_quality();
+        raytrace::reflections::bake(out, game_models, seed, fine, log)?
+    } else {
+        out
     };
     work.finish();
     stage(report, "write", t);

@@ -64,6 +64,14 @@ impl CompileDialog {
         super::raytrace_ui::apply_optimal(s);
     }
 
+    pub fn mcp_builds_cubemaps(s: &hp_app::settings::CompileSettings) -> bool {
+        super::plan::builds_cubemaps(s)
+    }
+
+    pub fn mcp_parallax_cubemaps(s: &hp_app::settings::CompileSettings) -> bool {
+        super::plan::parallax_cubemaps_on(s)
+    }
+
     pub fn mcp_view(&self, tail: usize, problems_only: bool, contains: Option<&str>) -> Option<CompileRunView> {
         let run = self.run.as_ref()?;
         let needle = contains.map(str::to_ascii_lowercase);

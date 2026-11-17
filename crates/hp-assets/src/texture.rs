@@ -29,6 +29,9 @@ pub(crate) fn prepare_texture(
     bc: bool,
     cap: u32,
 ) -> Result<PreparedTexture, TexFailure> {
+    if crate::builtin_icons::is_builtin(key) {
+        return crate::builtin_icons::prepare(key).ok_or(TexFailure::Missing);
+    }
     if let Some(name) = key.strip_suffix(crate::water::FRAMES_SUFFIX) {
         let packed = fs.with_texture_raw(name, crate::water::pack_frames).ok_or(TexFailure::Missing)?;
         return packed.map_err(|e| TexFailure::broken(name, e));

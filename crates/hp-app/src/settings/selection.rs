@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+pub const DEFAULT_LIVE_LIMIT: u32 = 1500;
+pub const MAX_LIVE_LIMIT: u32 = 100_000;
 const HANDLE_SIZE_RANGE: std::ops::RangeInclusive<f32> = 4.0..=16.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -58,6 +60,9 @@ pub struct SelectionSettings {
     pub random_tilt: bool,
     pub random_tilt_deg: f64,
     pub element: SelectElement,
+    pub live_transform: bool,
+    pub live_transform_limit: u32,
+    pub click_cycles_gizmo: bool,
 }
 
 impl Default for SelectionSettings {
@@ -78,6 +83,9 @@ impl Default for SelectionSettings {
             random_tilt: false,
             random_tilt_deg: 3.0,
             element: SelectElement::Object,
+            live_transform: true,
+            live_transform_limit: DEFAULT_LIVE_LIMIT,
+            click_cycles_gizmo: true,
         }
     }
 }
@@ -108,6 +116,10 @@ impl SelectionSettings {
         }
     }
 
+    pub fn live_limit(&self) -> usize {
+        self.live_transform_limit.clamp(1, MAX_LIVE_LIMIT) as usize
+    }
+
     pub fn handle_points(&self) -> f32 {
         if self.handle_size.is_finite() {
             self.handle_size.clamp(*HANDLE_SIZE_RANGE.start(), *HANDLE_SIZE_RANGE.end())
@@ -126,6 +138,10 @@ mod tests {
         let s: SelectionSettings = toml::from_str("rotation_snap_deg = 5.0").expect("parse");
         assert_eq!(s, SelectionSettings { rotation_snap_deg: 5.0, ..SelectionSettings::default() });
         assert!(s.clone_keeps_visgroups && s.shift_arrow_clones && s.stretch_handles && !s.box_confirm);
+        assert!(s.live_transform && s.click_cycles_gizmo);
+        assert_eq!(s.live_limit(), DEFAULT_LIVE_LIMIT as usize);
+        let zero = SelectionSettings { live_transform_limit: 0, ..SelectionSettings::default() };
+        assert_eq!(zero.live_limit(), 1);
         let back: SelectionSettings = toml::from_str(&toml::to_string(&s).expect("write")).expect("read");
         assert_eq!(back, s);
         let bad =

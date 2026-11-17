@@ -546,6 +546,8 @@ pub(crate) struct Applied {
     pub(crate) areaportals_placed: usize,
     pub(crate) areaportals_fixed: usize,
     pub(crate) lights_fixed: usize,
+    pub(crate) overlays_fixed: usize,
+    pub(crate) overlays_split: usize,
     pub(crate) errors: Vec<String>,
 }
 
@@ -625,7 +627,32 @@ pub(crate) fn apply(
             Err(e) => out.errors.push(format!("lights: {e}")),
         }
     }
+    let overlays = overlay_fix_ids(&c.report.findings);
+    if !overlays.is_empty() {
+        match doc.fix_overlay_faces(&overlays) {
+            Ok(r) => {
+                out.overlays_fixed = r.overlays.len();
+                out.overlays_split = r.created;
+            }
+            Err(e) => out.errors.push(format!("overlays: {e}")),
+        }
+    }
     out
+}
+
+pub(crate) fn overlay_fix_ids(findings: &[hp_editor::optimize::Finding]) -> Vec<hp_editor::Id> {
+    let mut ids: Vec<hp_editor::Id> = findings
+        .iter()
+        .filter(|f| f.fix == Some(hp_editor::optimize::overlays::FIX))
+        .flat_map(|f| f.objects.iter())
+        .filter_map(|o| match *o {
+            ObjRef::Entity(id) => Some(id),
+            ObjRef::Solid(_) => None,
+        })
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    ids
 }
 
 pub(crate) struct Job {

@@ -21,7 +21,8 @@ domain! { "optimization";
         func_detail candidates verified against leaks, hint brushes measured by compiling, areaportal checks and \
         suggestions, light coherence) and return one report sorted by impact, each finding with what to do. apply \
         \"safe\" applies the safe fixes in one undo step (verified func_detail, measured hints, door areaportals, \
-        areaportal repairs, blocked, redundant and broken lights, a missing light_environment); \"all\" also moves \
+        areaportal repairs, blocked, redundant and broken lights, a missing light_environment, overlay face lists \
+        trimmed to the faces they touch and overlays on more than 64 faces split); \"all\" also moves \
         floating lights to their lamps, adds lights at lamps without light, harmonizes lamp colours and puts \
         areaportals in doorless openings. measure compiles again with the fixes and returns the visleaf and PVS \
         numbers before and after. Run it before finishing a map. On a big map the call can answer running: true \
@@ -340,6 +341,8 @@ fn optimize_map(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
                             "areaportals_placed": x.areaportals_placed,
                             "areaportals_repaired": x.areaportals_fixed,
                             "light_changes": x.lights_fixed,
+                            "overlays_fixed": x.overlays_fixed,
+                            "overlays_added_by_split": x.overlays_split,
                             "errors": x.errors,
                             "undo": "one undo step: MCP: optimize_map",
                         }),

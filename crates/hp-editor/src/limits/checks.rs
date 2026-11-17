@@ -1160,7 +1160,7 @@ fn check_side_lists(snap: &MapSnapshot, out: &mut Vec<Problem>) {
                     "overlay_too_many_faces",
                     format!("Overlay {} ({}) is on {shown} faces, {MAX_OVERLAY_FACES} at most", e.id, e.classname),
                     vec![ObjRef::Entity(e.id)],
-                    false,
+                    e.classname.trim().eq_ignore_ascii_case("info_overlay"),
                 )
                 .with_args(vec![e.id.to_string(), e.classname.clone(), shown]),
             );

@@ -16,6 +16,7 @@ use crate::stretch;
 
 pub(super) const PREVIEW_COLOR: Color32 = Color32::from_rgb(255, 214, 90);
 const MAX_CENTER_MARKS: usize = 4096;
+pub(super) const MODE_NOTE_SECONDS: f64 = 1.5;
 const PIVOT_ARM: f32 = 9.0;
 
 impl SelectTool {
@@ -336,6 +337,14 @@ impl SelectTool {
             }
         }
         layout.paint(view, painter, mode, active);
+        if self.drag.is_none()
+            && let Some(time) = self.mode_note
+            && (0.0..MODE_NOTE_SECONDS).contains(&(state.frame.time - time))
+            && let Some(c) = view.world_to_screen(center)
+        {
+            label(painter, c + egui::vec2(14.0, 14.0), Align2::LEFT_TOP, &self.mode_text());
+            painter.ctx().request_repaint_after(std::time::Duration::from_millis(250));
+        }
         if let Some(d) = &self.drag
             && let Some(c) = view.world_to_screen(center)
         {
@@ -520,8 +529,13 @@ impl SelectTool {
             hp_app::widgets::vsep(ui);
             hp_app::widgets::keep_together(ui, "gizmo", |ui| {
                 ui.label(t!("seltool.gizmo")).on_hover_text(t!("seltool.gizmo_tip"));
-                ui.checkbox(&mut self.gizmo_visible, t!("seltool.gizmo.show"))
-                    .on_hover_text(t!("seltool.gizmo.show_tip"));
+                if ui
+                    .checkbox(&mut self.gizmo_visible, t!("seltool.gizmo.show"))
+                    .on_hover_text(t!("seltool.gizmo.show_tip"))
+                    .changed()
+                {
+                    self.handles_hidden = false;
+                }
                 let gizmo_on = self.gizmo_visible;
                 {
                     for mode in GizmoMode::ALL {
@@ -530,7 +544,7 @@ impl SelectTool {
                                 gizmo_on,
                                 egui::Button::selectable(self.gizmo_mode == mode, t!(mode.label_key())),
                             )
-                            .on_hover_text(t!("seltool.gizmo_tip"))
+                            .on_hover_text(t!("seltool.gizmo_mode_tip"))
                             .clicked()
                         {
                             self.gizmo_mode = mode;
@@ -677,6 +691,11 @@ impl SelectTool {
         {
             return Some(text.clone());
         }
+        if let Some(time) = self.mode_note
+            && (0.0..MODE_NOTE_SECONDS).contains(&(state.frame.time - time))
+        {
+            return Some(self.mode_text());
+        }
         if self.pending.is_some() {
             return Some(t!("seltool.hint.box_pending").to_owned());
         }
@@ -691,7 +710,9 @@ impl SelectTool {
             return Some(tf!("seltool.hint.stretch", name));
         }
         if self.hover.gizmo.is_some() {
-            return Some(t!("seltool.hint.gizmo").to_owned());
+            let mode = t!(self.effective_gizmo_mode(state).label_key());
+            let key = if self.click_cycles(state) { "seltool.hint.gizmo_cycle" } else { "seltool.hint.gizmo_mode" };
+            return Some(tf!(key, mode));
         }
         if let Some(c) = self.live_cycle(state)
             && self.hover.view == Some(c.view)
@@ -700,12 +721,22 @@ impl SelectTool {
         }
         let in_3d = self.hover.view.and_then(|i| self.kind_of(state, i)).is_some_and(|k| !k.is_2d());
         if in_3d {
+            if self.click_cycles(state) {
+                return Some(tf!("seltool.hint.3d_cycle", t!(self.gizmo_mode.label_key())));
+            }
             return Some(t!("seltool.hint.3d").to_owned());
         }
         if state.doc.selection().objects.is_empty() {
             Some(t!("seltool.hint.idle").to_owned())
         } else {
             Some(tf!("seltool.hint.selected", t!(self.handle_mode.label_key())))
+        }
+    }
+
+    pub(super) fn mode_text(&self) -> String {
+        match self.edit_mode() {
+            super::EditMode::Gizmo => tf!("seltool.mode_note.gizmo", t!(self.gizmo_mode.label_key())),
+            mode => tf!("seltool.mode_note.edit", t!(mode.label_key())),
         }
     }
 

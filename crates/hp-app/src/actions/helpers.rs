@@ -22,9 +22,6 @@ pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
     match action {
         Action::SimulateRopes => Some(state.settings.helpers.show_ropes),
         Action::ToggleHelpersAll => Some(state.settings.view.show_helpers),
-        Action::ToggleEntityIcons => {
-            Some(state.settings.view.show_helpers && state.settings.helpers.show_editor_objects)
-        }
         _ => None,
     }
 }

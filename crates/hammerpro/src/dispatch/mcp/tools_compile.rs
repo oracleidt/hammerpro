@@ -17,7 +17,7 @@ use super::tools::{AppFn, Args, Outcome, R, Worker, compile_json, v3};
 domain! { "compile and play";
     get_compile_options: Read, "Compile options",
         "The compile settings: preset, steps, geometry, visibility and lighting modes, dynamic ranges (LDR, HDR), \
-        the static prop options (static_prop_lighting, static_prop_shadows), the options of the geometry and \
+        the static prop options (static_prop_lighting, static_prop_shadows), the cubemap options (build_cubemaps, parallax_cubemaps), the options of the geometry and \
         lighting steps (bsp_options, rad_options: the flags forced on or off in the options menu of the compile \
         settings, the flags of the extra arguments, the flags the preset adds and the resulting command_flags), \
         cordon compile, smart pipeline, packing, cubemaps, threads, copy to the maps folder and its folder, \
@@ -46,6 +46,21 @@ domain! { "compile and play";
                 (Final); false: never (-StaticPropLighting is left out, even from rad_options)."),
             "static_prop_shadows": boolean("Static props cast shadows in the lighting; false: none at all \
                 (-nostaticpropshadows, much faster on maps with many props)."),
+            "build_cubemaps": choice("Build cubemaps on compile: at the end of the compile every env_cubemap (placed, and the \
+                automatic ones of autocubemaps and rt_cubemaps) and the default cubemap are rendered from the lit map (final \
+                lightmaps, textures, static props, sky, light sources) and written into the BSP pakfile where buildcubemaps \
+                writes them, so reflections are right the first time the map loads. Works with the classic and the ray \
+                traced lighting (GPU or CPU) and with Valve compilers (Hammer Pro runs hammerpro --cubemaps on the BSP \
+                after vrad.exe). auto (default): on with the Final preset and with ray tracing Final or Optimal; on \
+                (-buildcubemaps, -rtreflections): every compile with lighting; off (-nobuildcubemaps, -rtnoreflections): \
+                placeholders until buildcubemaps runs in game. rt_reflections is the same setting.", &["auto", "on", "off"]),
+            "parallax_cubemaps": choice("Parallax corrected cubemaps (-parallaxcubemaps, Hammer Pro compiler only; auto, on, off or true / false; off by default, auto is on with ray tracing Final or Optimal and off otherwise\
+): every env_cubemap gets the box of its room (rays from the cubemap to the walls, floor and ceiling, \
+                or the brush of its parallaxobb), its reflective LightmappedGeneric world faces keep their material for \
+                the diffuse and the lightmap (the stock reflection is turned off on them) and get an overlay drawn by a box \
+                projected cubemap shader packed in the map (shaders/fxc/hp_boxcube_*.vcs on screenspace_general, no addon \
+                needed): the reflection is bent by the room box so it stays where the room really is, like CS:GO. Combine \
+                with build_cubemaps so the cubemaps are real. parallax_cubemaps_on in the result tells whether the next compile uses it.", &["auto", "on", "off"]),
             "rad_file_enabled": boolean("Use the rad_file .rad file in the lighting (-lights, Hammer Pro's compiler and \
                 Valve's vrad.exe) and in the Baked, Player view, Ray traced and Lit previews. false (default): the game \
                 lights.rad and <map>.rad only."),
@@ -116,7 +131,7 @@ domain! { "compile and play";
         lighting, threads, priority, leaks, cordon, smart pipeline, packing, development addon, cubemaps, \
         progressive play, history, the compile window as a separate window (separate_window), expert profile, copy \
         to the maps folder, its folder, starting the game after a \
-        compile, the static prop options (static_prop_lighting, static_prop_shadows) and the options menu of the \
+        compile, the static prop options (static_prop_lighting, static_prop_shadows), the cubemap options (build_cubemaps, parallax_cubemaps) and the options menu of the \
         geometry step (bsp_options: nodetail, nowater, fulldetail, forceskyvis, luxelscale, radius_override, \
         AllowDynamicPropsAsStatic, wsaddons, serveraddons, propdebug, blocksize (0: no blocks), the Optimization \
         options cullverts, culltjunc, cullbrushes, autolightmapscale, cleanpak, autocubemaps, mergestaticprops, \
@@ -148,6 +163,21 @@ domain! { "compile and play";
                 false: never (-StaticPropLighting is left out, even from rad_options)."),
             "static_prop_shadows": boolean("Static props cast shadows in the lighting; false: none at all \
                 (-nostaticpropshadows, much faster on maps with many props). The lighting preview follows it."),
+            "build_cubemaps": choice("Build cubemaps on compile: at the end of the compile every env_cubemap (placed, and the \
+                automatic ones of autocubemaps and rt_cubemaps) and the default cubemap are rendered from the lit map (final \
+                lightmaps, textures, static props, sky, light sources) and written into the BSP pakfile where buildcubemaps \
+                writes them, so reflections are right the first time the map loads. Works with the classic and the ray \
+                traced lighting (GPU or CPU) and with Valve compilers (Hammer Pro runs hammerpro --cubemaps on the BSP \
+                after vrad.exe). auto (default): on with the Final preset and with ray tracing Final or Optimal; on \
+                (-buildcubemaps, -rtreflections): every compile with lighting; off (-nobuildcubemaps, -rtnoreflections): \
+                placeholders until buildcubemaps runs in game. rt_reflections is the same setting.", &["auto", "on", "off"]),
+            "parallax_cubemaps": choice("Parallax corrected cubemaps (-parallaxcubemaps, Hammer Pro compiler only; auto, on, off or true / false; off by default, auto is on with ray tracing Final or Optimal and off otherwise\
+): every env_cubemap gets the box of its room (rays from the cubemap to the walls, floor and ceiling, \
+                or the brush of its parallaxobb), its reflective LightmappedGeneric world faces keep their material for \
+                the diffuse and the lightmap (the stock reflection is turned off on them) and get an overlay drawn by a box \
+                projected cubemap shader packed in the map (shaders/fxc/hp_boxcube_*.vcs on screenspace_general, no addon \
+                needed): the reflection is bent by the room box so it stays where the room really is, like CS:GO. Combine \
+                with build_cubemaps so the cubemaps are real. parallax_cubemaps_on in the result tells whether the next compile uses it.", &["auto", "on", "off"]),
             "rad_file_enabled": boolean("Use the rad_file .rad file in the lighting (-lights, Hammer Pro's compiler and \
                 Valve's vrad.exe) and in the Baked, Player view, Ray traced and Lit previews. false (default): the game \
                 lights.rad and <map>.rad only."),
@@ -582,6 +612,10 @@ fn compile_options_json(state: &AppState) -> Value {
         "lighting": lower(format!("{:?}", s.lighting)),
         "static_prop_lighting": s.static_prop_lighting,
         "static_prop_shadows": s.static_prop_shadows,
+        "build_cubemaps": s.build_cubemaps.name(),
+        "builds_cubemaps": hp_ui_mapping::CompileDialog::mcp_builds_cubemaps(s),
+        "parallax_cubemaps": s.parallax_cubemaps.name(),
+        "parallax_cubemaps_on": hp_ui_mapping::CompileDialog::mcp_parallax_cubemaps(s),
         "rad_file_enabled": s.rad_file_enabled,
         "rad_file": s.rad_file,
         "rad_files": super::tools_rad::rad_files_json(state),
@@ -694,6 +728,23 @@ fn apply_options(state: &AppState, s: &mut CompileSettings, a: &Args<'_>, like_w
     }
     if let Some(v) = a.opt_bool("static_prop_shadows")? {
         s.static_prop_shadows = v;
+    }
+    for key in ["rt_reflections", "build_cubemaps"] {
+        if let Some(v) = a.opt_enum(key, &["auto", "on", "off"])? {
+            s.build_cubemaps = hp_app::settings::CubemapBuildSetting::parse(&v).unwrap_or_default();
+        }
+    }
+    match a.map.get("parallax_cubemaps") {
+        Some(serde_json::Value::Bool(b)) => {
+            s.parallax_cubemaps =
+                if *b { hp_app::settings::CubemapBuildSetting::On } else { hp_app::settings::CubemapBuildSetting::Off };
+        }
+        Some(_) => {
+            if let Some(v) = a.opt_enum("parallax_cubemaps", &["auto", "on", "off"])? {
+                s.parallax_cubemaps = hp_app::settings::CubemapBuildSetting::parse(&v).unwrap_or_default();
+            }
+        }
+        None => {}
     }
     super::tools_rad::apply_rad_options(state, s, a)?;
     if let Some(v) = a.opt_bool("cordon_only")? {
@@ -1722,10 +1773,13 @@ mod tests {
         let ao = json!({ "ao": true, "aoradius": 48, "aoscale": 0.25, "aofacesamples": 24 });
         apply(&mut a, Rad, &ao, None, "rad_options").unwrap();
         let line = options_json(&a, Rad)["command_flags"].as_str().unwrap().to_owned();
-        assert_eq!(line, "-final -StaticPropLighting -ao -aofacesamples 24 -aoradius 48 -aoscale 0.25");
+        assert_eq!(line, "-final -StaticPropLighting -ao -aofacesamples 24 -aoradius 48 -aoscale 0.25 -buildcubemaps");
         apply(&mut a, Rad, &json!({ "aodebug": true, "ao": null }), None, "rad_options").unwrap();
         let line = options_json(&a, Rad)["command_flags"].as_str().unwrap().to_owned();
-        assert_eq!(line, "-final -StaticPropLighting -aodebug -aofacesamples 24 -aoradius 48 -aoscale 0.25");
+        assert_eq!(
+            line,
+            "-final -StaticPropLighting -aodebug -aofacesamples 24 -aoradius 48 -aoscale 0.25 -buildcubemaps"
+        );
         let dir = scratch("rad_lights").join("my maps");
         std::fs::create_dir_all(dir.join("content")).unwrap();
         std::fs::write(dir.join("extra.rad"), "lights/white 255 255 255 200\n").unwrap();
@@ -1785,7 +1839,7 @@ mod tests {
         assert_eq!(c.preset, hp_app::settings::CompilePresetSetting::Final);
         assert_eq!(c.rad_mode, hp_app::settings::RadModeSetting::Final);
         assert_eq!(c.vis_mode, hp_app::settings::VisModeSetting::Normal);
-        assert_eq!(o["rad_options"]["preset_flags"], "-final -StaticPropLighting");
+        assert_eq!(o["rad_options"]["preset_flags"], "-final -StaticPropLighting -buildcubemaps");
         ok(&mut s, "set_compile_options", json!({ "rad_mode": "draft", "vis_mode": "fast" }));
         assert_eq!(s.settings.compile.preset, hp_app::settings::CompilePresetSetting::Draft);
         ok(&mut s, "set_compile_options", json!({ "copy_to_maps": true, "launch_game": false }));

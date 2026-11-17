@@ -22,7 +22,7 @@ Une cubemap de réflexion manquante ne coupe pas l'éclairage des surfaces. Une 
 
 Quatre façons :
 
-0. **À la compilation, en ray tracing** : avec le ray tracing (`-raytracing`) en qualité Final ou Optimal, ou **Reflets ray tracés** réglé sur **Toujours** (`-rtreflections`), l'étape d'éclairage rend chaque cubemap avec le path tracer à partir de la map éclairée et les écrit là où `buildcubemaps` le ferait, voir [Options de compilation](compile-options.md). La map a des reflets justes dès son premier chargement.
+0. **À la compilation** : **Construire les cubemaps à la compilation** dans la fenêtre de compilation (ligne **Cubemaps**). À la fin de la compilation, chaque `env_cubemap` (les vôtres, et les automatiques de `-autocubemaps` et du ray tracing) et la cubemap par défaut sont rendues à partir de la map éclairée (lightmaps finales, textures, props statiques, ciel 2D et skybox 3D, sources de lumière en points brillants, lumière rebondie) et écrites là où `buildcubemaps` le ferait, en LDR et HDR selon la map. La map a des reflets justes dès son premier chargement. Marche avec tous les éclairages : l'éclairage classique de Hammer Pro, son éclairage ray tracé (`-raytracing`), sur la carte graphique ou le processeur, et avec le `vrad.exe` de Valve ou tout autre compilateur externe (Hammer Pro lance alors `hammerpro --cubemaps <map>` sur le BSP juste après l'étape d'éclairage). **Auto** (par défaut) l'active avec le préréglage **Final** et avec le ray tracing en qualité Final ou Optimal ; **Toujours** à chaque compilation qui calcule l'éclairage ; **Désactivé** laisse les substituts à `buildcubemaps`. En ligne de commande : `-buildcubemaps` et `-nobuildcubemaps` sur l'étape d'éclairage (`-rtreflections` et `-rtnoreflections` sont les mêmes options, gardées pour les anciens scripts). C'était **Reflets ray tracés** avant la 2.2.2 : l'ancien réglage est repris une fois.
 
 1. **En jeu, à la main** : chargez la map et tapez `buildcubemaps` dans la console. Le jeu les écrit dans le BSP de son dossier `maps`.
 2. **Pendant une sortie** : dans la fenêtre [Construire et enregistrer en contenu](../features/build-content-release.md), **Construire les cubemaps et la navigation en jeu** lance Garry's Mod (après confirmation), construit les cubemaps (LDR et HDR) et le maillage de navigation, puis le ferme. La liste de vérification indique combien sont construites. Désactivé par défaut.
@@ -44,13 +44,34 @@ Une cubemap compte comme construite quand son fichier diffère de la cubemap pro
 
 Voir [Aperçu de l'éclairage](../features/lighting-preview.md) pour la partie aperçu.
 
-## Cubemaps à correction de parallaxe
+## Cubemaps à correction de parallaxe dans Garry's Mod
+
+Une cubemap simple est une photo prise d'un seul point : sur un grand sol brillant, le reflet des murs glisse avec la caméra et se trouve au mauvais endroit, d'autant plus qu'on s'éloigne de l'`env_cubemap`. La correction de parallaxe (CS:GO, Mapbase) plie le reflet avec la boîte de la pièce pour qu'il reste là où la pièce est vraiment. Les shaders d'origine de Garry's Mod ne savent pas le faire, alors Hammer Pro met son propre shader dans la map, sans addon.
+
+Activez **Cubemaps à correction de parallaxe** (ligne **Cubemaps** de la fenêtre de compilation, `-parallaxcubemaps` sur l'étape de géométrie). **Désactivé** est la valeur par défaut pour l'instant ; **Auto** l'active avec le ray tracing en qualité Final ou Optimal, **Toujours** pour toute compilation avec le compilateur Hammer Pro. Gardez aussi **Construire les cubemaps à la compilation**, pour que les cubemaps montrent la vraie pièce.
+
+Ce que fait le compilateur :
+
+- Chaque `env_cubemap` reçoit la boîte de sa pièce : des rayons de la cubemap vers les murs, le sol et le plafond (la médiane de neuf rayons par côté, pour qu'un pilier ou une porte ne la réduise pas), ou la brush du `parallax_obb` que nomme sa clé `parallaxobb`. Une cubemap en extérieur ou dans une zone ouverte n'a pas de boîte et garde le reflet simple. Vous pouvez aussi donner la boîte vous même avec la clé `hp_pcbox` "minx miny minz maxx maxy maxz".
+- Chaque face réfléchissante du monde (`LightmappedGeneric` avec `$envmap env_cubemap`, ni translucide, ni en alpha test, ni mélange, ni displacement) dont la cubemap a une boîte et qui est dans cette boîte garde son matériau pour la lumière diffuse et la lightmap (son éclairage ne change pas), avec le reflet d'origine coupé (`$envmaptint 0` dans son matériau patché), et reçoit un overlay dessiné avec `screenspace_general` et le shader de cubemap projetée sur boîte de Hammer Pro (`shaders/fxc/hp_boxcube_vs20.vcs` et `hp_boxcube_ps20b.vcs` dans le pakfile). L'overlay ajoute le reflet : le rayon de vue réfléchi sur la face est coupé par la boîte de la pièce et la cubemap est lue vers ce point depuis l'`env_cubemap`. Il garde `$envmaptint`, `$envmapcontrast`, `$fresnelreflection` et le masque du matériau (`$envmapmask`, `$basealphaenvmapmask`, `$normalmapalphaenvmapmask`), et s'efface dans le brouillard.
+- Les faces coplanaires du même matériau et de la même cubemap partagent un overlay (64 faces au plus par overlay, la limite du moteur). Si la map dépassait la limite d'overlays (`MAX_MAP_OVERLAYS`), des matériaux entiers gardent le reflet simple et le journal le dit.
+- Le journal dit combien de cubemaps ont reçu une boîte et combien de faces le reflet corrigé.
+
+Ce que ça peut et ne peut pas faire (honnêtement) :
+
+- Le reflet est exact pour ce qui est sur les murs, le sol et le plafond d'une pièce en forme de boîte : un sol brillant reflète les murs, les affiches et le mur du fond là où ils sont vraiment, depuis n'importe quelle position de caméra. Pour les props, piliers et meubles dans la pièce, et pour les pièces loin d'une boîte (en L, en pente, voûtées), le reflet est plus juste qu'une cubemap simple mais pas exact : c'est la même limite que CS:GO et Mapbase.
+- Le reflet est plat : la normal map façonne toujours la lumière diffuse mais ne fait plus onduler le reflet comme le shader d'origine. `$envmapsaturation` n'est pas appliqué.
+- Seulement les faces de brushes du monde : displacements, mélanges `WorldVertexTransition`, modèles et props, eau et verre translucide gardent le reflet d'origine.
+- Il faut le compilateur Hammer Pro (les faces sont préparées par son étape de géométrie) ; avec le `vbsp.exe` de Valve seule **Construire les cubemaps à la compilation** s'applique.
+- Il faut un Garry's Mod qui charge les shaders de la map (le Garry's Mod actuel le fait). Là où un shader personnalisé ne peut pas tourner (mode DirectX 8), ces faces n'ont pas de reflet.
+
+### Mapbase et autres shaders capables de parallaxe
 
 Comme le VBSP de Mapbase : donnez à un `env_cubemap` une clé `parallaxobb` qui désigne une entité de brush `parallax_obb`. Le compilateur patche ses matériaux avec `$envMapParallax 1`, `$envMapParallaxOBB1` à `3` (la boîte de la brush) et `$envMapOrigin` (la position de l'échantillon), puis retire les entités `parallax_obb` et leurs brushes. Les shaders de Mapbase (et des autres jeux aux shaders capables de parallaxe) corrigent le reflet avec ces clés ; les shaders d'origine des autres jeux les ignorent. Un mod Mapbase est reconnu dans **Paramètres > Jeu**.
 
 ## FAQ
 
-**Mes reflets sont noirs en jeu.** Les cubemaps provisoires sont noires tant que les cubemaps ne sont pas construites : lancez `buildcubemaps`, utilisez la session de jeu de la sortie, ou écrivez-les depuis l'éditeur. Un `env_cubemap` dans une brush solide donne aussi une cubemap noire ([Vérifier les problèmes](../features/check-problems.md) le signale).
+**Mes reflets sont noirs en jeu.** Les cubemaps provisoires sont noires tant que les cubemaps ne sont pas construites : compilez avec **Construire les cubemaps à la compilation**, lancez `buildcubemaps`, utilisez la session de jeu de la sortie, ou écrivez-les depuis l'éditeur. Un `env_cubemap` dans une brush solide donne aussi une cubemap noire ([Vérifier les problèmes](../features/check-problems.md) le signale).
 
 **J'ai construit les cubemaps en jeu, puis recompilé, et elles ont disparu.** Seuls les `env_cubemap` qui ont gardé leur position et leur taille gardent leur cubemap, et seulement par la copie dans le dossier maps (ou l'option de sortie).
 

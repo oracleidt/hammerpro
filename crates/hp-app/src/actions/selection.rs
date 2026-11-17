@@ -13,6 +13,8 @@ action_list! { selection_actions {
     AlignCenterHorizontal => "align_center_horizontal", Tools, ToolsAlign, None, Ready;
     AlignCenterVertical => "align_center_vertical", Tools, ToolsAlign, None, Ready;
     ToggleGizmoLocal => "toggle_gizmo_local", Edit, Hidden, sc(CTRL, Key::J), Ready;
+    CycleGizmoMode => "cycle_gizmo_mode", Edit, Hidden, None, Ready;
+    CycleEditMode => "cycle_edit_mode", Edit, Hidden, None, Ready;
     MoveToFloorAligned => "move_to_floor_aligned", Tools, ToolsArrange, sc(CTRL_ALT, Key::N), Ready;
     MoveToCeilingAligned => "move_to_ceiling_aligned", Tools, ToolsArrange, sc(CTRL_ALT, Key::U), Ready;
     RandomRotate => "random_rotate", Tools, ToolsOrigin, None, Ready;
@@ -62,6 +64,7 @@ pub(super) fn icon(action: Action) -> Option<&'static str> {
         Action::FlipVertical => "↕",
         Action::AlignCenterHorizontal | Action::AlignCenterVertical => "⊟",
         Action::ToggleGizmoLocal => "⟲",
+        Action::CycleGizmoMode | Action::CycleEditMode => "⟳",
         Action::RandomRotate | Action::RandomRotateDialog => "🎲",
         _ => return None,
     })
@@ -84,6 +87,16 @@ pub(super) const TR: TrTable = &[
     ("action.align_center_horizontal", "Align centers horizontally", "Centrer horizontalement"),
     ("action.align_center_vertical", "Align centers vertically", "Centrer verticalement"),
     ("action.toggle_gizmo_local", "Gizmo in local space", "Gizmo en repère local"),
+    (
+        "action.cycle_gizmo_mode",
+        "Cycle gizmo mode (move, rotate, scale)",
+        "Changer le mode du gizmo (déplacer, pivoter, échelle)",
+    ),
+    (
+        "action.cycle_edit_mode",
+        "Cycle 3D edit mode (gizmo, box, none)",
+        "Changer le mode d'édition 3D (gizmo, cadre, aucun)",
+    ),
     ("action.random_rotate", "Random Z rotation", "Rotation Z aléatoire"),
     ("action.random_rotate_dialog", "Random Z rotation options...", "Options de rotation Z aléatoire..."),
     ("shell.undo.random_rotation", "Random rotation", "Rotation aléatoire"),

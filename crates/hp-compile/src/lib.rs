@@ -34,15 +34,15 @@ pub use launch::{DEFAULT_GAME_ARGS, DEFAULT_STEAM_URL, LaunchMethod, game_args_f
 pub use log::{LogLocation, Severity, describe_exit_code, is_leak_line, parse_log_line};
 pub use notice::{CrashKind, Notice, crash_kind, format_bytes, format_exit_code};
 pub use plan::{
-    BspMode, CompilePlan, DeferredFiles, DeferredSender, Lighting, PlanNotice, PlanOptions, Preset, RadMode, Step,
-    StepAction, StepKind, StepModes, VisMode, command_line_string, quote_arg, rad_step_flags, split_args,
-    validated_map_name,
+    BUILD_CUBEMAPS_FLAG, BspMode, CompilePlan, CubemapMode, DeferredFiles, DeferredSender, Lighting,
+    NO_BUILD_CUBEMAPS_FLAG, PARALLAX_CUBEMAPS_FLAG, PlanNotice, PlanOptions, Preset, RadMode, Step, StepAction,
+    StepKind, StepModes, VisMode, command_line_string, quote_arg, rad_step_flags, split_args, validated_map_name,
 };
 pub use pointfile::{find_pointfile, parse_pointfile, read_pointfile};
 pub use progress::{LightProgress, parse_light_progress};
 pub use raytracing::RayTracingOptions;
 pub use runner::{CompileEvent, CompileHandle, start, start_with_waker};
-pub use tools::{BSPC_ARG, RAD_ARG, ToolPaths, default_threads, pack_files_from_dir};
+pub use tools::{BSPC_ARG, CUBEMAPS_ARG, RAD_ARG, ToolPaths, default_threads, pack_files_from_dir};
 
 use std::path::PathBuf;
 

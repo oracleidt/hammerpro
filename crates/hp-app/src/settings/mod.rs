@@ -38,11 +38,12 @@ mod workflow;
 
 pub use blender::{BlenderFormat, BlenderSettings};
 pub use brush::{
-    BrushSettings, DetailSplitSetting, ExtrudeAxisSetting, ExtrudeDirectionSetting, FuncDetailSettings, RoadPreset,
+    BlockDrawSettings, BrushSettings, DetailSplitSetting, ExtrudeAxisSetting, ExtrudeDirectionSetting,
+    FuncDetailSettings, RoadPreset,
 };
 pub use compile::{
-    BspModeSetting, CompilePresetSetting, CompileProfile, CompileSettings, FlagChoiceSetting, LightingSetting,
-    PackPolicy, ProfileStep, RadModeSetting, RayConfigSetting, RayDeviceSetting, RayQualitySetting,
+    BspModeSetting, CompilePresetSetting, CompileProfile, CompileSettings, CubemapBuildSetting, FlagChoiceSetting,
+    LightingSetting, PackPolicy, ProfileStep, RadModeSetting, RayConfigSetting, RayDeviceSetting, RayQualitySetting,
     RayReflectionsSetting, RayShaftSourceSetting, RayTracingSettings, StaticPropShadows, VisModeSetting,
     WindowPlacement, background_precompile_default, background_precompile_supported, resolve_rad_path,
 };
@@ -77,7 +78,7 @@ pub use render::{
     WaterDetailSetting,
 };
 pub use scan::{ScanModeSetting, ScanSettings};
-pub use selection::{SelectElement, SelectionSettings};
+pub use selection::{DEFAULT_LIVE_LIMIT, MAX_LIVE_LIMIT, SelectElement, SelectionSettings};
 pub use shell::{
     EditSettings, KeyboardLayout, RenderModeSetting, SelectModeSetting, ThemeChoice, UiSettings, ViewSettings,
 };
@@ -241,6 +242,7 @@ impl Settings {
             self.compile.background_precompile = false;
             self.lighting.prepare = false;
         }
+        self.compile.merge_legacy_reflections();
         self.revision = self.revision.max(SETTINGS_REVISION);
     }
 

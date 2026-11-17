@@ -217,6 +217,9 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `gizmo_local` | `false` | The gizmo of a single point entity follows its angles (`Ctrl+J`). |
 | `click_to_zoom` | `false` | The camera tool zooms 2D views on click (`Ctrl` + click zooms out). |
 | `stretch_handles` | `true` | Arrows on the faces of the selection in the 3D view stretch it. |
+| `live_transform` | `true` | Like Hammer++, the real objects are drawn at their new place in every view while they are dragged, rotated or scaled (the original as a faint outline). `false`: outline preview only. |
+| `live_transform_limit` | `1500` | Selections with more objects keep the outline preview (1 to 100000). A live preview too slow for a smooth frame also falls back to the outline. |
+| `click_cycles_gizmo` | `true` | In the 3D view, a click on the selection or a right click on the gizmo cycles the gizmo mode move, rotate, scale, like Hammer++. `false`: a click on the same spot digs to the object behind. |
 | `box_confirm` | `false` | Adjustable box selection: a box drawn in a 2D view waits for `Enter` (Hammer++ style), its handles resize it, a drag inside moves it, `Esc` drops it. `false` (the default since 2.0.3) selects on release. Settings saved by 2.0.2 are switched to `false` once on upgrade. |
 | `random_yaw_min` | `0.0` | **Random Z rotation**: smallest turn, degrees (-360 to 360). |
 | `random_yaw_max` | `360.0` | **Random Z rotation**: largest turn, degrees (at most 360 above the smallest). |
@@ -231,6 +234,10 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | Key | Default | What it does |
 | --- | --- | --- |
 | `reorient_primitives` | `true` | Primitives drawn in the Front or Side view stand along that view's depth axis. |
+| `block_draw.direction_preview` | `true` | Block tool in 3D: arrow with the axis label and highlighted face before the drag. |
+| `block_draw.snap_contact` | `true` | Block tool in 3D: the height stops flush with the first surface hit by rays from the footprint. |
+| `block_draw.limit_to_face` | `false` | Block tool in 3D: the footprint stays inside the face it started on. |
+| `block_draw.no_overlap` | `false` | Block tool in 3D: the height stops at the first brush the box would intersect; an overlapping box cannot be created. |
 | `clip_measurements` | `true` | The clipping tool shows the length and angle of the clip line. |
 | `clip_current_material` | `false` | Cut faces get the current material (off: they copy the most similar face). |
 | `detail.split` | `"selection"` | **Make func_detail**: one func_detail per selection (`"selection"`) or per group of touching brushes (`"cluster"`). |
@@ -301,8 +308,8 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `helper_scope` | `"Selected"` | Helpers (radii, cones, lines to targets) of `Selected` entities or `All`. The path links of the `line()` and `cylinder()` helpers (`path_track`, `path_corner`) are drawn for every entity in both modes, like Hammer. |
 | `connections` | `"Selected"` | I/O lines: `Off`, `Selected`, `All`. |
 | `show_overlays` | `true` | Draw `info_overlay` on their faces. |
-| `show_editor_objects` | `true` | Entity icons and helper geometry. |
-| `show_entity_icons` | `true` | Point entities draw their FGD iconsprite in the 3D views like Hammer; off shows colored boxes. Needs `show_editor_objects`. |
+| `show_editor_objects` | `true` | Helper geometry and labels (not the entity icons). |
+| `show_entity_icons` | `true` | Point entities draw their FGD iconsprite in the 3D views like Hammer, or a built in icon when the game content lacks it; off shows colored boxes. Independent of `show_editor_objects`. |
 | `show_entity_names` | `true` | Names of point entities in 2D views. |
 | `show_brush_centers` | `true` | Small x at each visible brush center in 2D; constant screen size. |
 | `show_ropes` | `true` | Draw ropes as they hang in game. |

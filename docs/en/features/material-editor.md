@@ -52,7 +52,7 @@ Water materials using the `Water_DX9_HDR` shader name are recognized as water to
 
 The left column lists the pages: **Base texture**, **Transparency**, **Bump map**, **Detail**, **Reflections**, **Phong**, **Rim light**, **Self-illumination**, **Lighting and surface**, **Tree sway**, **Water**, **Refraction**, **Sprite**, **Compile flags**, **Other parameters**. Pages with parameters set show their count in bold; pages the shader has nothing for are hidden.
 
-With Lightmapped_4WayBlend, **Base texture** also lists the 4-way blend parameters: `$basetexture3`, `$basetexture4`, `$textureN_lumstart` and `$textureN_lumend`, `$textureN_blendstart` and `$textureN_blendend`, `$lumblendfactorN`, `$textureN_uvscale` and `$textureN_blendmode`; **Bump map** lists `$textureN_bumpblendfactor`. The 3D views follow them (see [4-way blends](displacement-tool.md#4-way-blends-lightmapped_4wayblend)).
+With Lightmapped_4WayBlend, **Base texture** also lists the 4-way blend parameters: `$basetexture3`, `$basetexture4`, `$textureN_lumstart` and `$textureN_lumend`, `$textureN_blendstart` and `$textureN_blendend`, `$lumblendfactorN`, `$textureN_uvscale` and `$textureN_blendmode`; **Bump map** lists `$textureN_bumpblendfactor`; **Detail** lists `$detailblendfactor2` to `$detailblendfactor4`, the detail strength on textures 2 to 4. The 3D views follow them (see [4-way blends](displacement-tool.md#4-way-blends-lightmapped_4wayblend)).
 
 Each parameter row shows its key (bold when set), a widget, a `✖` button (**Remove (back to the default)**) when it is set, and a line telling what it does. Widgets follow the parameter:
 

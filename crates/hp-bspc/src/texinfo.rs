@@ -66,6 +66,22 @@ impl TexInfos {
         i
     }
 
+    pub fn texdata_index(&self, name: &str) -> Option<i32> {
+        self.by_name.get(&name.to_ascii_lowercase().replace('\\', "/")).copied()
+    }
+
+    pub fn clone_texdata_of(&mut self, texdata: i32, name: &str) -> i32 {
+        let key = name.to_ascii_lowercase().replace('\\', "/");
+        if let Some(i) = self.by_name.get(&key) {
+            return *i;
+        }
+        let Some(src) = usize::try_from(texdata).ok().and_then(|d| self.data.get(d)).cloned() else { return -1 };
+        let i = self.data.len() as i32;
+        self.data.push(TexData { name: name.replace('\\', "/"), ..src });
+        self.by_name.insert(key, i);
+        i
+    }
+
     pub fn has_texdata(&self, name: &str) -> bool {
         self.by_name.contains_key(&name.to_ascii_lowercase().replace('\\', "/"))
     }

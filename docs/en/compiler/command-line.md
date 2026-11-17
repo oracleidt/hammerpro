@@ -9,9 +9,11 @@ The compiler is part of `hammerpro.exe`. `hammerpro --bspc` builds the geometry,
 ```
 hammerpro --bspc [options] <map>
 hammerpro --rad  [options] <map>
+hammerpro --cubemaps [options] <map>
 ```
 
 - `<map>` is the map path, with or without extension. `--bspc` reads `<map>.vmf`; `--rad` lights `<map>.bsp` in place. The map is given last (any argument that does not start with `-` is the map).
+- `hammerpro --cubemaps` only builds the cubemaps of an already lit `<map>.bsp` (what **Build cubemaps on compile** runs after Valve's `vrad.exe`); it takes the `--rad` options `-final`, `-game`, `-gmod`, `-target`, `-insert_search_path` and the mount options.
 - Options are case insensitive. An option that needs a value and has none, or a value that is not a number, stops with `Error: ...` and exit code 1.
 - Each line of output is printed on stdout and appended to `<map>.log` next to the map (CRLF line ends, like Valve's tools).
 - Exit code 0 on success, 1 on any error (and on a leak with `-leaktest`).
@@ -65,6 +67,7 @@ Geometry and visibility. Defaults are those of the command line alone; the edito
 | `-cleanpak` | | Removes the unused files of the pakfile and compresses it with LZMA. | off |
 | `-autocubemaps` | | Sizes the default size cubemaps from the area they reflect and removes the unused ones. | off |
 | `-rtautocubemaps` | | Hammer Pro, written by the ray tracing automatic cubemaps: when the map has no `env_cubemap`, places them where reflective surfaces need them (sizes of the cubemap analysis) in the compiled map only, then turns on `-autocubemaps`. With cubemaps of its own, only `-autocubemaps`. | off |
+| `-parallaxcubemaps` | | Hammer Pro: parallax corrected cubemaps. Every `env_cubemap` gets the box of its room (key `hp_pcbox`, or the brush of its `parallaxobb`), its reflective `LightmappedGeneric` world faces get a box projected reflection overlay drawn by the shader packed in the map (see [Cubemaps](cubemaps.md#parallax-corrected-cubemaps-in-garrys-mod)). | off |
 | `-embed` | folder | Packs a whole folder into the BSP (full compiles only, refused with `-onlyents`/`-onlyprops`). | none |
 | `-dxlevel` | level | Drops entities excluded by their `mindxlevel`/`maxdxlevel`. | none |
 | `-radius_override` | units | Visibility radius. | fog `farz`, else none |
@@ -126,6 +129,8 @@ Lighting. With no range option, `--rad` computes LDR only.
 | `-staticpropsamplescale` | factor | More or fewer prop rays (more than 0). | 1 |
 | `-StaticPropNormals` | | Debug: props show their normals. | off |
 | `-nostaticpropshadows` | | Hammer Pro: no static prop shadow at all. | off |
+| `-buildcubemaps` | | Hammer Pro: build the cubemaps at the end of the lighting: every `env_cubemap` and the default cubemap rendered from the lit map into the pakfile, like `buildcubemaps`. Works with the classic and the ray traced lighting. | Final with ray tracing (Final, Optimal) |
+| `-nobuildcubemaps` | | Hammer Pro: do not build the cubemaps (placeholders until `buildcubemaps`). | |
 | `-nodispshadows` | | Hammer Pro: no displacement shadow. | off |
 | `-nostylebounce` | | Hammer Pro: named (switchable) lights do not bounce, like VRAD. | off |
 | `-raytracing` | quality (optional) | Hammer Pro: bake the lighting with the path tracer (GPU, CPU fallback) instead of the radiosity. The optional word is `draft`, `normal`, `final` or `optimal`. Any `-rt` option below turns it on too. See [Ray tracing](compile-options.md#ray-tracing). | off |
@@ -161,8 +166,8 @@ Lighting. With no range option, `--rad` computes LDR only.
 | `-rtglow` | | Glow halos around strong lights. | off |
 | `-rtglowintensity` | 0 to 8 | Glow halo brightness. | 1 |
 | `-rtnocubemaps` | | No automatic cubemap placement (only done when the map has no `env_cubemap`). | placed |
-| `-rtreflections` | | Ray traced cubemaps at every quality: every `env_cubemap` and the default cubemap rendered from the lit map into the pakfile, like `buildcubemaps`. | Final and Optimal |
-| `-rtnoreflections` | | No ray traced cubemaps (placeholders until `buildcubemaps`). | |
+| `-rtreflections` | | Same as `-buildcubemaps` (kept for older scripts). | Final and Optimal |
+| `-rtnoreflections` | | Same as `-nobuildcubemaps`. | |
 | `-rtnotonemap` | | No automatic `env_tonemap_controller` (only added when the map has none). | added |
 | `-rtcolorcorrection` | | Subtle automatic color correction. | off |
 | `-ao` / `-ambientocclusion` | | Baked ambient occlusion, like VRAD++ (`-ao 0`, `-noao`: off). See [Ambient occlusion](compile-options.md#ambient-occlusion). | off |

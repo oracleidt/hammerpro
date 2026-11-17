@@ -118,6 +118,7 @@
 | `handles` | `scale`, `rotate` or `skew`: what the handles of the selection box do in the 2D views. |
 | `box` | `touching`, `inside` or `centers`: which objects a box selection in a 2D view takes. |
 | `gizmo` | on/off: the transform gizmo in the 3D view. |
+| `edit_mode` | `gizmo`, `box` or `none`: what the 3D view shows on the selection (the X key of Hammer++). |
 | `gizmo_mode` | `move`, `rotate` or `scale`. |
 | `gizmo_local` | on/off: the gizmo of a single point entity follows its angles (saved in the settings). |
 | `stretch_handles` | on/off: stretch arrows on the faces of the selected brushes in the 3D view (saved in the settings). |
