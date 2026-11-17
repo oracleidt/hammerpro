@@ -55,6 +55,10 @@ struct Params {
     item_base: u32,
     rq_ids: u32,
     sky_light: u32,
+    contact_ao: u32,
+    pad0: u32,
+    pad1: u32,
+    pad2: u32,
 }
 
 #[repr(C)]
@@ -695,6 +699,7 @@ impl Gpu {
         params.sky_samples = tune.sky_samples;
         params.style_bounce = u32::from(tune.style_bounce);
         params.ao_radius = tune.ao_radius;
+        params.contact_ao = u32::from(tune.contact_ao);
         params.clamp_lum = tune.clamp;
         params.nitems = work.len() as u32;
         params.stats_base = stats_base;

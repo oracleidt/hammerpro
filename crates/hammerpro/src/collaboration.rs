@@ -139,6 +139,11 @@ pub const TR: hp_app::i18n::TrTable = &[
     ("team.chat", "Chat", "Discussion"),
     ("team.chat_empty", "No messages yet", "Aucun message pour l'instant"),
     ("team.message_hint", "Message to everyone", "Message à tous"),
+    (
+        "team.message_tip",
+        "Enter sends the message and gives the keyboard back to the map, so Delete, the arrow keys and the shortcuts work again at once.",
+        "Entrée envoie le message et rend le clavier à la map : Suppr, les flèches et les raccourcis remarchent tout de suite.",
+    ),
     ("team.send", "Send", "Envoyer"),
     ("team.ping", "Ping", "Signaler"),
     (

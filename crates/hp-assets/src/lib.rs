@@ -63,6 +63,7 @@ mod instance_decor;
 mod instances;
 mod render;
 
+pub use lights::set_designer_rad;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;

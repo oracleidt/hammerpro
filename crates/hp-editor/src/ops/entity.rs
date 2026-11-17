@@ -313,39 +313,8 @@ impl Document {
     }
 
     pub fn rename_targetname(&mut self, old: &str, new: &str, update_references: bool) -> EditResult<usize> {
-        let new = new.trim();
-        if old.trim().is_empty() || new.is_empty() {
-            return Err(EditError::Invalid("empty entity name".to_owned()));
-        }
-        let named = self.entities_named(old);
-        let refs = if update_references { self.outputs_targeting(old) } else { Vec::new() };
-        if named.is_empty() && refs.is_empty() {
-            return Ok(0);
-        }
-        let world_id = self.scene.world.id;
-        self.tx("Rename entity", |doc| {
-            for id in &named {
-                doc.update_entity(*id, |e| e.set("targetname", new));
-            }
-            for (id, index) in refs {
-                let fix = |c: &mut Connection| {
-                    if c.target.eq_ignore_ascii_case(old) {
-                        new.clone_into(&mut c.target);
-                    }
-                };
-                if id == world_id && !doc.scene.entities.contains_key(&id) {
-                    if let Some(c) = doc.world_mut().connections.get_mut(index) {
-                        fix(c);
-                    }
-                } else {
-                    doc.update_entity(id, |e| {
-                        if let Some(c) = e.connections.get_mut(index) {
-                            fix(c);
-                        }
-                    });
-                }
-            }
-            Ok(named.len())
-        })
+        let rules = crate::rename_refs::RenameRules::default();
+        let rules = update_references.then_some(&rules);
+        Ok(self.rename_entity_names(None, old, new, rules)?.renamed)
     }
 }

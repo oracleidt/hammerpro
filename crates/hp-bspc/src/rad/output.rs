@@ -205,6 +205,153 @@ pub(crate) fn rescale_luxels(src: hp_bsp::Bsp, density: f32) -> Result<Vec<u8>, 
     edit.to_vec().map_err(fail)
 }
 
+pub(crate) struct Refined {
+    pub bytes: Vec<u8>,
+    pub faces: usize,
+    pub kept: usize,
+    pub texinfos: usize,
+}
+
+pub(crate) const DISP_LIGHTMAP_MAX: i32 = 124;
+
+pub(crate) fn refine_luxels(
+    src: hp_bsp::Bsp,
+    detail: f32,
+    max_extent: i32,
+    max_texinfo: usize,
+) -> Result<Result<Refined, hp_bsp::Bsp>, String> {
+    let get = |i: usize| src.lump(i).map(|c| c.into_owned()).unwrap_or_default();
+    let mut texinfo = get(lump::TEXINFO);
+    let base_count = texinfo.len() / 72;
+    let (verts, edges, surfedges) = (get(lump::VERTEXES), get(lump::EDGES), get(lump::SURFEDGES));
+    let vertex = |i: usize| -> Option<[f64; 3]> {
+        let at = i * 12;
+        (at + 12 <= verts.len()).then(|| std::array::from_fn(|k| f64::from(super::data::f32_at(&verts, at + k * 4))))
+    };
+    let levels: Vec<f64> = {
+        let d = f64::from(detail.max(1.0));
+        let mut v = vec![d];
+        let mid = 1.0 + (d - 1.0) * 0.5;
+        if mid > 1.05 && mid < d - 0.05 {
+            v.push(mid);
+        }
+        v
+    };
+    let mut copies: std::collections::HashMap<(usize, usize), usize> = std::collections::HashMap::new();
+    let mut stats = (0usize, 0usize);
+    let mut fix = |faces: &mut Vec<u8>, texinfo: &mut Vec<u8>, count_stats: bool| {
+        for rec in faces.chunks_exact_mut(56) {
+            let (first, count, ti, disp) = (i32_at(rec, 4), i16_at(rec, 8), i16_at(rec, 10), i16_at(rec, 12));
+            let Ok(ti) = usize::try_from(ti) else { continue };
+            if ti >= base_count {
+                continue;
+            }
+            let t = texinfo[ti * 72..ti * 72 + 72].to_vec();
+            if (i32_at(&t, 64) as u32) & (surf::SKY | surf::NOLIGHT) != 0 {
+                continue;
+            }
+            let lm: [[f64; 4]; 2] = std::array::from_fn(|r| {
+                std::array::from_fn(|k| f64::from(super::data::f32_at(&t, 32 + (r * 4 + k) * 4)))
+            });
+            let (mut lo, mut hi) = ([f64::INFINITY; 2], [f64::NEG_INFINITY; 2]);
+            for e in 0..usize::try_from(count).unwrap_or(0) {
+                let Some(se) = usize::try_from(first)
+                    .ok()
+                    .map(|f| f + e)
+                    .filter(|k| k * 4 + 4 <= surfedges.len())
+                    .map(|k| i32_at(&surfedges, k * 4))
+                else {
+                    continue;
+                };
+                let (ei, side) = (se.unsigned_abs() as usize, usize::from(se < 0));
+                if ei * 4 + 4 > edges.len() {
+                    continue;
+                }
+                let Some(p) = vertex(usize::from(u16_at(&edges, ei * 4 + side * 2))) else { continue };
+                for r in 0..2 {
+                    let v = p[0] * lm[r][0] + p[1] * lm[r][1] + p[2] * lm[r][2] + lm[r][3];
+                    lo[r] = lo[r].min(v);
+                    hi[r] = hi[r].max(v);
+                }
+            }
+            if !(lo[0].is_finite() && lo[1].is_finite() && hi[0].is_finite() && hi[1].is_finite()) {
+                continue;
+            }
+            let limit = if disp >= 0 { DISP_LIGHTMAP_MAX.min(max_extent - 1) } else { max_extent - 1 };
+            let caps = [limit, limit];
+            let pick = levels.iter().enumerate().find_map(|(k, &d)| {
+                let mins: [i32; 2] = std::array::from_fn(|r| (lo[r] * d).floor() as i32);
+                let size: [i32; 2] = std::array::from_fn(|r| (hi[r] * d).ceil() as i32 - mins[r]);
+                (size[0] <= caps[0] && size[1] <= caps[1]).then_some((k, mins, size))
+            });
+            let Some((level, mins, size)) = pick else {
+                if count_stats {
+                    stats.1 += 1;
+                }
+                continue;
+            };
+            let index = match copies.get(&(ti, level)) {
+                Some(&i) => i,
+                None => {
+                    let next = texinfo.len() / 72;
+                    if next >= max_texinfo {
+                        if count_stats {
+                            stats.1 += 1;
+                        }
+                        continue;
+                    }
+                    let mut copy = t.clone();
+                    for k in 0..8 {
+                        let at = 32 + k * 4;
+                        let v = (f64::from(super::data::f32_at(&copy, at)) * levels[level]) as f32;
+                        copy[at..at + 4].copy_from_slice(&v.to_le_bytes());
+                    }
+                    texinfo.extend_from_slice(&copy);
+                    copies.insert((ti, level), next);
+                    next
+                }
+            };
+            let Ok(index16) = i16::try_from(index) else {
+                if count_stats {
+                    stats.1 += 1;
+                }
+                continue;
+            };
+            rec[10..12].copy_from_slice(&index16.to_le_bytes());
+            for r in 0..2 {
+                rec[28 + r * 4..32 + r * 4].copy_from_slice(&mins[r].to_le_bytes());
+                rec[36 + r * 4..40 + r * 4].copy_from_slice(&size[r].to_le_bytes());
+            }
+            if count_stats {
+                stats.0 += 1;
+            }
+        }
+    };
+    let mut lumps = Vec::new();
+    let mut counted = false;
+    for l in [lump::FACES, lump::FACES_HDR] {
+        let mut faces = get(l);
+        if faces.is_empty() {
+            continue;
+        }
+        fix(&mut faces, &mut texinfo, !counted);
+        counted = true;
+        lumps.push((l, faces, src.lump_info(l).map_or(1, |i| i.version)));
+    }
+    if stats.0 == 0 {
+        return Ok(Err(src));
+    }
+    let texinfos = texinfo.len() / 72 - base_count;
+    let version = src.lump_info(lump::TEXINFO).map_or(0, |i| i.version);
+    lumps.push((lump::TEXINFO, texinfo, version));
+    let mut edit = src.edit();
+    let fail = |e: hp_bsp::BspError| e.to_string();
+    for (l, data, version) in lumps {
+        edit.replace_lump_with_version(l, data, version).map_err(fail)?;
+    }
+    Ok(Ok(Refined { bytes: edit.to_vec().map_err(fail)?, faces: stats.0, kept: stats.1, texinfos }))
+}
+
 pub fn check_lighting(bytes: &[u8]) -> Vec<String> {
     let mut errors = Vec::new();
     let bsp = match hp_bsp::Bsp::from_vec(bytes.to_vec()) {

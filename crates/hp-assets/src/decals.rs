@@ -282,7 +282,7 @@ impl DecalProducer {
                         key: u64::from(id),
                         mesh: mesh.object_mesh(mat, color),
                         owner: Some(id),
-                        flags: ObjectFlags::NO_GAME_WIRE,
+                        flags: ObjectFlags::NO_GAME_WIRE | ObjectFlags::SURFACE_DECAL | ObjectFlags::NO_SHADOW,
                     });
                     state.solids = mesh.solids;
                     shown = true;

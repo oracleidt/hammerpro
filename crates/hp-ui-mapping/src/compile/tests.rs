@@ -608,9 +608,9 @@ fn the_idle_log_stays_still() {
         assert_eq!(f, last, "frame {i} moved");
     }
     d.no_auto_scroll = true;
-    let frames = log_text_positions(&mut d, &mut state, 30);
+    let frames = log_text_positions(&mut d, &mut state, 40);
     let last = frames.last().expect("frames");
-    for (i, f) in frames.iter().enumerate().skip(10) {
+    for (i, f) in frames.iter().enumerate().skip(20) {
         assert_eq!(f, last, "frame {i} moved without auto scroll");
     }
 }

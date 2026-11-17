@@ -51,6 +51,10 @@ struct Params {
     item_base: u32,
     rq_ids: u32,
     sky_light: u32,
+    contact_ao: u32,
+    pad0: u32,
+    pad1: u32,
+    pad2: u32,
 }
 
 @group(0) @binding(0) var<uniform> P: Params;
@@ -78,6 +82,8 @@ const DIM_POINT: u32 = 0u;
 const DIM_SKY: u32 = 1u;
 const DIM_AO: u32 = 2u;
 const DIM_PATH: u32 = 3u;
+const DIM_AO_REACH: u32 = 4u;
+const CONTACT_REACH: f32 = 1.5;
 const DIM_LIGHT: u32 = 16u;
 const K_OPAQUE: u32 = 0u;
 const K_SKY: u32 = 1u;
@@ -580,7 +586,12 @@ fn direct_sample(si: u32, luxel: u32, k: u32, pfirst: u32, pcount: u32) -> f32 {
         let uv = r2(k, P.seed, luxel, DIM_AO);
         let d = cosine_dir(p.n0, uv.x, uv.y);
         let base = p.pos - p.n0 * 0.75;
-        if (any_opaque(base, d, 0.25, P.ao_radius)) {
+        var reach = P.ao_radius;
+        if (P.contact_ao != 0u) {
+            let w = r1(k, P.seed, luxel, DIM_AO_REACH);
+            reach = P.ao_radius * CONTACT_REACH * (1.0 - sqrt(max(1.0 - w, 0.0)));
+        }
+        if (reach > 0.25 && any_opaque(base, d, 0.25, reach)) {
             return 0.0;
         }
     }

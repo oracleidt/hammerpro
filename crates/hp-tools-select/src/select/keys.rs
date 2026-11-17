@@ -5,7 +5,7 @@ use hp_app::{AppState, ViewKind};
 
 use super::{Drag, DragOp, SelectTool};
 use crate::math::{axis_vec, dominant_horizontal_axis};
-use crate::modal::ModalKind;
+use crate::modal::{ModalKind, TypedKey, take_typed, typed_push};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NudgeKey {
@@ -119,8 +119,16 @@ impl SelectTool {
             self.finish_drag(state);
             handled = true;
         }
+        handled |= self.refresh_mods(state, ctx);
+        if self.drag.as_ref().is_some_and(|d| d.rotates() && !d.elements) {
+            handled |= self.typed_keys(state, ctx);
+        }
         if self.drag.as_ref().is_some_and(Drag::is_modal) {
             return self.modal_keys(state, ctx) || handled;
+        }
+        if self.drag.as_ref().is_some_and(|d| d.rotates() && !d.typed.is_empty()) && self.take_enter(ctx) {
+            self.finish_drag(state);
+            return true;
         }
         let wants_escape = self.drag.is_some() || self.pending.is_some() || !state.doc.selection().is_empty();
         if wants_escape && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
@@ -157,6 +165,60 @@ impl SelectTool {
         handled
     }
 
+    fn take_enter(&mut self, ctx: &egui::Context) -> bool {
+        let shift = ctx.input(|i| {
+            i.events.iter().any(
+                |e| matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if modifiers.shift),
+            )
+        });
+        if !ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Enter)) {
+            return false;
+        }
+        if shift && let Some(d) = self.drag.as_mut() {
+            d.mods.shift = true;
+        }
+        true
+    }
+
+    fn redo_drag(&mut self, state: &mut AppState, mods: Option<Modifiers>) {
+        let Some(d) = &self.drag else { return };
+        let Some(view) = self.views.get(d.view).copied().flatten() else { return };
+        let (pos, mods) = (d.last_pos, mods.unwrap_or(d.mods));
+        self.update_drag(state, &view, pos, mods);
+    }
+
+    fn refresh_mods(&mut self, state: &mut AppState, ctx: &egui::Context) -> bool {
+        let Some(d) = self.drag.as_mut().filter(|d| d.transforms()) else { return false };
+        let now = ctx.input(|i| i.modifiers);
+        let old = d.mods;
+        if now.shift == old.shift && now.alt == old.alt && now.ctrl == old.ctrl && now.command == old.command {
+            return false;
+        }
+        d.mods = now;
+        self.redo_drag(state, Some(now));
+        true
+    }
+
+    fn typed_keys(&mut self, state: &mut AppState, ctx: &egui::Context) -> bool {
+        let keys = ctx.input_mut(|i| take_typed(&mut i.events));
+        let Some(d) = self.drag.as_mut() else { return false };
+        if keys.is_empty() {
+            return false;
+        }
+        for k in keys {
+            match k {
+                TypedKey::Char(c) => {
+                    typed_push(&mut d.typed, c);
+                }
+                TypedKey::Backspace => {
+                    d.typed.pop();
+                }
+            }
+        }
+        self.redo_drag(state, None);
+        true
+    }
+
     fn start_modal_keys(&mut self, state: &mut AppState, ctx: &egui::Context) -> bool {
         if state.doc.selection().objects.is_empty() {
             return false;
@@ -187,7 +249,7 @@ impl SelectTool {
             state.runtime.selection.modal_transform = false;
             return true;
         }
-        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Enter)) {
+        if self.take_enter(ctx) {
             self.finish_drag(state);
             return true;
         }
@@ -212,15 +274,16 @@ impl SelectTool {
                 {
                     *m = crate::modal::Modal { lock: m.lock, ..crate::modal::Modal::new(kind, *last_pos, m.axes) };
                 }
+                if let Some(d) = self.drag.as_mut()
+                    && !d.rotates()
+                {
+                    d.typed.clear();
+                }
                 changed = true;
             }
         }
-        if changed
-            && let Some(d) = &self.drag
-            && let Some(view) = self.views.get(d.view).copied().flatten()
-        {
-            let (pos, mods) = (d.last_pos, d.mods);
-            self.update_drag(state, &view, pos, mods);
+        if changed {
+            self.redo_drag(state, None);
         }
         changed
     }

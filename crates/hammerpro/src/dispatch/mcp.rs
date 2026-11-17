@@ -69,6 +69,7 @@ mod tools_particles;
 mod tools_paths;
 mod tools_pipe;
 mod tools_place;
+mod tools_rad;
 pub(crate) use place_scan::{
     MapScanBuilder, MemoryKey, ScanMemory, content_generation, remember_scan, remembered_scan, run_map_scan_since,
 };

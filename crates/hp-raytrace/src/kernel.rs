@@ -13,6 +13,8 @@ pub const DIM_POINT: u32 = 0;
 pub const DIM_SKY: u32 = 1;
 pub const DIM_AO: u32 = 2;
 pub const DIM_PATH: u32 = 3;
+pub const DIM_AO_REACH: u32 = 4;
+pub const CONTACT_REACH: f32 = 1.5;
 pub const DIM_LIGHT: u32 = 16;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -54,6 +56,7 @@ pub struct Tuning {
     pub sky_samples: u32,
     pub style_bounce: bool,
     pub ao_radius: f32,
+    pub contact_ao: bool,
     pub clamp: f32,
 }
 
@@ -410,7 +413,13 @@ impl Ctx<'_> {
             let (u, v) = r2(k, seed, luxel, DIM_AO);
             let d = cosine(normals[0], u, v);
             let base = pos - normals[0] * 0.75;
-            if self.packed.opaque.any(base, d, 0.25, self.tuning.ao_radius, &|id, u, v, _| self.solid(id, u, v)) {
+            let reach = if self.tuning.contact_ao {
+                let w = r1(k, seed, luxel, DIM_AO_REACH);
+                self.tuning.ao_radius * CONTACT_REACH * (1.0 - (1.0 - w).max(0.0).sqrt())
+            } else {
+                self.tuning.ao_radius
+            };
+            if reach > 0.25 && self.packed.opaque.any(base, d, 0.25, reach, &|id, u, v, _| self.solid(id, u, v)) {
                 0.0
             } else {
                 1.0
@@ -710,7 +719,15 @@ mod tests {
             let ctx = Ctx {
                 scene: &scene,
                 packed: &packed,
-                tuning: Tuning { seed: 3, bounces: 64, sky_samples: 1, style_bounce: true, ao_radius: 0.0, clamp: 0.0 },
+                tuning: Tuning {
+                    seed: 3,
+                    bounces: 64,
+                    sky_samples: 1,
+                    style_bounce: true,
+                    ao_radius: 0.0,
+                    contact_ao: false,
+                    clamp: 0.0,
+                },
             };
             let n = 40_000u32;
             let mut acc = Acc::default();
@@ -759,7 +776,15 @@ mod tests {
             let ctx = Ctx {
                 scene: &s,
                 packed: &packed,
-                tuning: Tuning { seed: 1, bounces: 0, sky_samples: 1, style_bounce: true, ao_radius: 0.0, clamp: 0.0 },
+                tuning: Tuning {
+                    seed: 1,
+                    bounces: 0,
+                    sky_samples: 1,
+                    style_bounce: true,
+                    ao_radius: 0.0,
+                    contact_ao: false,
+                    clamp: 0.0,
+                },
             };
             (0..21)
                 .map(|i| {

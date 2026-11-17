@@ -160,7 +160,7 @@ Dragging from an output port to another node opens **New output**:
 
 - The outputs tab title turns highlighted when an output has a problem: look for the red cells.
 - Use **Arrange** once on an imported map, then move the nodes you care about: the others follow the automatic layout.
-- Through MCP: `list_connections`, `add_connection`, `edit_connection`, `remove_connections`, `get_io_graph`, `list_targetnames`, `rename_targetname`, `check_entity`, `get_logical_graph` (the nodes, icons and edges of the logical view, with its filter), and `get_views` (a quadrant of kind `logical`). See the [MCP tool reference](../../MCP.md).
+- Through MCP: `list_connections`, `add_connection`, `edit_connection`, `remove_connections`, `get_io_graph`, `list_targetnames`, `rename_targetname` (renames a name and every reference to it, see [Renaming and references](entity-properties.md#renaming-and-references)), `check_entity`, `get_logical_graph` (the nodes, icons and edges of the logical view, with its filter), and `get_views` (a quadrant of kind `logical`). See the [MCP tool reference](../../MCP.md).
 
 ## FAQ
 

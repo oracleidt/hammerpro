@@ -17,7 +17,7 @@ const WORLD_OBJECT_BASE: u32 = u32::MAX - (1 << 21);
 const MAX_GROUPS: usize = (1 << 20) - 64;
 const WIRE_COLOR: [u8; 3] = [235, 235, 235];
 
-type CachedLighting = (ModelId, [[f32; 4]; 4], Option<[f32; 3]>, ModelLighting);
+type CachedLighting = (ModelId, [[f32; 4]; 4], Option<[f32; 3]>, ModelLighting, bool);
 type WantedWorld = (Arc<BspWorld>, Option<Arc<Vec<bool>>>);
 
 #[derive(Default)]
@@ -32,6 +32,7 @@ pub(crate) struct PlayWorld {
     model_lights: HashMap<u32, CachedLighting>,
     model_lights_sent: Vec<ModelLighting>,
     model_lights_source: usize,
+    pub(crate) lighting_waits: ahash::AHashSet<String>,
     baked: Option<(Arc<world_light::PropLighting>, Arc<StaticPropIndex>)>,
     baked_region: Option<[[f64; 3]; 2]>,
     pub(crate) entity_blocks: HashMap<hp_vmf::Id, u32>,
@@ -68,6 +69,16 @@ type StaticPropIndex = HashMap<(String, [i32; 3]), usize>;
 
 fn in_region(region: Option<[[f64; 3]; 2]>, transform: &[[f32; 4]; 4]) -> bool {
     region.is_none_or(|[lo, hi]| (0..3).all(|k| (lo[k]..=hi[k]).contains(&f64::from(transform[3][k]))))
+}
+
+pub(crate) fn lighting_waits_done(waits: &mut ahash::AHashSet<String>, ready: &ahash::AHashSet<String>) -> bool {
+    let before = waits.len();
+    waits.retain(|k| !ready.contains(k));
+    waits.len() != before
+}
+
+fn data_loading(entry: Option<&crate::models::ModelEntry>) -> bool {
+    matches!(entry, Some(crate::models::ModelEntry::Loading))
 }
 
 fn same_vis(a: &Option<Arc<Vec<bool>>>, b: &Option<Arc<Vec<bool>>>) -> bool {
@@ -335,7 +346,7 @@ impl AssetManager {
             .collect();
         let meshes = start.elapsed();
         let stats = renderer.set_compiled_lighting(mode, &maps, &blocks);
-        renderer.set_player_light_shafts(effect_shafts(&world.effect_sprites));
+        renderer.set_player_light_shafts(with_volumes(effect_shafts(&world.effect_sprites), &world.effect_volumes));
         let lighting = start.elapsed();
         log::info!(
             "player view: compiled lighting {} ({} lightmaps, {} dropped, atlas {} x {} x {}, {} MB)",
@@ -585,6 +596,27 @@ fn sprite_size(model: &str) -> Option<(f32, f32, bool)> {
         "spot_cone" => (128.0, 256.0, true),
         _ => return None,
     })
+}
+
+pub(crate) fn with_volumes(
+    shafts: Option<hp_render::light_shafts::LightShafts>,
+    volumes: &[hp_editor::limits::world::EffectVolume],
+) -> Option<hp_render::light_shafts::LightShafts> {
+    use hp_render::light_shafts::ShaftVertex;
+    if volumes.is_empty() {
+        return shafts;
+    }
+    let mut out = shafts.unwrap_or_default();
+    for v in volumes {
+        let base = out.vertices.len() as u32;
+        out.vertices.extend(v.vertices.iter().enumerate().map(|(k, p)| ShaftVertex {
+            pos: *p,
+            uv: [0.5, 0.5],
+            color: [v.color[0], v.color[1], v.color[2], v.alphas.get(k).copied().unwrap_or(v.color[3])],
+        }));
+        out.indices.extend(v.indices.iter().map(|i| i + base));
+    }
+    (!out.is_empty()).then_some(out)
 }
 
 pub(crate) fn effect_shafts(sprites: &[hp_vmf::Entity]) -> Option<hp_render::light_shafts::LightShafts> {
@@ -919,7 +951,7 @@ impl AssetManager {
                 .play_world
                 .model_lights
                 .get(&inst.object)
-                .is_some_and(|(m, t, o, _)| *m == inst.model && *t == inst.transform && *o == at);
+                .is_some_and(|(m, t, o, _, waits)| !waits && *m == inst.model && *t == inst.transform && *o == at);
             if fresh {
                 continue;
             }
@@ -929,13 +961,15 @@ impl AssetManager {
                 (None, _, Some((props, index))) => self.instance_lighting(None, props, index, inst, at),
                 _ => continue,
             };
-            self.play_world.model_lights.insert(inst.object, (inst.model, inst.transform, at, lighting));
+            let (lighting, waits) = lighting;
+            self.play_world.model_lights.insert(inst.object, (inst.model, inst.transform, at, lighting, waits));
         }
         if let Some(index) = world_index {
             self.play_world.static_props = index;
         }
         self.play_world.model_lights.retain(|o, _| seen.contains(o));
-        let mut out: Vec<ModelLighting> = self.play_world.model_lights.values().map(|(_, _, _, l)| l.clone()).collect();
+        let mut out: Vec<ModelLighting> =
+            self.play_world.model_lights.values().map(|(_, _, _, l, _)| l.clone()).collect();
         out.sort_by_key(|l| l.object);
         if out != self.play_world.model_lights_sent {
             renderer.set_model_lighting(&out);
@@ -950,18 +984,21 @@ impl AssetManager {
         index: &StaticPropIndex,
         inst: &ModelInstance,
         lighting_origin: Option<[f32; 3]>,
-    ) -> ModelLighting {
+    ) -> (ModelLighting, bool) {
         if world.is_some() && inst.object == rope_object() {
             let colors = self.play_world.ropes.as_ref().map(|r| r.colors.clone()).unwrap_or_default();
-            return ModelLighting {
-                object: inst.object,
-                sample_origin: None,
-                model: Some(inst.model),
-                vertex_colors: colors,
-                ambient: [[0.0; 3]; 6],
-                lights: Vec::new(),
-                styled_lights: Vec::new(),
-            };
+            return (
+                ModelLighting {
+                    object: inst.object,
+                    sample_origin: None,
+                    model: Some(inst.model),
+                    vertex_colors: colors,
+                    ambient: [[0.0; 3]; 6],
+                    lights: Vec::new(),
+                    styled_lights: Vec::new(),
+                },
+                false,
+            );
         }
         let m = glam::Mat4::from_cols_array_2d(&inst.transform);
         let origin = m.w_axis.truncate();
@@ -977,6 +1014,13 @@ impl AssetManager {
             None
         };
         let data = path.as_deref().and_then(|p| self.model_data(p));
+        let waits = match (&data, path.as_deref()) {
+            (None, Some(p)) => data_loading(self.models.map.get(p)),
+            _ => false,
+        };
+        if let (true, Some(p)) = (waits, path.as_deref()) {
+            self.play_world.lighting_waits.insert(p.to_owned());
+        }
         let prop = path
             .as_deref()
             .filter(|_| detail.is_none())
@@ -1018,7 +1062,7 @@ impl AssetManager {
             }
             (!out.is_empty()).then_some(out)
         });
-        ModelLighting {
+        let lighting = ModelLighting {
             object: inst.object,
             sample_origin: Some(lighting_origin),
             model: colors.as_ref().map(|_| inst.model),
@@ -1026,7 +1070,8 @@ impl AssetManager {
             ambient: lit.ambient,
             lights: lit.lights.iter().map(local_light).collect(),
             styled_lights: lit.styled.iter().map(local_light).collect(),
-        }
+        };
+        (lighting, waits)
     }
 }
 
@@ -1313,6 +1358,19 @@ mod tests {
             play.wanted = Some((Arc::new(world), None));
             assert_eq!(play.material_hdr(), Some(hdr));
         }
+    }
+
+    #[test]
+    fn props_lit_before_their_model_data_is_read_are_lit_again_once_it_is() {
+        assert!(data_loading(Some(&crate::models::ModelEntry::Loading)));
+        assert!(!data_loading(Some(&crate::models::ModelEntry::Failed("gone".into()))));
+        assert!(!data_loading(None));
+        let mut waits: ahash::AHashSet<String> = ["models/a.mdl".to_owned(), "models/b.mdl".to_owned()].into();
+        let ready: ahash::AHashSet<String> = ["models/c.mdl".to_owned()].into();
+        assert!(!lighting_waits_done(&mut waits, &ready), "another model arriving changes nothing");
+        let ready: ahash::AHashSet<String> = ["models/a.mdl".to_owned()].into();
+        assert!(lighting_waits_done(&mut waits, &ready), "the props of a.mdl are lit again");
+        assert_eq!(waits.len(), 1);
     }
 
     #[test]

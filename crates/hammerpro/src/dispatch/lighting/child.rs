@@ -11,6 +11,7 @@ pub(crate) struct Tuning {
     pub ambient_samples: usize,
     pub supersample: bool,
     pub quick: bool,
+    pub no_skybox_recurse: bool,
 }
 
 impl Default for Tuning {
@@ -25,6 +26,7 @@ impl Default for Tuning {
             no_disp_shadows: false,
             no_style_bounce: false,
             fast_ambient: false,
+            no_skybox_recurse: false,
         }
     }
 }
@@ -45,7 +47,12 @@ impl Tuning {
             ambient_samples: (o.samples_ambient as usize).clamp(MIN_AMBIENT_SAMPLES, MAX_AMBIENT_SAMPLES),
             supersample: o.supersample,
             quick: false,
+            no_skybox_recurse: false,
         }
+    }
+
+    pub fn skybox_recurse(self, compile: &hp_app::settings::CompileSettings) -> Self {
+        Self { no_skybox_recurse: compile.no_skybox_recurse(), ..self }
     }
 
     pub fn quick(self) -> Self {
@@ -54,7 +61,7 @@ impl Tuning {
 
     pub(crate) fn arg(self) -> String {
         format!(
-            "{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{}",
             self.sun_samples,
             self.ambient_samples,
             u8::from(self.supersample),
@@ -63,7 +70,8 @@ impl Tuning {
             u8::from(self.texture_shadows),
             u8::from(self.no_disp_shadows),
             u8::from(self.fast_ambient),
-            u8::from(self.no_style_bounce)
+            u8::from(self.no_style_bounce),
+            u8::from(self.no_skybox_recurse)
         )
     }
 
@@ -87,6 +95,7 @@ impl Tuning {
             no_disp_shadows: number(u8::from(d.no_disp_shadows) as usize, 0, 1) == 1,
             fast_ambient: number(u8::from(d.fast_ambient) as usize, 0, 1) == 1,
             no_style_bounce: number(u8::from(d.no_style_bounce) as usize, 0, 1) == 1,
+            no_skybox_recurse: number(u8::from(d.no_skybox_recurse) as usize, 0, 1) == 1,
         }
     }
 }
@@ -127,6 +136,7 @@ pub(crate) fn options(
     opts.no_disp_shadows = tuning.no_disp_shadows;
     opts.no_style_bounce = tuning.no_style_bounce;
     opts.fast_ambient = tuning.fast_ambient;
+    opts.no_skybox_recurse = tuning.no_skybox_recurse;
     opts.min_sun_samples = tuning.sun_samples;
     if tuning.quick {
         opts.quality = RadQuality::Draft;
@@ -197,6 +207,14 @@ mod tests {
         assert!(mapped.no_style_bounce && !options(true, RadQuality::Normal, 3, None, true, true, t).no_style_bounce);
         assert_eq!(mapped.bounces, 3);
         assert_eq!(Tuning::parse("12,40,1,0"), t);
+        let sky = Tuning { no_skybox_recurse: true, ..t };
+        assert_eq!(Tuning::parse(&sky.arg()), sky);
+        assert!(options(true, RadQuality::Normal, 1, None, true, true, sky).no_skybox_recurse);
+        assert!(!options(true, RadQuality::Normal, 1, None, true, true, t).no_skybox_recurse);
+        let mut compile = hp_app::settings::CompileSettings::default();
+        assert!(!t.skybox_recurse(&compile).no_skybox_recurse);
+        compile.extra_rad_args = "-noskyboxrecurse".into();
+        assert!(t.skybox_recurse(&compile).no_skybox_recurse);
     }
 
     #[test]

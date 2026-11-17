@@ -333,6 +333,7 @@ pub(crate) struct ReadWhat {
     pub collision: bool,
     pub texture_shadows: bool,
     pub lighting: bool,
+    pub every_model: bool,
 }
 
 fn models_needed(names: usize, props: &[Prop], what: ReadWhat) -> Vec<(bool, bool)> {
@@ -413,8 +414,8 @@ fn read_model(
         }
     };
     let casts_texture = what.collision
-        && what.texture_shadows
-        && (studio.flags & model::FLAG_CAST_TEXTURE_SHADOWS != 0 || (rules.forced)(name));
+        && ((rules.forced)(name)
+            || (what.texture_shadows && (what.every_model || studio.flags & model::FLAG_CAST_TEXTURE_SHADOWS != 0)));
     Dict { studio: Some(studio), vtx, collide, alpha_of_texture: casts_texture.then(Vec::new) }
 }
 
@@ -452,6 +453,7 @@ impl StaticProps {
     pub(crate) fn occluders(
         &mut self,
         polys: bool,
+        strict: bool,
         rules: &ShadowRules<'_>,
         models: &dyn ModelSource,
         log: &mut Vec<String>,
@@ -471,7 +473,9 @@ impl StaticProps {
             let m = angle_matrix(prop.angles);
             let xf = |p: [f32; 3]| m * Vec3A::from_array(p) + prop.origin;
             let id = PROP_BIT | (pi as u32 & INDEX_MASK);
-            if !polys {
+            let render_mesh = polys || (dict.alpha_of_texture.is_some() && dict.vtx.is_some());
+            let no_mesh = !strict && (dict.studio.is_none() || dict.vtx.is_none());
+            if !render_mesh || no_mesh {
                 for t in &dict.collide {
                     tris.push(Triangle { p: t.map(xf), payload: id });
                 }
@@ -532,6 +536,93 @@ impl StaticProps {
             }
         }
         (tris, occ)
+    }
+}
+
+pub(crate) struct RenderTri {
+    pub p: [Vec3A; 3],
+    pub n: [Vec3A; 3],
+    pub uv: [[f32; 2]; 3],
+    pub material: u32,
+}
+
+impl StaticProps {
+    pub(crate) fn read_render(
+        src: &hp_bsp::Bsp,
+        models: &dyn ModelSource,
+    ) -> Result<(StaticProps, Vec<String>), String> {
+        let what = ReadWhat { collision: false, texture_shadows: false, lighting: true, every_model: false };
+        let rules = ShadowRules { no_shadow: &|_| false, forced: &|_| false };
+        let (names, props) = read_sprp(src)?;
+        let mut used = vec![false; names.len()];
+        for p in &props {
+            if let Some(u) = used.get_mut(p.model) {
+                *u = true;
+            }
+        }
+        let mut lines: Vec<Vec<String>> = vec![Vec::new(); names.len()];
+        let dicts: Vec<Dict> = names
+            .par_iter()
+            .zip(&used)
+            .zip(lines.par_iter_mut())
+            .map(|((n, &u), l)| if u { read_model(n, models, what, &rules, l) } else { Dict::default() })
+            .collect();
+        Ok((StaticProps { names, props, dicts }, lines.into_iter().flatten().collect()))
+    }
+
+    pub(crate) fn render_triangles(&self) -> (Vec<RenderTri>, Vec<Vec<String>>) {
+        let mut tris = Vec::new();
+        let mut materials: Vec<Vec<String>> = Vec::new();
+        let mut index: HashMap<(usize, i32), u32> = HashMap::default();
+        for prop in &self.props {
+            let Some(dict) = self.dicts.get(prop.model) else { continue };
+            let (Some(s), Some(vtx)) = (&dict.studio, &dict.vtx) else { continue };
+            let m = angle_matrix(prop.angles);
+            let xf = |p: [f32; 3]| m * Vec3A::from_array(p) + prop.origin;
+            for (mi, sub) in s.models.iter().enumerate() {
+                let Some(lod0) = vtx.models.get(mi).and_then(|l| l.first()) else { continue };
+                for (k, mesh) in sub.meshes.iter().enumerate() {
+                    let material = *index.entry((prop.model, mesh.material)).or_insert_with(|| {
+                        let tex = usize::try_from(mesh.material).ok().and_then(|t| s.textures.get(t));
+                        let paths = tex
+                            .map(|t| {
+                                s.cdtextures
+                                    .iter()
+                                    .map(|cd| format!("materials/{cd}{t}.vmt").replace('\\', "/").to_ascii_lowercase())
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        materials.push(paths);
+                        (materials.len() - 1) as u32
+                    });
+                    for g in lod0.get(k).map_or(&[][..], Vec::as_slice) {
+                        if g.has_strips {
+                            continue;
+                        }
+                        for t in &g.tris {
+                            let v = t.map(|i| {
+                                g.orig
+                                    .get(usize::from(i))
+                                    .and_then(|o| mesh.vertices.get(usize::from(*o)))
+                                    .copied()
+                                    .unwrap_or_default()
+                            });
+                            let p = v.map(|x| xf(x.pos));
+                            let n = v.map(|x| (m * Vec3A::from_array(x.normal)).normalize_or_zero());
+                            let geo = (p[1] - p[0]).cross(p[2] - p[0]);
+                            let mut tri = RenderTri { p, n, uv: v.map(|x| x.uv), material };
+                            if geo.dot(n[0] + n[1] + n[2]) < 0.0 {
+                                tri.p.swap(1, 2);
+                                tri.n.swap(1, 2);
+                                tri.uv.swap(1, 2);
+                            }
+                            tris.push(tri);
+                        }
+                    }
+                }
+            }
+        }
+        (tris, materials)
     }
 }
 
@@ -1123,7 +1214,12 @@ mod tests {
             prop(0, NO_SHADOW),
             prop(9, 0),
         ];
-        let what = |collision: bool, lighting: bool| ReadWhat { collision, texture_shadows: false, lighting };
+        let what = |collision: bool, lighting: bool| ReadWhat {
+            collision,
+            texture_shadows: false,
+            lighting,
+            every_model: false,
+        };
         assert_eq!(
             models_needed(4, &props, what(true, false)),
             vec![(false, false), (true, false), (false, false), (false, false)]

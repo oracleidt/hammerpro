@@ -290,8 +290,8 @@ impl LightFileData {
     }
 
     pub fn texture_shadow_forced(&self, model: &str) -> bool {
-        let clean = clean_model_name(model);
-        self.force_texture_shadow.iter().any(|m| m == clean)
+        let clean = clean_model_name(model).replace('\\', "/");
+        self.force_texture_shadow.iter().any(|m| m.replace('\\', "/").eq_ignore_ascii_case(&clean))
     }
 }
 

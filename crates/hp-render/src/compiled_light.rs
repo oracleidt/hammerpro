@@ -248,6 +248,7 @@ pub(crate) struct CompiledLight {
     pipeline_layout: OnceLock<wgpu::PipelineLayout>,
     module: OnceLock<wgpu::ShaderModule>,
     pipelines: [OnceLock<Pipelines>; 2],
+    surface: OnceLock<[[wgpu::RenderPipeline; 2]; 2]>,
     stats: CompiledLightStats,
     style_values: Vec<f32>,
 }
@@ -975,6 +976,53 @@ impl Renderer {
     }
 }
 
+fn surface_pipeline(
+    device: &wgpu::Device,
+    module: &wgpu::ShaderModule,
+    layout: &wgpu::PipelineLayout,
+    alpha_test: bool,
+    two_sided: bool,
+) -> wgpu::RenderPipeline {
+    let constants = [("ALPHA_TEST", if alpha_test { 1.0 } else { 0.0 }), ("BLEND_MODE", 0.0), ("TINT_OPACITY", 0.0)];
+    let options = wgpu::PipelineCompilationOptions { constants: &constants, zero_initialize_workgroup_memory: false };
+    let buffers = [
+        Some(wgpu::VertexBufferLayout {
+            array_stride: size_of::<VertexGpu>() as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &VERTEX_ATTRS,
+        }),
+        Some(wgpu::VertexBufferLayout {
+            array_stride: 64,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &TRANSFORM_ATTRS,
+        }),
+    ];
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("hp-render compiled surface light"),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module,
+            entry_point: Some("vs_compiled"),
+            compilation_options: options.clone(),
+            buffers: &buffers,
+        },
+        primitive: wgpu::PrimitiveState {
+            cull_mode: if two_sided { None } else { Some(wgpu::Face::Back) },
+            ..crate::surface_light::primitive()
+        },
+        depth_stencil: Some(crate::surface_light::depth_state()),
+        multisample: wgpu::MultisampleState::default(),
+        fragment: Some(wgpu::FragmentState {
+            module,
+            entry_point: Some("fs_compiled_decal_light"),
+            compilation_options: options,
+            targets: &[Some(crate::surface_light::target())],
+        }),
+        multiview_mask: None,
+        cache: None,
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 fn opaque_pipeline(
     device: &wgpu::Device,
@@ -1221,6 +1269,8 @@ fn shader_and_layout<'a>(r: &'a Renderer, device: &wgpu::Device) -> (&'a wgpu::S
 
 pub(crate) mod sky3d;
 
+type Key = (usize, usize, usize);
+
 #[derive(Default)]
 pub(crate) struct CompiledLightPass;
 
@@ -1243,76 +1293,22 @@ impl CompiledLightPass {
             let faded = [false, true].map(|alpha| [false, true].map(|two| make(alpha, two, Some(false), true)));
             Pipelines { opaque, blended, faded }
         });
-        let view_proj = Mat4::from_cols_array_2d(&cx.view_proj);
-        let eye = Vec3::from(cx.eye);
-        let water_pass = crate::water::applies(cx.params, cx.options, cx.is_ortho);
-        let by_water = |desc: Option<&crate::MaterialDesc>| water_pass && desc.is_some_and(|d| d.water.is_some());
-        pass.set_bind_group(0, cx.view_bind_group, &[]);
-        pass.set_bind_group(2, bind_group, &[]);
-        pass.set_vertex_buffer(1, transforms.slice(..));
-        type Key = (usize, usize, usize);
         let set = |key: Key| match key.0 {
             0 => &pipes.opaque[key.1][key.2],
             1 => &pipes.blended[key.1][key.2],
             _ => &pipes.faded[key.1][key.2],
         };
         if !translucent {
-            let framed = cl.framed(&view_proj);
-            let visible: Vec<bool> = cl
-                .blocks
-                .iter()
-                .enumerate()
-                .map(|(i, b)| {
-                    let (flags, alpha) = cl.state(r, i, b);
-                    let hidden = flags.contains(crate::ObjectFlags::NO_3D)
-                        || (flags.contains(crate::ObjectFlags::HIDDEN) && !r.probing);
-                    let seen = match framed {
-                        Some(v) => v.get(i).copied().unwrap_or(false),
-                        None => b.moved || box_visible(&view_proj, b.lo, b.hi),
-                    };
-                    !hidden && alpha >= 0.999 && seen
-                })
-                .collect();
-            let mut keys: Vec<Option<Option<Key>>> = vec![None; r.scene.materials.len()];
-            let mut current: Option<Key> = None;
-            let mut material = u32::MAX;
-            let mut segment = u32::MAX;
-            for &(mat, index, draw) in &cl.order {
-                if !visible.get(index as usize).copied().unwrap_or(false) {
-                    continue;
-                }
-                let Some(slot) = keys.get_mut(mat as usize) else { continue };
-                let key = *slot.get_or_insert_with(|| {
-                    let desc = r.scene.materials.get(mat as usize).and_then(|m| m.desc);
-                    if by_water(desc.as_ref()) {
-                        return None;
-                    }
-                    match classify_with(desc.as_ref(), cx.options.force_opaque, false)? {
-                        (MeshPass::Opaque, two_sided) => Some((0, 0, usize::from(two_sided))),
-                        (MeshPass::AlphaTest, two_sided) => Some((0, 1, usize::from(two_sided))),
-                        _ => None,
-                    }
-                });
-                let Some(key) = key else { continue };
-                let Some(mg) = r.mat_gpu.get(mat as usize) else { continue };
-                let block = &cl.blocks[index as usize];
-                let Some(d) = block.draws.get(draw as usize) else { continue };
-                if current != Some(key) {
-                    pass.set_pipeline(set(key));
-                    current = Some(key);
-                }
-                if material != mat {
-                    pass.set_bind_group(1, &mg.bind_group, &[]);
-                    material = mat;
-                }
-                if segment != block.segment {
-                    cl.bind_block(pass, block);
-                    segment = block.segment;
-                }
-                pass.draw_indexed(d.first..d.first + d.count, block.base_vertex, index..index + 1);
-            }
+            Self::draw_solid(cx, pass, &set);
             return;
         }
+        let eye = Vec3::from(cx.eye);
+        let view_proj = Mat4::from_cols_array_2d(&cx.view_proj);
+        let water_pass = crate::water::applies(cx.params, cx.options, cx.is_ortho);
+        let by_water = |desc: Option<&crate::MaterialDesc>| water_pass && desc.is_some_and(|d| d.water.is_some());
+        pass.set_bind_group(0, cx.view_bind_group, &[]);
+        pass.set_bind_group(2, bind_group, &[]);
+        pass.set_vertex_buffer(1, transforms.slice(..));
         let framed = cl.framed(&view_proj);
         let order = cl
             .blocks
@@ -1376,6 +1372,90 @@ impl CompiledLightPass {
                 bound = Some(block.segment);
             }
             pass.draw_indexed(first..first + count, block.base_vertex, index..index + 1);
+        }
+    }
+
+    pub(crate) fn draw_surface_light(cx: &HookContext<'_>, pass: &mut wgpu::RenderPass<'_>) {
+        if !drawn_in(cx) {
+            return;
+        }
+        let r = cx.renderer;
+        let device = cx.device();
+        let (module, layout) = shader_and_layout(r, device);
+        let pipes = r.compiled.surface.get_or_init(|| {
+            [false, true].map(|alpha| [false, true].map(|two| surface_pipeline(device, module, layout, alpha, two)))
+        });
+        let set = |key: Key| &pipes[key.1][key.2];
+        Self::draw_solid(cx, pass, &set);
+    }
+
+    fn draw_solid<'p>(
+        cx: &HookContext<'_>,
+        pass: &mut wgpu::RenderPass<'_>,
+        set: &dyn Fn(Key) -> &'p wgpu::RenderPipeline,
+    ) {
+        let r = cx.renderer;
+        let cl = &r.compiled;
+        let (Some(bind_group), Some(transforms)) = (&cl.bind_group, &cl.transform_buf) else { return };
+        let view_proj = Mat4::from_cols_array_2d(&cx.view_proj);
+        let water_pass = crate::water::applies(cx.params, cx.options, cx.is_ortho);
+        let by_water = |desc: Option<&crate::MaterialDesc>| water_pass && desc.is_some_and(|d| d.water.is_some());
+        pass.set_bind_group(0, cx.view_bind_group, &[]);
+        pass.set_bind_group(2, bind_group, &[]);
+        pass.set_vertex_buffer(1, transforms.slice(..));
+        let framed = cl.framed(&view_proj);
+        let visible: Vec<bool> = cl
+            .blocks
+            .iter()
+            .enumerate()
+            .map(|(i, b)| {
+                let (flags, alpha) = cl.state(r, i, b);
+                let hidden = flags.contains(crate::ObjectFlags::NO_3D)
+                    || (flags.contains(crate::ObjectFlags::HIDDEN) && !r.probing);
+                let seen = match framed {
+                    Some(v) => v.get(i).copied().unwrap_or(false),
+                    None => b.moved || box_visible(&view_proj, b.lo, b.hi),
+                };
+                !hidden && alpha >= 0.999 && seen
+            })
+            .collect();
+        let mut keys: Vec<Option<Option<Key>>> = vec![None; r.scene.materials.len()];
+        let mut current: Option<Key> = None;
+        let mut material = u32::MAX;
+        let mut segment = u32::MAX;
+        for &(mat, index, draw) in &cl.order {
+            if !visible.get(index as usize).copied().unwrap_or(false) {
+                continue;
+            }
+            let Some(slot) = keys.get_mut(mat as usize) else { continue };
+            let key = *slot.get_or_insert_with(|| {
+                let desc = r.scene.materials.get(mat as usize).and_then(|m| m.desc);
+                if by_water(desc.as_ref()) {
+                    return None;
+                }
+                match classify_with(desc.as_ref(), cx.options.force_opaque, false)? {
+                    (MeshPass::Opaque, two_sided) => Some((0, 0, usize::from(two_sided))),
+                    (MeshPass::AlphaTest, two_sided) => Some((0, 1, usize::from(two_sided))),
+                    _ => None,
+                }
+            });
+            let Some(key) = key else { continue };
+            let Some(mg) = r.mat_gpu.get(mat as usize) else { continue };
+            let block = &cl.blocks[index as usize];
+            let Some(d) = block.draws.get(draw as usize) else { continue };
+            if current != Some(key) {
+                pass.set_pipeline(set(key));
+                current = Some(key);
+            }
+            if material != mat {
+                pass.set_bind_group(1, &mg.bind_group, &[]);
+                material = mat;
+            }
+            if segment != block.segment {
+                cl.bind_block(pass, block);
+                segment = block.segment;
+            }
+            pass.draw_indexed(d.first..d.first + d.count, block.base_vertex, index..index + 1);
         }
     }
 }

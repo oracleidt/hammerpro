@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::time::{Duration, Instant};
 
@@ -115,7 +115,8 @@ impl PreviewCache {
             Some(profile) => super::expert::plan_of(profile, &target, &res.tools),
             None => {
                 let content_args = plan::content_args(state.assets.fs());
-                let extras = PlanExtras { content_args, ..PlanExtras::default() };
+                let extras =
+                    PlanExtras { content_args, map: state.doc.path().map(Path::to_path_buf), ..PlanExtras::default() };
                 plan::build_plan_with(s, &res.tools, &target.vmf(), Vec::new(), None, extras)
                     .map_err(|e| super::notices::plan_error_text(&e))
                     .and_then(|p| match &external {
@@ -375,6 +376,7 @@ impl CompileDialog {
             ui.label(RichText::new(tf!("compilers.external_note", name)).color(theme::warning()).small());
         }
         let external = self.external_name.is_some();
+        let map_path = state.doc.path().map(PathBuf::from);
         let s = &mut state.settings.compile;
         normalize_steps(s);
         form.row(ui, t!("compile.preset"), |ui| {
@@ -545,6 +547,9 @@ impl CompileDialog {
                 ui.add_enabled_ui(!s.expert, |ui| super::options_ui::prop_toggles(ui, s));
             });
         }
+        form.row(ui, t!("compile.rad_row"), |ui| {
+            ui.add_enabled_ui(!s.expert, |ui| super::options_ui::rad_file_ui(ui, s, map_path.as_deref()));
+        });
 
         form.row(ui, t!("compile.before"), |ui| {
             ui.checkbox(&mut s.save_before_compile, t!("compile.save_before"))

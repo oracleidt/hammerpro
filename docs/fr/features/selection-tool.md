@@ -122,6 +122,7 @@ Touches pendant n'importe quel glisser :
 | Touche | Effet |
 |---|---|
 | `Maj` | Clone : le glisser crée une copie transformée et laisse l'original (une étape d'annulation "Duplicate"). Un nœud de chemin cloné seul se relie à la suite de sa source |
+| Chiffres | Pendant une rotation : angle exact en degrés, voir [Angles de rotation exacts](#exact-rotation-angles) |
 | `Alt` | Pas de magnétisme de grille pour ce glisser |
 | `Échap` | Annule le glisser |
 
@@ -159,8 +160,22 @@ Avec des objets sélectionnés et le pointeur sur une vue, appuyez sur :
 - `G`, `R` ou `E` de nouveau pour changer de transformation.
 - Un clic ou `Entrée` applique, `Échap` ou un clic droit annule.
 - `Alt` : sans magnétisme. Pour les rotations, la touche de rotation libre supprime le pas d'angle.
+- Gardez `Maj` enfoncée au moment d'appliquer pour dupliquer : une copie transformée est placée et l'original reste en place (une étape d'annulation « Duplicate », les copies deviennent la sélection). Tant que `Maj` est enfoncée, l'aperçu passe en vert et la valeur indique **Copie**. Vous pouvez appuyer sur `Maj` et la relâcher à tout moment sans interrompre la transformation.
 
 Pendant une transformation G/R/E, `Z` bloque l'axe Z au lieu d'entrer en vue souris.
+
+<a id="exact-rotation-angles"></a>
+### Angles de rotation exacts
+
+Pendant une rotation (`R`, une poignée de coin en mode **Rotation** dans une vue 2D, ou un anneau du gizmo), tapez un nombre pour tourner la sélection d'exactement ce nombre de degrés :
+
+- Les chiffres de la rangée du haut (même sans `Maj` sur un clavier AZERTY) ou du pavé numérique, `-` pour l'autre sens, `.` ou `,` pour les décimales, `Retour arrière` pour effacer. Pendant une rotation, les chiffres tapent l'angle au lieu de choisir un niveau de zoom des vues 2D.
+- La valeur tapée s'affiche à côté du gizmo, dans les vues 2D et dans la barre d'état, suivie de `_` (par exemple `Z: 90_°`), et l'aperçu la suit. La souris ne change plus l'angle tant que le nombre n'est pas effacé.
+- `Entrée` applique (avec `R` un clic aussi, avec une poignée ou un anneau relâcher le bouton aussi), `Échap` annule. Gardez `Maj` enfoncée pour placer une copie tournée à la place : `R`, `Z`, `90`, `Maj+Entrée`.
+- L'axe : `X`, `Y` ou `Z` pendant `R` (les axes du gizmo, donc ceux de l'entité avec **Local**), l'anneau que vous tirez, ou sans touche d'axe l'axe de la vue : dans une vue 2D l'axe tourné vers vous (90 tourne dans le sens inverse des aiguilles d'une montre à l'écran), dans la vue 3D l'axe du monde le plus proche de la direction de la vue, affiché avant la valeur.
+- Les angles positifs tournent dans le sens inverse des aiguilles d'une montre vu depuis le bout positif de l'axe, donc `90` et `-90` sont des quarts de tour opposés. Les angles sont exacts, sans le pas de rotation. Brushes, entités, props et sélections mixtes tournent ensemble, en une seule étape d'annulation.
+
+L'outil MCP `rotate_objects` fait la même chose par nombre (`axis`, `degrees`, `pivot`), et son option `duplicate` tourne des copies en gardant les originaux.
 
 ### Alt + molette : échelle des modèles
 

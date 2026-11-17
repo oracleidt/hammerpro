@@ -138,6 +138,8 @@ Sans contenu de jeu (Garry's Mod introuvable et pas de `-game`), les matériaux 
 | `-rtthreshold` | 0 à 1 | Échantillonnage adaptatif : niveau de bruit sous lequel un luxel s'arrête. | 0.08, 0.04, 0.02 |
 | `-rtlightsize` | 0 à 64 | Échelle de la taille des lumières (ombres douces ; 0 : nettes). | 1 |
 | `-rtsunangle` | 0 à 45 degrés | Taille angulaire du soleil. | la `light_environment` |
+| `-rtluxels` | 1 à 4 | Détail des lightmaps du calcul en ray tracing (luxels par côté de face multipliés, dans la limite du moteur et un budget de 32 Mo par passe). | 1, 1, 2 |
+| `-rtlook` | `classic`, `cinematic`, `auto` | Rendu de l'éclairage en ray tracing : décroissance réglée comme VRAD, ou flaques de lumière physiques, plafonniers, rebonds plus colorés et ombres de contact. | cinématique en Final et Optimal |
 | `-rtskysamples` | 1 à 64 | Échantillons du ciel par rebond. | 1, 1, 2 |
 | `-rtdenoise` | 0 à 4 | Force du débruiteur qui respecte les contours, 0 le désactive. | 1 |
 | `-rtsupersample` | 1 à 8 | Points d'échantillonnage par côté de luxel. | 2, 3, 4 |
@@ -149,16 +151,18 @@ Sans contenu de jeu (Garry's Mod introuvable et pas de `-game`), les matériaux 
 | `-rtnoao` / `-rtao` | | Ray tracing : occlusion ambiante précalculée désactivée / activée (ombres de contact dans les coins, sous et à la base des props statiques, aussi dans l'éclairage par sommet des props). | activée |
 | `-rtaostrength` | 0 à 1 | Force de l'occlusion ambiante. | 0.5 |
 | `-rtaoradius` | 4 à 1024 unités | Rayon de l'occlusion ambiante. | 48 |
-| `-rtnoshafts` / `-rtshafts` | | Rayons de lumière désactivés / activés : faisceaux additifs d'aspect volumétrique là où le soleil et les cônes de spots puissants passent par les fenêtres, portes et trous (sans collision ni ombre, ils s'estompent avec la distance et l'angle de vue). | activés |
+| `-rtnoshafts` / `-rtshafts` | | Rayons de lumière désactivés / activés : faisceaux additifs d'aspect volumétrique là où le soleil et les cônes de spots puissants passent par les fenêtres, portes et trous (sans collision ni ombre, ils s'estompent avec la distance et l'angle de vue). | Rayons de lumière désactivés / activés : faisceaux de lumière volumétrique précalculés à travers les ouvertures encadrées et sous les cônes de spots puissants, coupés par la géométrie (sans collision ni ombre).
 | `-rtshaftintensity` | 0 à 8 | Luminosité des rayons. | 1 |
 | `-rtshaftlength` | 0.1 à 8 | Multiplicateur de longueur des rayons. | 1 |
 | `-rtshaftsoftness` | 0 à 4 | Douceur des bords des rayons. | 1 |
 | `-rtshaftwhite` | | Rayons blancs au lieu de la couleur de leur lumière. | couleur de la lumière |
 | `-rtshaftsource` | `sun`, `sun_and_spots` | Lumières qui font des rayons. | `sun_and_spots` |
-| `-rtshaftdust` | | Poussières dans les rayons. | désactivé |
+| `-rtshaftdust` | | Poussières dans les rayons. | Poussière dans les faisceaux (une densité plus granuleuse).
 | `-rtglow` | | Halos lumineux autour des lumières puissantes. | désactivé |
 | `-rtglowintensity` | 0 à 8 | Luminosité des halos. | 1 |
 | `-rtnocubemaps` | | Pas de placement automatique des cubemaps (fait seulement quand la map n'a pas d'`env_cubemap`). | placés |
+| `-rtreflections` | | Cubemaps ray tracées à toutes les qualités : chaque `env_cubemap` et la cubemap par défaut rendus à partir de la map éclairée dans le pakfile, comme `buildcubemaps`. | Final et Optimal |
+| `-rtnoreflections` | | Pas de cubemaps ray tracées (textures provisoires jusqu'à `buildcubemaps`). | |
 | `-rtnotonemap` | | Pas d'`env_tonemap_controller` automatique (ajouté seulement quand la map n'en a pas). | ajouté |
 | `-rtcolorcorrection` | | Correction colorimétrique automatique discrète. | désactivé |
 | `-ao` / `-ambientocclusion` | | Occlusion ambiante précalculée, comme dans VRAD++ (`-ao 0`, `-noao` : désactivée). Voir [Occlusion ambiante](compile-options.md#ambient-occlusion). | désactivé |

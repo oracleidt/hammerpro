@@ -589,13 +589,19 @@ pub(crate) fn parse_bspc_args(args: &[String]) -> Result<BspcArgs, String> {
     Ok(a)
 }
 
+pub(crate) const RT_CUBEMAP_GAP: f64 = 256.0;
+
 pub(crate) fn rt_place_cubemaps(map: &mut hp_vmf::Map, fs: &hp_fs::GameFs) -> String {
-    let existing = map.entities.iter().filter(|e| e.classname.eq_ignore_ascii_case("env_cubemap")).count();
-    if existing > 0 {
-        return format!(
-            "Ray tracing automatic cubemaps: the map already has {existing} env_cubemap, kept (automatic cubemap sizing on)"
-        );
-    }
+    let existing: Vec<glam::DVec3> = map
+        .entities
+        .iter()
+        .filter(|e| e.classname.eq_ignore_ascii_case("env_cubemap"))
+        .map(|e| {
+            let v: Vec<f64> =
+                e.get("origin").unwrap_or("").split_ascii_whitespace().filter_map(|x| x.parse().ok()).collect();
+            if v.len() == 3 { glam::DVec3::new(v[0], v[1], v[2]) } else { glam::DVec3::splat(f64::NAN) }
+        })
+        .collect();
     let doc = hp_editor::Document::from_map(map.clone());
     let fs = Some(fs);
     let class = |m: &str| crate::dispatch::health::cubemaps::material_class(fs, m);
@@ -607,9 +613,25 @@ pub(crate) fn rt_place_cubemaps(map: &mut hp_vmf::Map, fs: &hp_fs::GameFs) -> St
         [glam::DVec3::X, glam::DVec3::NEG_X, glam::DVec3::Y, glam::DVec3::NEG_Y, glam::DVec3::Z, glam::DVec3::NEG_Z];
     let enclosed =
         |p: glam::DVec3| idx.contains(p).is_none() && dirs.iter().all(|d| idx.ray_hit(p, *d, 65536.0).is_some());
-    let new: Vec<_> =
-        report.suggestions.iter().filter(|s| s.is_new() && s.origin.is_finite() && enclosed(s.origin)).collect();
+    let uncovered = |s: &hp_editor::optimize::cubemaps::Suggestion| {
+        existing.is_empty()
+            || (s.room.and_then(|r| report.rooms.get(r)).is_none_or(|r| r.probes.is_empty())
+                && existing.iter().all(|e| !e.is_finite() || e.distance(s.origin) >= RT_CUBEMAP_GAP))
+    };
+    let room = hp_bspc::cubemap::MAX_SAMPLES.saturating_sub(existing.len());
+    let new: Vec<_> = report
+        .suggestions
+        .iter()
+        .filter(|s| s.is_new() && s.origin.is_finite() && enclosed(s.origin) && uncovered(s))
+        .take(room)
+        .collect();
     if new.is_empty() {
+        if !existing.is_empty() {
+            return format!(
+                "Ray tracing automatic cubemaps: the map already has {} env_cubemap covering its reflective rooms, kept (automatic cubemap sizing on)",
+                existing.len()
+            );
+        }
         return format!(
             "Ray tracing automatic cubemaps: no env_cubemap placed ({} reflective faces need none)",
             report.reflective
@@ -628,8 +650,16 @@ pub(crate) fn rt_place_cubemaps(map: &mut hp_vmf::Map, fs: &hp_fs::GameFs) -> St
         }
         map.entities.push(e);
     }
+    if !existing.is_empty() {
+        return format!(
+            "Ray tracing automatic cubemaps: the map has {} env_cubemap, kept; placed {} more in {} reflective rooms and facades none of them covers (sizes from the cubemap analysis, the VMF on disk is not changed)",
+            existing.len(),
+            new.len(),
+            rooms.max(1)
+        );
+    }
     format!(
-        "Ray tracing automatic cubemaps: placed {} env_cubemap in {} rooms with {} reflective faces (the map has none; sizes from the 2.0.6 cubemap analysis, the VMF on disk is not changed; run buildcubemaps in game to render them)",
+        "Ray tracing automatic cubemaps: placed {} env_cubemap in {} rooms with {} reflective faces (the map has none; sizes from the cubemap analysis, the VMF on disk is not changed; ray traced reflections or buildcubemaps in game render them)",
         new.len(),
         rooms.max(1),
         report.reflective
@@ -1341,6 +1371,8 @@ fn rt_switch(rt: &mut hp_bspc::rad::RayTracing, flag: &str) {
         "-rtshaftdust" => e.shaft_dust = true,
         "-rtglow" => e.glow = true,
         "-rtnocubemaps" => e.auto_cubemaps = false,
+        "-rtreflections" => e.reflections = Some(true),
+        "-rtnoreflections" => e.reflections = Some(false),
         "-rtnotonemap" => e.tonemap = false,
         "-rtcolorcorrection" => e.color_correction = true,
         _ => {}
@@ -1382,6 +1414,17 @@ fn rt_option(rt: &mut hp_bspc::rad::RayTracing, flag: &str, value: Option<&str>)
         "-rtsupersample" => rt.supersample = Some(int(1, 8)?),
         "-rtpropsamples" => rt.prop_samples = Some(int(1, 4096)?),
         "-rtchunk" => rt.chunk_luxels = Some(int(0, u32::MAX)?).filter(|n| *n > 0),
+        "-rtluxels" => rt.luxel_detail = Some(real(1.0, 4.0)?),
+        "-rtlook" => {
+            rt.look = if text.eq_ignore_ascii_case("auto") {
+                None
+            } else {
+                Some(
+                    hp_bspc::rad::RtLook::parse(text)
+                        .ok_or_else(|| format!("expected classic, cinematic or auto after '{flag}'"))?,
+                )
+            };
+        }
         "-rtaostrength" => rt.effects.ao_strength = real(0.0, 1.0)?,
         "-rtaoradius" => rt.effects.ao_radius = real(4.0, 1024.0)?,
         "-rtshaftintensity" => rt.effects.shaft_intensity = real(0.0, 8.0)?,
@@ -1698,6 +1741,7 @@ mod tests {
             let value = match f.flag {
                 "-rtdevice" => "gpu",
                 "-rtshaftsource" => "sun",
+                "-rtlook" => "cinematic",
                 "-rtaoradius" => "48",
                 rt if rt.starts_with("-rt") => "1",
                 _ => "2",
@@ -1723,7 +1767,7 @@ mod tests {
         assert_eq!(r.map.as_deref(), Some(Path::new("map")));
         let line = "-both -rtquality optimal -rtdevice cpu -rtseed 7 -rtsamples 32 -rtmaxsamples 512 -rtbounces 8 \
             -rtthreshold 0.025 -rtlightsize 1.5 -rtsunangle 0.5 -rtskysamples 3 -rtdenoise 0 -rtsupersample 4 \
-            -rtnobump -rtpropsamples 64 -rtchunk 65536 -rtlang FR map";
+            -rtnobump -rtpropsamples 64 -rtchunk 65536 -rtluxels 1.5 -rtlook classic -rtlang FR map";
         let r = parse_rad_args(&args(line)).expect("parsed");
         let rt = r.opts.raytracing.clone().expect("any -rt flag turns it on");
         assert_eq!((rt.quality, rt.device, rt.seed), (RtQuality::Optimal, RtDevice::Cpu, 7));
@@ -1731,6 +1775,8 @@ mod tests {
         assert_eq!((rt.adaptive_threshold, rt.light_size_scale, rt.sun_angle), (Some(0.025), Some(1.5), Some(0.5)));
         assert_eq!((rt.sky_samples, rt.denoise, rt.supersample), (Some(3), Some(0.0), Some(4)));
         assert_eq!((rt.bump, rt.prop_samples, rt.chunk_luxels, rt.lang.as_str()), (false, Some(64), Some(65536), "fr"));
+        assert_eq!(rt.luxel_detail, Some(1.5));
+        assert_eq!(rt.look, Some(hp_bspc::rad::RtLook::Classic));
         assert_eq!(rt.no_gpu_message(), hp_bspc::rad::raytrace::no_gpu_message("fr"));
         assert!(r.ignored.is_empty() && r.notes.is_empty(), "{:?} {:?}", r.ignored, r.notes);
         assert_eq!(r.map.as_deref(), Some(Path::new("map")));
@@ -1738,12 +1784,15 @@ mod tests {
         let r = parse_rad_args(&args(
             "-rtnoao -rtaostrength 0.75 -rtaoradius 64 -rtnoshafts -rtshaftintensity 2 -rtshaftlength 1.5 \
              -rtshaftsoftness 0.5 -rtshaftwhite -rtshaftsource sun_and_spots -rtshaftdust -rtglow -rtglowintensity 3 \
-             -rtnocubemaps -rtnotonemap -rtcolorcorrection map",
+             -rtnocubemaps -rtnotonemap -rtcolorcorrection -rtnoreflections map",
         ))
         .expect("parsed");
         let e = r.opts.raytracing.expect("effect flags turn it on").effects;
         assert!(!e.ao && !e.shafts && !e.shaft_light_color && e.shaft_dust && e.glow);
         assert!(!e.auto_cubemaps && !e.tonemap && e.color_correction);
+        assert_eq!(e.reflections, Some(false));
+        let r = parse_rad_args(&args("-raytracing -rtreflections map")).expect("parsed");
+        assert_eq!(r.opts.raytracing.expect("on").effects.reflections, Some(true));
         assert_eq!((e.ao_strength, e.ao_radius, e.shaft_intensity), (0.75, 64.0, 2.0));
         assert_eq!((e.shaft_length, e.shaft_softness, e.glow_intensity), (1.5, 0.5, 3.0));
         assert_eq!(e.shaft_source, hp_bspc::rad::ShaftSource::SunAndSpots);
@@ -1917,6 +1966,14 @@ mod tests {
         let line = rt_place_cubemaps(&mut plain, &fs);
         assert!(line.contains("no env_cubemap placed"), "{line}");
         assert!(!plain.entities.iter().any(|e| e.classname == "env_cubemap"));
+        let mut far = hp_vmf::parse(&room_of("METAL/METALFLOOR001A", "METAL/METALWALL001A")).expect("room");
+        let id = far.entities.iter().map(|e| e.id).chain([far.world.id]).max().unwrap_or(0) + 1;
+        let mut cube = hp_vmf::Entity { id, classname: "env_cubemap".to_owned(), ..Default::default() };
+        cube.set("origin", "9000 9000 9000");
+        far.entities.push(cube);
+        let line = rt_place_cubemaps(&mut far, &fs);
+        let count = far.entities.iter().filter(|e| e.classname == "env_cubemap").count();
+        assert!(count > 1 && line.contains("more"), "a room no cubemap covers gets one: {line}");
     }
 
     #[test]

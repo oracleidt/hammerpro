@@ -46,7 +46,7 @@ Le bouton **Téléporter**, à côté d'un participant, ouvre la map partagée e
 
 ## Discussion et signalements
 
-La zone **Discussion** envoie un court message (200 caractères au plus) à tous les participants. Les messages apparaissent dans la discussion de chacun avec la couleur de l'auteur ; quand le panneau d'un participant est fermé, ils apparaissent aussi en notification et le menu **Team Mapping** affiche le nombre de messages non lus.
+La zone **Discussion** envoie un court message (200 caractères au plus) à tous les participants. Les messages apparaissent dans la discussion de chacun avec la couleur de l'auteur ; quand le panneau d'un participant est fermé, ils apparaissent aussi en notification et le menu **Team Mapping** affiche le nombre de messages non lus. Entrée envoie le message et rend le clavier à la map : `Suppr`, les flèches et les autres raccourcis marchent tout de suite ; cliquez dans la zone pour écrire le message suivant.
 
 **Signaler** affiche à tous, pendant 8 secondes, un repère pulsant de ta couleur avec ton pseudo au point situé au centre de ta vue 3D. Pour marquer un autre point, fais un clic droit dans une vue 2D ou 3D et choisis **Signaler ici à l'équipe**. Chaque participant voit le repère dans les vues 2D et 3D ; quand il est hors de la vue 3D, une flèche au bord de la vue indique sa direction. Chaque signalement apparaît aussi dans la discussion avec un bouton **Aller à** qui cadre le point.
 

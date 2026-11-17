@@ -43,6 +43,7 @@ pub(crate) fn step_flags(s: &CompileSettings, step: StepKind) -> StepFlags {
     let opts = PlanOptions {
         static_prop_lighting: s.static_prop_lighting,
         static_prop_shadows: s.static_prop_shadows,
+        lights_file: s.chosen_rad_file().map(std::path::PathBuf::from),
         raytracing: super::raytrace_ui::plan_options(s),
         ..PlanOptions::default()
     };
@@ -165,11 +166,56 @@ pub(crate) fn prop_toggles(ui: &mut Ui, s: &mut CompileSettings) {
     ui.checkbox(&mut s.static_prop_shadows, t!("compile.prop_shadows")).on_hover_text(t!("compile.prop_shadows_tip"));
 }
 
+pub fn rad_file_ui(ui: &mut Ui, s: &mut CompileSettings, map: Option<&std::path::Path>) -> bool {
+    let mut changed = false;
+    ui.vertical(|ui| {
+        ui.horizontal_wrapped(|ui| {
+            changed |= ui
+                .checkbox(&mut s.rad_file_enabled, t!("compile.rad_file"))
+                .on_hover_text(t!("compile.rad_file_tip"))
+                .changed();
+            ui.add_enabled_ui(s.rad_file_enabled, |ui| {
+                let edit = egui::TextEdit::singleline(&mut s.rad_file)
+                    .desired_width(220.0)
+                    .hint_text(RichText::new(t!("compile.rad_file_hint")).weak().italics());
+                changed |= ui.add(edit).on_hover_text(t!("compile.rad_file_tip")).changed();
+                if ui.button(t!("compile.rad_file_browse")).clicked() {
+                    let mut dialog = rfd::FileDialog::new().add_filter(t!("compile.rad_file_filter"), &["rad"]);
+                    let current = hp_app::settings::resolve_rad_path(&s.rad_file, map);
+                    let start =
+                        current.as_deref().and_then(std::path::Path::parent).or(map.and_then(std::path::Path::parent));
+                    if let Some(dir) = start.filter(|d| d.is_dir()) {
+                        dialog = dialog.set_directory(dir);
+                    }
+                    if let Some(p) = dialog.pick_file() {
+                        s.rad_file = p.display().to_string();
+                        s.rad_file_enabled = true;
+                        changed = true;
+                    }
+                }
+            });
+        });
+        let missing = s
+            .chosen_rad_file()
+            .and_then(|f| hp_app::settings::resolve_rad_path(f, map))
+            .filter(|p| p.is_absolute() && !p.is_file());
+        if let Some(p) = missing {
+            ui.label(RichText::new(tf!("compile.rad_file_missing", p.display())).small().color(theme::warning()));
+        } else if s.rad_file_enabled && s.rad_file.trim().is_empty() {
+            ui.label(RichText::new(t!("compile.rad_file_empty")).small().color(theme::warning()));
+        } else {
+            ui.label(RichText::new(t!("compile.rad_file_default")).small().weak());
+        }
+    });
+    changed
+}
+
 pub fn compile_options_ui(ui: &mut Ui, s: &mut CompileSettings) {
     ui.horizontal_wrapped(|ui| {
         ui.label(t!("compile.static_props"));
         prop_toggles(ui, s);
     });
+    rad_file_ui(ui, s, None);
     step_menu(ui, s, StepKind::Bsp, "hp_settings_opts");
     step_menu(ui, s, StepKind::Rad, "hp_settings_opts");
 }

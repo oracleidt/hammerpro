@@ -25,6 +25,9 @@ pub(crate) trait UiHost {
     fn logical_rects(&self) -> [Option<Rect>; 4];
     fn open_maps(&self) -> Vec<Value>;
     fn prompts(&self) -> Vec<&'static str>;
+    fn keyboard(&self, _ctx: &egui::Context) -> Value {
+        Value::Null
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -597,6 +600,10 @@ pub(crate) fn encode_png(
 impl UiHost for crate::app::HammerProApp {
     fn state(&mut self) -> &mut AppState {
         &mut self.state
+    }
+
+    fn keyboard(&self, ctx: &egui::Context) -> Value {
+        self.keyboard_report(ctx)
     }
 
     fn execute(&mut self, ctx: &egui::Context, action: Action) {

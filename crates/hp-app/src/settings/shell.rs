@@ -121,6 +121,7 @@ pub struct EditSettings {
     pub undo_restores_selection: bool,
     pub new_brush_color: Option<[u8; 3]>,
     pub keep_displacements_on_cut: bool,
+    pub rename_updates_references: bool,
 }
 
 impl Default for EditSettings {
@@ -145,6 +146,7 @@ impl Default for EditSettings {
             undo_restores_selection: true,
             new_brush_color: None,
             keep_displacements_on_cut: true,
+            rename_updates_references: true,
         }
     }
 }

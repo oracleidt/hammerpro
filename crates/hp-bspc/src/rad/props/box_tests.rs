@@ -362,3 +362,31 @@ fn ambient_occlusion_never_brightens_prop_vertices() {
     }
     assert!(darker >= 8, "the vertices near the floor get darker: {darker}");
 }
+
+fn shadow_triangles(forced: bool, polys: bool, texture_shadows: bool) -> Vec<[Vec3A; 3]> {
+    let models = BoxModel { files: box_files() };
+    let no_shadow = |_: &str| false;
+    let force = move |m: &str| forced && m.eq_ignore_ascii_case("models/test/box.mdl");
+    let rules = super::ShadowRules { no_shadow: &no_shadow, forced: &force };
+    let what = super::ReadWhat { collision: true, texture_shadows, lighting: false, every_model: false };
+    let mut log = Vec::new();
+    let mut dict = super::read_model("models/test/box.mdl", &models, what, &rules, &mut log);
+    dict.collide = vec![[[0.0, 0.0, 500.0], [1.0, 0.0, 500.0], [0.0, 1.0, 500.0]]];
+    let prop = super::Prop { origin: Vec3A::ZERO, angles: [0.0; 3], model: 0, flags: 0, lighting_origin: Vec3A::ZERO };
+    let mut props =
+        super::StaticProps { names: vec!["models/test/box.mdl".to_owned()], props: vec![prop], dicts: vec![dict] };
+    let (tris, _) = props.occluders(polys, true, &rules, &models, &mut log);
+    tris.into_iter().map(|t| t.p).collect()
+}
+
+#[test]
+fn forced_texture_shadow_models_shadow_with_their_render_mesh() {
+    let collision = |t: &[[Vec3A; 3]]| t.len() == 1 && t[0][0].z == 500.0;
+    let render = |t: &[[Vec3A; 3]]| t.len() == 12 && t.iter().flatten().all(|p| p.z <= HEIGHT);
+    assert!(collision(&shadow_triangles(false, false, false)), "plain props keep their collision model like VRAD");
+    assert!(collision(&shadow_triangles(false, false, true)), "no texture shadow flag on the model");
+    assert!(render(&shadow_triangles(true, false, false)), "forcetextureshadow uses the render mesh");
+    assert!(render(&shadow_triangles(true, false, true)));
+    assert!(render(&shadow_triangles(false, true, false)), "-StaticPropPolys uses the render mesh");
+    assert!(render(&shadow_triangles(true, true, true)));
+}

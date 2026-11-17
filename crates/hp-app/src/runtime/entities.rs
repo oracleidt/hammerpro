@@ -51,4 +51,5 @@ pub struct EntitiesRuntime {
     pub sound_window: bool,
     pub particle_window: bool,
     pub set_max_distance: bool,
+    pub rename_references: bool,
 }

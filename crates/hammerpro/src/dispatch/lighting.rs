@@ -93,6 +93,65 @@ pub(crate) fn ray_options(state: &AppState) -> Option<host::RayOptions> {
         .then(|| host::RayOptions { args: hp_ui_mapping::raytracing_preview_args(&state.settings.compile) })
 }
 
+pub(crate) fn rad_files(state: &AppState) -> host::RadFiles {
+    let map = state.doc.path();
+    host::RadFiles {
+        lights: state
+            .settings
+            .compile
+            .lights_file()
+            .and_then(|f| hp_app::settings::resolve_rad_path(&f, map))
+            .map(|p| p.display().to_string()),
+        map: map.map(|p| p.display().to_string()),
+    }
+}
+
+const RAD_CHECK: std::time::Duration = std::time::Duration::from_millis(1000);
+
+type RadWatch = Option<(std::time::Instant, host::RadFiles, Option<String>, u64)>;
+
+static RAD_WATCH: std::sync::Mutex<RadWatch> = std::sync::Mutex::new(None);
+
+fn rad_watch_paths(state: &AppState, files: &host::RadFiles, world: Option<&str>) -> Vec<std::path::PathBuf> {
+    use std::path::{Path, PathBuf};
+    let game = state.assets.fs().and_then(hp_fs::GameFs::game_dir).map(Path::to_path_buf);
+    let map = files.map.as_deref().map(Path::new);
+    let mut out: Vec<PathBuf> = game.iter().map(|g| g.join("lights.rad")).collect();
+    out.extend(files.lights.as_deref().map(PathBuf::from));
+    if let Some(w) = world {
+        let p = Path::new(w);
+        out.extend(game.iter().map(|g| g.join(p)));
+        out.extend(map.and_then(Path::parent).map(|d| d.join(p)));
+    }
+    out.extend(map.map(|m| m.with_extension("rad")));
+    out
+}
+
+pub(crate) fn rad_stamp(state: &AppState) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let files = rad_files(state);
+    let world =
+        state.doc.scene().world().get("_lightsrad").map(|v| v.trim().replace('\\', "/")).filter(|v| !v.is_empty());
+    let Ok(mut watch) = RAD_WATCH.lock() else { return 0 };
+    if let Some((at, f, w, stamp)) = watch.as_ref()
+        && *f == files
+        && *w == world
+        && at.elapsed() < RAD_CHECK
+    {
+        return *stamp;
+    }
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    files.hash(&mut hash);
+    world.hash(&mut hash);
+    for p in rad_watch_paths(state, &files, world.as_deref()) {
+        let meta = std::fs::metadata(&p).ok();
+        (p, meta.as_ref().map(std::fs::Metadata::len), meta.and_then(|m| m.modified().ok())).hash(&mut hash);
+    }
+    let stamp = hash.finish();
+    *watch = Some((std::time::Instant::now(), files, world, stamp));
+    stamp
+}
+
 pub(crate) fn primitive_resource_stamp(state: &State) -> u64 {
     state.preview.as_ref().map_or(0, |preview| preview.next_id)
 }
@@ -801,6 +860,7 @@ impl Package for Lighting {
             }
         }
         let now = app.state.frame.time;
+        hp_assets::set_designer_rad(rad_files(&app.state).lights.map(std::path::PathBuf::from));
         let mode = app.state.settings.view.render_mode;
         let display = display_of(mode);
         let options = app.state.doc.light_plus();
@@ -1056,6 +1116,11 @@ const TR: TrTable = &[
         "app.lighting.limits",
         "Lighting preview made past limits of the game (a compile for the game stops on them): {0}",
         "Aperçu de l'éclairage fait au-delà de limites du jeu (une compilation pour le jeu s'y arrête) : {0}",
+    ),
+    (
+        "app.lighting.skybox_shade",
+        "The 3D skybox hides the sun from {0}% of the sunlit surfaces: scaled by the sky_camera at {1}, they fall inside or under the skybox geometry, so they get no sun (VRAD and the game do the same). Move the sky_camera so the map lies in open air in the skybox, or add -noskyboxrecurse to the compile options.",
+        "La skybox 3D cache le soleil à {0} % des surfaces ensoleillées : mises à l'échelle par la sky_camera en {1}, elles tombent dans ou sous la géométrie de la skybox et ne reçoivent pas de soleil (VRAD et le jeu font de même). Déplacez la sky_camera pour que la carte soit à l'air libre dans la skybox, ou ajoutez -noskyboxrecurse aux options de compilation.",
     ),
     (
         "app.lighting.big_map",

@@ -23,6 +23,7 @@ const HANDLED: &[Action] = &[
     Action::SimulateRopes,
     Action::ToggleHelpersAll,
     Action::ToggleRopes,
+    Action::ToggleEntityIcons,
 ];
 
 fn is_point_entity(scene: &Scene, obj: ObjRef) -> bool {
@@ -69,6 +70,7 @@ impl Package for Helpers {
                 app.state.toasts.push(Severity::Info, text);
             }
             Action::ToggleEditorObjects => h.show_editor_objects = !h.show_editor_objects,
+            Action::ToggleEntityIcons => h.show_entity_icons = !h.show_entity_icons,
             Action::ToggleEntityNames => h.show_entity_names = !h.show_entity_names,
             Action::ToggleBrushCenters => h.show_brush_centers = !h.show_brush_centers,
             Action::SimulateRopes => h.simulate_ropes = !h.simulate_ropes,

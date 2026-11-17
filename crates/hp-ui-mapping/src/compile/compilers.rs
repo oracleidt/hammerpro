@@ -193,11 +193,28 @@ fn compile_args(
         args.extend(mode_flags(st.kind, cx.modes, cx.lighting, cx.threads));
     }
     args.extend(option_args(profile, st, tokens)?);
+    let mut tail = Vec::new();
     if st.kind.is_compile() {
-        args.extend(expand_args(&st.extra, tokens));
+        tail.extend(expand_args(&st.extra, tokens));
     }
-    args.extend(expand_args(&st.args, tokens));
+    tail.extend(expand_args(&st.args, tokens));
+    if st.kind == CompilerStepKind::Rad
+        && let Some(file) = cx.lights
+    {
+        drop_lights(&mut args);
+        drop_lights(&mut tail);
+        args.push(hp_compile::flags::LIGHTS.to_owned());
+        args.push(file.display().to_string());
+    }
+    args.extend(tail);
     Ok(args)
+}
+
+fn drop_lights(args: &mut Vec<String>) {
+    while let Some(at) = args.iter().position(|a| a.eq_ignore_ascii_case(hp_compile::flags::LIGHTS)) {
+        let end = (at + 2).min(args.len());
+        args.drain(at..end);
+    }
 }
 
 fn step_off(kind: CompilerStepKind, modes: hp_compile::StepModes) -> bool {
@@ -220,6 +237,7 @@ pub(crate) struct Context<'a> {
     pub modes: hp_compile::StepModes,
     pub lighting: Lighting,
     pub threads: Option<u32>,
+    pub lights: Option<&'a Path>,
 }
 
 pub(crate) fn profile_steps(profile: &CompilerProfile, cx: &Context<'_>) -> Result<Vec<Step>, String> {
@@ -334,9 +352,25 @@ pub(crate) fn external_plan(
     lighting: Lighting,
 ) -> Result<CompilePlan, String> {
     let vmf = plan.vmf_path.clone();
-    let cx = Context { vmf: &vmf, tools, modes: plan.modes, lighting, threads: super::plan::threads_of(s) };
+    let lights = s.chosen_rad_file().and_then(|_| planned_lights(&plan));
+    let cx = Context {
+        vmf: &vmf,
+        tools,
+        modes: plan.modes,
+        lighting,
+        threads: super::plan::threads_of(s),
+        lights: lights.as_deref(),
+    };
     let steps = profile_steps(profile, &cx)?;
     Ok(replace_compile_steps(plan, steps))
+}
+
+fn planned_lights(plan: &CompilePlan) -> Option<PathBuf> {
+    plan.steps.iter().filter(|st| st.kind == StepKind::Rad).find_map(|st| {
+        let args = &st.args;
+        let at = args.iter().position(|a| a.eq_ignore_ascii_case(hp_compile::flags::LIGHTS))?;
+        args.get(at + 1).map(PathBuf::from)
+    })
 }
 
 pub(crate) fn signature(profile: &CompilerProfile) -> String {
@@ -447,7 +481,7 @@ mod tests {
     }
 
     fn cx<'a>(vmf: &'a Path, tools: &'a ToolPaths, modes: StepModes) -> Context<'a> {
-        Context { vmf, tools, modes, lighting: Lighting::Both, threads: None }
+        Context { vmf, tools, modes, lighting: Lighting::Both, threads: None, lights: None }
     }
 
     #[cfg(windows)]
@@ -532,7 +566,7 @@ mod tests {
         p.steps.push(st);
         let vmf = root.join("maps").join(".hammerpro_build").join("gm_x.vmf");
         let modes = StepModes::new(BspMode::Full, VisMode::Full, RadMode::Normal);
-        let cx = Context { vmf: &vmf, tools: &tools, modes, lighting: Lighting::Ldr, threads: Some(3) };
+        let cx = Context { vmf: &vmf, tools: &tools, modes, lighting: Lighting::Ldr, threads: Some(3), lights: None };
         let steps = profile_steps(&p, &cx).expect("steps");
         let a = &steps[0].args;
         assert_eq!(a[..3], ["-ldr", "-threads", "3"], "{a:?}");
@@ -542,6 +576,13 @@ mod tests {
         assert_eq!(PathBuf::from(&a[pos("-lights") + 1]), vmf.parent().expect("dir").join("my lights.rad"));
         assert_eq!(pos("-final"), usize::MAX, "the window's quality decides -final");
         assert!(pos("-noskyboxrecurse") < pos("-game"));
+        let chosen = root.join("chosen.rad");
+        let with_file = Context { lights: Some(&chosen), ..cx };
+        let b = &profile_steps(&p, &with_file).expect("steps")[0].args;
+        assert_eq!(b.iter().filter(|x| x.eq_ignore_ascii_case("-lights")).count(), 1, "{b:?}");
+        let at = b.iter().position(|x| x == "-lights").expect("lights");
+        assert_eq!(PathBuf::from(&b[at + 1]), chosen, "the rad file of the lighting settings wins");
+        assert!(at < b.iter().position(|x| x == "-game").expect("game"));
         assert_eq!(a.last().map(String::as_str), Some(vmf.with_extension("").display().to_string().as_str()));
         p.mode_flags = false;
         let steps = profile_steps(&p, &cx).expect("steps");

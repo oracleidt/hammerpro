@@ -108,6 +108,7 @@ pub(crate) struct Job {
     pub quiet: bool,
     pub priority: BakePriority,
     pub raytracing: Option<super::host::RayOptions>,
+    pub rad: super::host::RadFiles,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -641,6 +642,7 @@ pub(super) fn options_of(job: &Job) -> LightOptions {
         tuning: job.tuning.arg(),
         threads: job.threads.1.max(1),
         raytracing: job.raytracing.clone(),
+        rad: job.rad.clone(),
     }
 }
 
@@ -1240,6 +1242,7 @@ fn patch(shown: &Shown, lightmaps: &[FaceTexels], hdr: bool) -> Baked {
     Baked {
         layout: shown.layout,
         patch: true,
+        hdr,
         faces,
         texels,
         animations,

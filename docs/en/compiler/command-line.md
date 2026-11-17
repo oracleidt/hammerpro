@@ -138,6 +138,8 @@ Lighting. With no range option, `--rad` computes LDR only.
 | `-rtthreshold` | 0 to 1 | Adaptive sampling: noise level under which a luxel stops. | 0.08, 0.04, 0.02 |
 | `-rtlightsize` | 0 to 64 | Scale of the light sizes (soft shadows; 0: sharp). | 1 |
 | `-rtsunangle` | 0 to 45 degrees | Angular size of the sun. | the `light_environment` |
+| `-rtluxels` | 1 to 4 | Lightmap detail of the ray traced bake (luxels per face side multiplied, within the engine limit and a 32 MB per pass budget). | 1, 1, 2 |
+| `-rtlook` | `classic`, `cinematic`, `auto` | Look of the ray traced lighting: authored falloff like VRAD, or physically based light pools, ceiling fixtures, richer bounce and contact shadows. | cinematic in Final and Optimal |
 | `-rtskysamples` | 1 to 64 | Sky dome samples per bounce. | 1, 1, 2 |
 | `-rtdenoise` | 0 to 4 | Edge aware denoiser strength, 0 is off. | 1 |
 | `-rtsupersample` | 1 to 8 | Sample points per luxel side. | 2, 3, 4 |
@@ -149,16 +151,18 @@ Lighting. With no range option, `--rad` computes LDR only.
 | `-rtnoao` / `-rtao` | | Ray tracing: baked ambient occlusion off / on (contact shadows in corners, under and at the base of static props, also in the prop vertex lighting). | on |
 | `-rtaostrength` | 0 to 1 | Ambient occlusion strength. | 0.5 |
 | `-rtaoradius` | 4 to 1024 units | Ambient occlusion radius. | 48 |
-| `-rtnoshafts` / `-rtshafts` | | Light shafts off / on: additive volumetric looking beams where the sun and strong spot cones pass through windows, doors and holes (no collision, no shadow, they fade with distance and view angle). | on |
+| `-rtnoshafts` / `-rtshafts` | | Light shafts off / on: additive volumetric looking beams where the sun and strong spot cones pass through windows, doors and holes (no collision, no shadow, they fade with distance and view angle). | Light shafts off / on: baked volumetric light beams through framed openings and under strong spot cones, cut by the geometry (no collision, no shadow).
 | `-rtshaftintensity` | 0 to 8 | Light shaft brightness. | 1 |
 | `-rtshaftlength` | 0.1 to 8 | Light shaft length multiplier. | 1 |
 | `-rtshaftsoftness` | 0 to 4 | Light shaft edge softness. | 1 |
 | `-rtshaftwhite` | | White shafts instead of the color of their light. | light color |
 | `-rtshaftsource` | `sun`, `sun_and_spots` | Lights that make shafts. | `sun_and_spots` |
-| `-rtshaftdust` | | Dust motes in the shafts. | off |
+| `-rtshaftdust` | | Dust motes in the shafts. | Dust in the light beams (a grainier density).
 | `-rtglow` | | Glow halos around strong lights. | off |
 | `-rtglowintensity` | 0 to 8 | Glow halo brightness. | 1 |
 | `-rtnocubemaps` | | No automatic cubemap placement (only done when the map has no `env_cubemap`). | placed |
+| `-rtreflections` | | Ray traced cubemaps at every quality: every `env_cubemap` and the default cubemap rendered from the lit map into the pakfile, like `buildcubemaps`. | Final and Optimal |
+| `-rtnoreflections` | | No ray traced cubemaps (placeholders until `buildcubemaps`). | |
 | `-rtnotonemap` | | No automatic `env_tonemap_controller` (only added when the map has none). | added |
 | `-rtcolorcorrection` | | Subtle automatic color correction. | off |
 | `-ao` / `-ambientocclusion` | | Baked ambient occlusion, like VRAD++ (`-ao 0`, `-noao`: off). See [Ambient occlusion](compile-options.md#ambient-occlusion). | off |

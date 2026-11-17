@@ -755,6 +755,7 @@ impl Renderer {
                     binding: 21,
                     resource: wgpu::BindingResource::TextureView(&self.shadow_dummy_array),
                 },
+                wgpu::BindGroupEntry { binding: 23, resource: wgpu::BindingResource::TextureView(&self.surface_dummy) },
             ],
         })
     }

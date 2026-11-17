@@ -15,11 +15,13 @@ hp-vtf.workspace = true
 hp-geom.workspace = true
 hp-light = { path = "../hp-light" }
 hp-raytrace = { path = "../hp-raytrace" }
+hp-meshio = { path = "../hp-meshio" }
 glam.workspace = true
 thiserror.workspace = true
 rayon.workspace = true
 ahash.workspace = true
 smallvec.workspace = true
+texpresso.workspace = true
 
 [dev-dependencies]
 hp-editor.workspace = true

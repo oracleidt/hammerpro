@@ -386,11 +386,40 @@ fn read_world(bsp: &hp_bsp::Bsp, vis: Option<&BspVis>, leaf_version: u32) -> Opt
     w.entity_ids = ids;
     w.rope_entities = rope_entities(&entities);
     w.effect_sprites = effect_sprites(&entities);
+    w.effect_volumes = effect_volumes(bsp, &entities);
     w.particle_entities = particle_entities(&entities);
     w.particle_volumes = hp_assets::particle_volumes::read(bsp, &entities);
     let sky = w.faces.iter().filter(|f| f.sky).map(|f| w.bounds_of(f)).collect();
     w.light.props = read_prop_lighting(bsp, sky, vis, mode, &scales, &planes, &leafs, leaf_version, &models);
     Some(w)
+}
+
+fn effect_volumes(
+    bsp: &hp_bsp::Bsp,
+    entities: &[hp_bsp::entities::Entity],
+) -> Vec<hp_editor::limits::world::EffectVolume> {
+    let names: Vec<String> = entities
+        .iter()
+        .filter(|e| e.classname().trim().eq_ignore_ascii_case("prop_dynamic"))
+        .filter_map(|e| e.get("model"))
+        .filter_map(|m| m.strip_prefix("models/hammerpro/raytrace/").and_then(|s| s.strip_suffix(".mdl")))
+        .map(|stem| format!("materials/hammerpro/raytrace/{stem}.hpvol"))
+        .collect();
+    if names.is_empty() {
+        return Vec::new();
+    }
+    let Ok(pak) = bsp.pakfile() else { return Vec::new() };
+    names
+        .iter()
+        .filter_map(|n| pak.read_name(n).ok().flatten())
+        .filter_map(|d| hp_bspc::rad::raytrace::decode_volume(&d))
+        .map(|(vertices, alphas, indices, color)| hp_editor::limits::world::EffectVolume {
+            vertices,
+            alphas,
+            indices,
+            color,
+        })
+        .collect()
 }
 
 fn effect_sprites(entities: &[hp_bsp::entities::Entity]) -> Vec<hp_vmf::Entity> {

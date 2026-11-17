@@ -96,6 +96,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Random display colors | `random_display_colors` |  |  |  |
 | Reset display colors | `reset_display_colors` |  |  |  |
 | Set maximum distance... | `set_max_distance` |  |  |  |
+| Rename and update references... | `rename_update_references` |  |  |  |
 
 ## Map menu
 
@@ -179,6 +180,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Display options > Show overlays | `toggle_overlays` |  |  |  |
 | Display options > Show connections | `toggle_connections` |  |  |  |
 | Display options > Show editor objects | `toggle_editor_objects` |  |  | `Alt+O` |
+| Display options > Show entity icons | `toggle_entity_icons` |  |  |  |
 | Display options > Show point entities | `toggle_point_entities` |  |  |  |
 | Display options > Show entity labels in 2D | `toggle_entity_names` |  |  |  |
 | Display options > Helpers of every entity | `toggle_helpers_all` |  |  |  |

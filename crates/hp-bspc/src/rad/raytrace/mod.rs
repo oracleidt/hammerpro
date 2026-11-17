@@ -1,9 +1,11 @@
 pub(crate) mod bake;
 pub(crate) mod effects;
 mod progressive;
+pub(crate) mod reflections;
 mod shafts;
 #[cfg(test)]
 mod tests;
+mod volume;
 
 pub use hp_raytrace::{DeviceInfo, DevicePreference, NO_GPU_MESSAGE, Params, Quality, no_gpu_message};
 pub use progressive::{Progressive, Refined};
@@ -14,7 +16,10 @@ pub struct Glow {
     pub color: [f32; 3],
     pub size: f32,
 }
-pub use shafts::{SHAFT_MATERIAL, Shaft, ShaftMesh, ShaftVertex, light_shafts};
+pub use shafts::{
+    DecodedVolume, SHAFT_MATERIAL, Shaft, ShaftMesh, ShaftVertex, ShaftVolume, decode_volume, encode_volume,
+    light_shafts,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RayTracing {
@@ -33,9 +38,34 @@ pub struct RayTracing {
     pub bump: bool,
     pub prop_samples: Option<u32>,
     pub chunk_luxels: Option<u32>,
+    pub luxel_detail: Option<f32>,
+    pub look: Option<Look>,
     pub lang: String,
     pub effects: Effects,
     pub gpu_share: Option<f32>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Look {
+    Classic,
+    Cinematic,
+}
+
+impl Look {
+    pub fn name(self) -> &'static str {
+        match self {
+            Look::Classic => "classic",
+            Look::Cinematic => "cinematic",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Look> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "classic" | "vrad" => Some(Look::Classic),
+            "cinematic" | "physical" => Some(Look::Cinematic),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -77,6 +107,7 @@ pub struct Effects {
     pub glow: bool,
     pub glow_intensity: f32,
     pub auto_cubemaps: bool,
+    pub reflections: Option<bool>,
     pub tonemap: bool,
     pub color_correction: bool,
 }
@@ -97,6 +128,7 @@ impl Default for Effects {
             glow: false,
             glow_intensity: 1.0,
             auto_cubemaps: true,
+            reflections: None,
             tonemap: true,
             color_correction: false,
         }
@@ -110,6 +142,7 @@ impl Effects {
             shafts: false,
             glow: false,
             auto_cubemaps: false,
+            reflections: Some(false),
             tonemap: false,
             color_correction: false,
             ..Effects::default()
@@ -146,6 +179,8 @@ impl Default for RayTracing {
             bump: true,
             prop_samples: None,
             chunk_luxels: None,
+            luxel_detail: None,
+            look: None,
             lang: String::new(),
             effects: Effects::default(),
             gpu_share: None,
@@ -190,10 +225,40 @@ impl RayTracing {
         if let Some(v) = self.chunk_luxels {
             p.chunk_luxels = v;
         }
+        if let Some(look) = self.look {
+            p.cinematic = look == Look::Cinematic;
+            p.contact_ao = p.cinematic;
+        }
         if p.max_samples < p.min_samples {
             p.max_samples = p.min_samples;
         }
         p.sanitized()
+    }
+
+    pub fn detail(&self) -> f32 {
+        let auto = Params::of(self.quality).luxel_detail;
+        let d = self.luxel_detail.unwrap_or(auto);
+        if d.is_finite() { d.clamp(1.0, MAX_LUXEL_DETAIL) } else { auto }
+    }
+
+    pub(crate) fn for_detail(&self, detail: f32) -> RayTracing {
+        let mut out = self.clone();
+        if detail <= 1.01 {
+            return out;
+        }
+        let p = Params::of(self.quality);
+        let area = detail * detail;
+        let scaled = |v: u32, floor: u32| ((v as f32 / area).round() as u32).max(floor).min(v);
+        if out.min_samples.is_none() {
+            out.min_samples = Some(scaled(p.min_samples, 64));
+        }
+        if out.max_samples.is_none() {
+            out.max_samples = Some(scaled(p.max_samples, 256).max(out.min_samples.unwrap_or(1)));
+        }
+        if out.supersample.is_none() {
+            out.supersample = Some(((p.supersample as f32 / detail).round() as u32).clamp(2, p.supersample.max(2)));
+        }
+        out
     }
 
     pub fn no_gpu_message(&self) -> &'static str {
@@ -210,11 +275,14 @@ pub(crate) fn bake_lightmaps(
     src: &hp_bsp::Bsp,
     materials: Vec<bake::MaterialInfo>,
     rt: &RayTracing,
+    detail: f32,
     opts: &super::RadOptions,
     entities: &[hp_bsp::Entity],
     log: &mut dyn FnMut(&str),
 ) -> Result<(Vec<super::bake::FaceLight>, effects::EffectOutput), String> {
     use super::progress::Stage;
+    let tuned = rt.for_detail(detail);
+    let rt = &tuned;
     use std::sync::atomic::{AtomicU8, Ordering};
     let t = std::time::Instant::now();
     let sizes: Vec<(i32, i32)> = super::texlights::texdata(src).into_iter().map(|(_, w, h)| (w, h)).collect();
@@ -230,6 +298,15 @@ pub(crate) fn bake_lightmaps(
         built.scene.lights.len(),
         t.elapsed().as_millis()
     ));
+    if let Some(line) = light_size_line(&built.scene.lights) {
+        log(&line);
+    }
+    if (built.exposure - 1.0).abs() > 0.001 {
+        log(&format!(
+            "ray tracing: cinematic look, light pools from area sources, exposure matched to the authored falloff (x{:.3})",
+            built.exposure
+        ));
+    }
     let effects = rt.effects.sanitized();
     let settings = hp_raytrace::Settings {
         params: rt.params(),
@@ -291,14 +368,32 @@ pub(crate) fn bake_lightmaps(
         "ray tracing done in {:.1} s ({} direct samples, {} paths)",
         out.seconds, out.direct_samples, out.indirect_samples
     ));
-    let strength = if effects.ao { effects.ao_strength } else { 0.0 };
+    let strength = contact_strengths(rt.params().cinematic, if effects.ao { effects.ao_strength } else { 0.0 });
     let hdr = opts.hdr;
     let fx = effects::build(&baker.tracer(), baker.scene(), entities, &effects, hdr, ctx.passes.saturating_sub(1));
     for l in &fx.lines {
         log(l);
     }
-    Ok((bake::to_face_lights(&out, &built, ctx.passes, strength), fx))
+    let lift = bake::contact_exposure(&out, &built, strength.0);
+    if lift > 1.001 {
+        log(&format!("ray tracing: contact shadows, typical luxel kept at its exposure (direct light x{lift:.3})"));
+    }
+    let mut lights = bake::to_face_lights(&out, &built, ctx.passes, strength);
+    if lift > 1.001 {
+        for l in &mut lights {
+            for v in &mut l.values {
+                *v *= lift;
+            }
+        }
+    }
+    Ok((lights, fx))
 }
+
+pub(crate) fn contact_strengths(cinematic: bool, strength: f32) -> (f32, f32) {
+    if cinematic { (strength * CONTACT_DIRECT, (strength * 2.0).min(1.0)) } else { (0.0, strength) }
+}
+
+pub(crate) const CONTACT_DIRECT: f32 = 1.2;
 
 pub const PREVIEW_SUBMIT_SECONDS: f64 = 0.008;
 pub const PREVIEW_AUTO_SHARE: f32 = 0.6;
@@ -320,14 +415,41 @@ pub(crate) fn lighting_estimate(src: &hp_bsp::Bsp) -> Result<u64, String> {
     Ok(bytes)
 }
 
+pub(crate) const MAX_LUXEL_DETAIL: f32 = 4.0;
+pub(crate) const FINAL_LIGHTING_BUDGET: u64 = 32 << 20;
+
+fn light_size_line(lights: &[hp_raytrace::Light]) -> Option<String> {
+    let mut sizes: Vec<f32> = lights
+        .iter()
+        .filter(|l| matches!(l.kind, hp_raytrace::LightKind::Point | hp_raytrace::LightKind::Spot { .. }))
+        .map(|l| l.size)
+        .collect();
+    if sizes.is_empty() {
+        return None;
+    }
+    sizes.sort_by(f32::total_cmp);
+    let sun = lights.iter().find(|l| l.kind == hp_raytrace::LightKind::Sun).map(|l| l.size.asin().to_degrees());
+    Some(format!(
+        "ray tracing: area lights {:.1} to {:.1} units in radius (median {:.1}), fitted to the room around each light{}",
+        sizes[0],
+        sizes[sizes.len() - 1],
+        sizes[sizes.len() / 2],
+        sun.map(|a| format!(", sun disk {a:.2} degrees")).unwrap_or_default()
+    ))
+}
+
 pub(crate) fn fit_lightmaps(
     src: hp_bsp::Bsp,
     opts: &super::RadOptions,
     log: &mut dyn FnMut(&str),
-) -> Result<hp_bsp::Bsp, String> {
-    let Some(rt) = &opts.raytracing else { return Ok(src) };
+) -> Result<(hp_bsp::Bsp, f32), String> {
+    let Some(rt) = &opts.raytracing else { return Ok((src, 1.0)) };
+    let detail = rt.detail();
+    if detail > 1.01 && !(opts.luxel_density > 0.0 && opts.luxel_density < 1.0) {
+        return refine_lightmaps(src, opts, detail, log);
+    }
     if rt.quality != Quality::Optimal {
-        return Ok(src);
+        return Ok((src, 1.0));
     }
     let limit = hp_bsp::limits::LIGHTING.max_in(opts.limits).min(OPTIMAL_LIGHTING_BUDGET);
     let estimate = lighting_estimate(&src)?;
@@ -340,7 +462,7 @@ pub(crate) fn fit_lightmaps(
             styled as f64 * 100.0 / limit as f64,
             limit / 1024
         ));
-        return Ok(src);
+        return Ok((src, 1.0));
     }
     let density = ((limit as f64 * 0.9 / styled as f64).sqrt() as f32).clamp(0.25, 0.99);
     let scaled = super::output::rescale_luxels(src, density)?;
@@ -353,7 +475,48 @@ pub(crate) fn fit_lightmaps(
         after / 1024,
         after as f64 * 100.0 / limit as f64
     ));
-    Ok(out)
+    Ok((out, 1.0))
+}
+
+fn refine_lightmaps(
+    src: hp_bsp::Bsp,
+    opts: &super::RadOptions,
+    detail: f32,
+    log: &mut dyn FnMut(&str),
+) -> Result<(hp_bsp::Bsp, f32), String> {
+    let limit = hp_bsp::limits::LIGHTING.max_in(opts.limits).min(FINAL_LIGHTING_BUDGET);
+    let factor = style_factor(&src);
+    let styled = (lighting_estimate(&src)? as f64 * factor) as u64;
+    let room = (limit as f64 * 0.9 / styled.max(1) as f64).sqrt() as f32;
+    let d = detail.min(room);
+    if d < 1.1 {
+        log(&format!(
+            "ray tracing: lightmaps already take about {} KB per pass of the {} KB budget: luxel detail kept",
+            styled / 1024,
+            limit / 1024
+        ));
+        return Ok((src, 1.0));
+    }
+    let max_extent = hp_bsp::limits::LIGHTMAP_EXTENT.max_in(opts.limits) as i32;
+    let max_texinfo = hp_bsp::limits::TEXINFO.max_in(opts.limits).min(i16::MAX as u64) as usize;
+    let refined = match super::output::refine_luxels(src, d, max_extent, max_texinfo)? {
+        Ok(r) => r,
+        Err(src) => {
+            log("ray tracing: no face can take finer lightmaps within the lightmap size limit: luxel detail kept");
+            return Ok((src, 1.0));
+        }
+    };
+    let out = hp_bsp::Bsp::from_vec(refined.bytes).map_err(|e| format!("not a BSP file: {e}"))?;
+    let after = (lighting_estimate(&out)? as f64 * factor) as u64;
+    log(&format!(
+        "ray tracing: finer lightmaps, luxel detail x{d:.2} on {} faces ({} kept at their size by the lightmap size limit, {} texinfos added): about {} KB per pass instead of {} KB",
+        refined.faces,
+        refined.kept,
+        refined.texinfos,
+        after / 1024,
+        styled / 1024
+    ));
+    Ok((out, d))
 }
 
 pub(crate) fn prop_ao(rt: &RayTracing) -> Option<super::AoOptions> {
@@ -382,6 +545,10 @@ pub(crate) fn tuned_options(opts: &super::RadOptions) -> super::RadOptions {
     out.props.sky_sample_scale = out.props.sky_sample_scale.max(scale);
     if rt.quality == Quality::Final {
         out.quality = super::RadQuality::Final;
+    }
+    if matches!(rt.quality, Quality::Final | Quality::Optimal) {
+        out.props.polys = true;
+        out.props.texture_shadows = true;
     }
     out
 }

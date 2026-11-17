@@ -7,6 +7,7 @@ action_list! { helpers_actions {
     ToggleOverlays => "toggle_overlays", View, ViewDisplay, None, Ready;
     ToggleConnections => "toggle_connections", View, ViewDisplay, None, Ready;
     ToggleEditorObjects => "toggle_editor_objects", View, ViewDisplay, None, Ready;
+    ToggleEntityIcons => "toggle_entity_icons", View, ViewDisplay, None, Ready;
     TogglePointEntities => "toggle_point_entities", View, ViewDisplay, None, Ready;
     ToggleEntityNames => "toggle_entity_names", View, ViewDisplay2d, None, Ready;
     ToggleBrushCenters => "toggle_brush_centers", View, ViewDisplay2d, None, Ready;
@@ -21,6 +22,9 @@ pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
     match action {
         Action::SimulateRopes => Some(state.settings.helpers.show_ropes),
         Action::ToggleHelpersAll => Some(state.settings.view.show_helpers),
+        Action::ToggleEntityIcons => {
+            Some(state.settings.view.show_helpers && state.settings.helpers.show_editor_objects)
+        }
         _ => None,
     }
 }
@@ -31,6 +35,7 @@ pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
         Action::ToggleOverlays => Check::Toggle(h.show_overlays),
         Action::ToggleConnections => Check::Toggle(h.connections != ConnectionsMode::Off),
         Action::ToggleEditorObjects => Check::Toggle(h.show_editor_objects),
+        Action::ToggleEntityIcons => Check::Toggle(h.show_entity_icons),
         Action::TogglePointEntities => Check::Toggle(!state.runtime.helpers.point_entities_hidden(&state.doc)),
         Action::ToggleEntityNames => Check::Toggle(h.show_entity_names),
         Action::ToggleBrushCenters => Check::Toggle(h.show_brush_centers),
@@ -52,6 +57,7 @@ pub(super) const TR: TrTable = &[
     ("action.toggle_overlays", "Show overlays", "Afficher les overlays"),
     ("action.toggle_connections", "Show connections", "Afficher les connexions"),
     ("action.toggle_editor_objects", "Show editor objects", "Afficher les objets d'éditeur"),
+    ("action.toggle_entity_icons", "Show entity icons", "Afficher les icônes des entités"),
     ("action.toggle_point_entities", "Show point entities", "Afficher les entités ponctuelles"),
     ("action.toggle_entity_names", "Show entity labels in 2D", "Afficher les noms des entités en 2D"),
     ("action.toggle_brush_centers", "Show brush centers in 2D", "Afficher le centre des brushes en 2D"),

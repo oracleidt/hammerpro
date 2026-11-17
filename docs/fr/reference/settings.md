@@ -76,6 +76,7 @@ Surtout sur **Paramètres > Vues** ; les clés `show_*` sont aussi dans le menu 
 | `new_brush_color` | aucune | Couleur d'affichage `[r, g, b]` donnée aux nouveaux brushes ; aucune : la couleur par défaut aléatoire de Hammer. |
 | `undo_restores_selection` | `true` | Les changements de sélection sont des étapes d'annulation : `Ctrl+Z` rétablit la sélection précédente (faces comprises). Ils ne marquent jamais la map comme modifiée. |
 | `keep_displacements_on_cut` | `true` | Découper, Trancher, Creuser et Intersection gardent les déplacements sur les morceaux (exact sur les lignes de la grille, rééchantillonné ailleurs, coutures soudées) ; désactivé : les faces coupées redeviennent plates comme dans Hammer. **Paramètres > Édition**. |
+| `rename_updates_references` | `false` | Changer le nom d'une entité renomme aussi les sorties, le parent, le filtre, les clés et paramètres de nom qui utilisent l'ancien nom, en une étape d'annulation (gardés tant qu'une autre entité porte l'ancien nom ; jokers et AddOutput intacts). **Paramètres > Édition**. |
 
 ## `[ui]` : interface
 
@@ -301,6 +302,7 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `connections` | `"Selected"` | Lignes d'entrées/sorties : `Off`, `Selected`, `All`. |
 | `show_overlays` | `true` | Dessine les `info_overlay` sur leurs faces. |
 | `show_editor_objects` | `true` | Icônes des entités et géométrie des aides. |
+| `show_entity_icons` | `true` | Les entités ponctuelles affichent l'iconsprite de leur FGD dans les vues 3D comme dans Hammer ; désactivé, des boîtes colorées. Demande `show_editor_objects`. |
 | `show_entity_names` | `true` | Noms des entités ponctuelles dans les vues 2D. |
 | `show_brush_centers` | `true` | Petit x au centre des brushes visibles en 2D, de taille constante à l’écran. |
 | `show_ropes` | `true` | Dessine les cordes comme elles pendent en jeu. |

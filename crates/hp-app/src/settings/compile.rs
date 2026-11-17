@@ -161,6 +161,32 @@ impl RayShaftSourceSetting {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum RayReflectionsSetting {
+    #[default]
+    Auto,
+    On,
+    Off,
+}
+
+impl RayReflectionsSetting {
+    pub const ALL: [RayReflectionsSetting; 3] =
+        [RayReflectionsSetting::Auto, RayReflectionsSetting::On, RayReflectionsSetting::Off];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            RayReflectionsSetting::Auto => "auto",
+            RayReflectionsSetting::On => "on",
+            RayReflectionsSetting::Off => "off",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<RayReflectionsSetting> {
+        let t = text.trim();
+        RayReflectionsSetting::ALL.into_iter().find(|c| c.name().eq_ignore_ascii_case(t))
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RayTracingSettings {
@@ -181,6 +207,8 @@ pub struct RayTracingSettings {
     pub bump: bool,
     pub prop_samples: Option<u32>,
     pub chunk: Option<u32>,
+    pub luxel_detail: Option<f32>,
+    pub look: String,
     pub ao: bool,
     pub ao_strength: f32,
     pub ao_radius: f32,
@@ -194,6 +222,7 @@ pub struct RayTracingSettings {
     pub glow: bool,
     pub glow_intensity: f32,
     pub auto_cubemaps: bool,
+    pub reflections: RayReflectionsSetting,
     pub tonemap: bool,
     pub color_correction: bool,
     pub preview_gpu_share: f32,
@@ -219,6 +248,8 @@ impl Default for RayTracingSettings {
             bump: true,
             prop_samples: None,
             chunk: None,
+            luxel_detail: None,
+            look: String::new(),
             ao: true,
             ao_strength: 0.5,
             ao_radius: 48.0,
@@ -232,6 +263,7 @@ impl Default for RayTracingSettings {
             glow: false,
             glow_intensity: 1.0,
             auto_cubemaps: true,
+            reflections: RayReflectionsSetting::Auto,
             tonemap: true,
             color_correction: false,
             preview_gpu_share: 0.0,
@@ -280,6 +312,45 @@ impl RayTracingSettings {
 
 fn is_flag(token: &str, name: &str) -> bool {
     token.trim().trim_start_matches('-').eq_ignore_ascii_case(name)
+}
+
+fn lights_arg(args: &str) -> Option<String> {
+    let mut words = Vec::new();
+    let mut cur = String::new();
+    let mut quoted = false;
+    for c in args.chars() {
+        match c {
+            '"' => quoted = !quoted,
+            c if c.is_whitespace() && !quoted => {
+                if !cur.is_empty() {
+                    words.push(std::mem::take(&mut cur));
+                }
+            }
+            c => cur.push(c),
+        }
+    }
+    if !cur.is_empty() {
+        words.push(cur);
+    }
+    let at = words.iter().rposition(|w| w.starts_with('-') && is_flag(w, "lights"))?;
+    words.get(at + 1).filter(|v| !v.starts_with('-')).cloned()
+}
+
+pub fn resolve_rad_path(text: &str, map: Option<&std::path::Path>) -> Option<PathBuf> {
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
+    }
+    let dir = map.and_then(std::path::Path::parent);
+    let expanded = match dir {
+        Some(d) => text.replace("$path", &d.display().to_string()),
+        None => text.to_owned(),
+    };
+    let p = PathBuf::from(expanded);
+    if p.is_absolute() {
+        return Some(p);
+    }
+    dir.map(|d| d.join(&p)).or(Some(p))
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -359,6 +430,8 @@ pub struct CompileSettings {
     pub history: bool,
     pub static_prop_lighting: bool,
     pub static_prop_shadows: bool,
+    pub rad_file_enabled: bool,
+    pub rad_file: String,
     pub raytracing: RayTracingSettings,
     pub bsp_flag_choices: BTreeMap<String, FlagChoiceSetting>,
     pub rad_flag_choices: BTreeMap<String, FlagChoiceSetting>,
@@ -426,6 +499,8 @@ impl Default for CompileSettings {
             history: true,
             static_prop_lighting: true,
             static_prop_shadows: true,
+            rad_file_enabled: false,
+            rad_file: String::new(),
             raytracing: RayTracingSettings::default(),
             bsp_flag_choices: BTreeMap::new(),
             rad_flag_choices: BTreeMap::new(),
@@ -478,6 +553,50 @@ impl CompileSettings {
         self.compiler_by_game.clear();
     }
 
+    pub fn no_skybox_recurse(&self) -> bool {
+        const FLAG: &str = "noskyboxrecurse";
+        if self.uses_builtin_compiler() {
+            let chosen = self.rad_flag_choices.iter().find(|(k, _)| is_flag(k, FLAG)).map(|(_, c)| c.on);
+            return chosen.unwrap_or_else(|| self.extra_rad_args.split_whitespace().any(|t| is_flag(t, FLAG)));
+        }
+        let id = self.active_compiler_id();
+        let Some(profile) = self.compilers.iter().find(|p| p.id.eq_ignore_ascii_case(id)) else {
+            return false;
+        };
+        profile.steps.iter().filter(|st| st.enabled && st.kind == super::CompilerStepKind::Rad).any(|st| {
+            st.options.keys().any(|k| is_flag(k, FLAG))
+                || st.args.split_whitespace().chain(st.extra.split_whitespace()).any(|t| is_flag(t, FLAG))
+        })
+    }
+
+    pub fn chosen_rad_file(&self) -> Option<&str> {
+        let file = self.rad_file.trim();
+        (self.rad_file_enabled && !file.is_empty()).then_some(file)
+    }
+
+    pub fn lights_file(&self) -> Option<String> {
+        if let Some(f) = self.chosen_rad_file() {
+            return Some(f.to_owned());
+        }
+        if self.uses_builtin_compiler() {
+            let chosen = self.rad_flag_choices.iter().find(|(k, _)| is_flag(k, "lights")).map(|(_, c)| c);
+            if let Some(c) = chosen {
+                return (c.on && !c.value.trim().is_empty()).then(|| c.value.trim().to_owned());
+            }
+            return lights_arg(&self.extra_rad_args);
+        }
+        let id = self.active_compiler_id();
+        let profile = self.compilers.iter().find(|p| p.id.eq_ignore_ascii_case(id))?;
+        profile.steps.iter().filter(|st| st.enabled && st.kind == super::CompilerStepKind::Rad).find_map(|st| {
+            st.options
+                .iter()
+                .find(|(k, v)| is_flag(k, "lights") && !v.trim().is_empty())
+                .map(|(_, v)| v.trim().to_owned())
+                .or_else(|| lights_arg(&st.extra))
+                .or_else(|| lights_arg(&st.args))
+        })
+    }
+
     pub fn static_prop_shadows(&self) -> StaticPropShadows {
         const POLYS: &str = "StaticPropPolys";
         const NONE: &str = "nostaticpropshadows";
@@ -505,6 +624,41 @@ impl CompileSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_lights_file_comes_from_the_rad_setting_first() {
+        let mut s = CompileSettings::default();
+        assert_eq!(s.lights_file(), None, "default: game lights.rad and the map .rad only");
+        s.extra_rad_args = "-final -lights \"my lights.rad\" -bounce 2".into();
+        assert_eq!(s.lights_file().as_deref(), Some("my lights.rad"));
+        s.rad_flag_choices.insert("-lights".into(), FlagChoiceSetting { on: true, value: "menu.rad".into() });
+        assert_eq!(s.lights_file().as_deref(), Some("menu.rad"));
+        s.rad_file = "chosen.rad".into();
+        assert_eq!(s.lights_file().as_deref(), Some("menu.rad"), "the toggle is off");
+        s.rad_file_enabled = true;
+        assert_eq!(s.lights_file().as_deref(), Some("chosen.rad"));
+        assert_eq!(s.chosen_rad_file(), Some("chosen.rad"));
+        s.rad_file = "  ".into();
+        assert_eq!(s.chosen_rad_file(), None);
+        let map = std::path::Path::new("E:/maps/test.vmf");
+        assert_eq!(resolve_rad_path("a.rad", Some(map)), Some(PathBuf::from("E:/maps").join("a.rad")));
+        assert_eq!(resolve_rad_path("$path/b.rad", Some(map)), Some(PathBuf::from("E:/maps/b.rad")));
+        assert_eq!(resolve_rad_path("C:/x/c.rad", Some(map)), Some(PathBuf::from("C:/x/c.rad")));
+        assert_eq!(resolve_rad_path(" ", Some(map)), None);
+    }
+
+    #[test]
+    fn no_skybox_recurse_follows_the_compile() {
+        let mut s = CompileSettings::default();
+        assert!(!s.no_skybox_recurse());
+        s.extra_rad_args = "-final -NoSkyboxRecurse".into();
+        assert!(s.no_skybox_recurse());
+        s.rad_flag_choices.insert("-noskyboxrecurse".into(), FlagChoiceSetting { on: false, value: String::new() });
+        assert!(!s.no_skybox_recurse());
+        s.rad_flag_choices.insert("-noskyboxrecurse".into(), FlagChoiceSetting { on: true, value: String::new() });
+        s.extra_rad_args.clear();
+        assert!(s.no_skybox_recurse());
+    }
 
     #[test]
     fn static_prop_shadows_follow_the_compile() {

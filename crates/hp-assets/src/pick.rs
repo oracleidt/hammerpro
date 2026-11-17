@@ -260,6 +260,22 @@ impl PickMeshes {
     }
 }
 
+pub(crate) fn icon_ray(center: DVec3, half: f64, ray: &Ray) -> Option<f64> {
+    let dd = ray.dir.length_squared();
+    if half.is_nan() || half <= 0.0 || !center.is_finite() || dd.is_nan() || dd <= 1e-24 || !dd.is_finite() {
+        return None;
+    }
+    let t = (center - ray.origin).dot(ray.dir) / dd;
+    if t.is_nan() || t < 0.0 {
+        return None;
+    }
+    let dir = ray.dir / dd.sqrt();
+    let right = dir.cross(DVec3::Z).try_normalize().unwrap_or(DVec3::X);
+    let up = right.cross(dir);
+    let q = ray.at(t) - center;
+    (q.dot(right).abs() <= half && q.dot(up).abs() <= half).then_some(t)
+}
+
 fn box_ray(b: &Aabb, ray: &Ray) -> EntityRay {
     if b.is_empty() || !b.min.is_finite() || !b.max.is_finite() || b.contains_point(ray.origin) {
         return EntityRay::Miss;
@@ -284,6 +300,18 @@ fn box_ray(b: &Aabb, ray: &Ray) -> EntityRay {
 
 impl AssetManager {
     pub(crate) fn entity_ray_impl(&self, e: &hp_vmf::Entity, ray: &Ray) -> EntityRay {
+        let shape = self.entity_shape_ray(e, ray);
+        let icon = self.scene.ents.get(&e.id).filter(|s| s.desc.sprite_is_icon && s.sprite.is_some());
+        let Some(t) = icon.and_then(|s| icon_ray(s.desc.origin, f64::from(s.desc.sprite_size) * 0.5, ray)) else {
+            return shape;
+        };
+        match shape {
+            EntityRay::Hit { t: near, .. } if near <= t => shape,
+            _ => EntityRay::Hit { t, normal: -ray.dir.try_normalize().unwrap_or(DVec3::X) },
+        }
+    }
+
+    fn entity_shape_ray(&self, e: &hp_vmf::Entity, ray: &Ray) -> EntityRay {
         if let Some(hit) = self.ragdoll_ray(e.id, ray) {
             return hit;
         }
@@ -340,6 +368,22 @@ impl AssetManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn icons_pick_against_a_camera_facing_square() {
+        let c = DVec3::new(100.0, 0.0, 0.0);
+        let ray = |o: DVec3, d: DVec3| Ray { origin: o, dir: d };
+        let t = icon_ray(c, 8.0, &ray(DVec3::ZERO, DVec3::X)).expect("center");
+        assert!((t - 100.0).abs() < 1e-9);
+        assert!(icon_ray(c, 8.0, &ray(DVec3::new(0.0, 7.5, 7.5), DVec3::X)).is_some(), "corner inside");
+        assert!(icon_ray(c, 8.0, &ray(DVec3::new(0.0, 8.5, 0.0), DVec3::X)).is_none());
+        assert!(icon_ray(c, 8.0, &ray(DVec3::new(200.0, 0.0, 0.0), DVec3::X)).is_none(), "behind the camera");
+        let slanted = ray(DVec3::new(100.0, -100.0, 0.0), DVec3::new(0.0, 2.0, 0.0));
+        assert!((icon_ray(c, 8.0, &slanted).expect("hit") - 50.0).abs() < 1e-9);
+        assert!(icon_ray(c, 8.0, &ray(DVec3::new(100.0, 0.0, 200.0), DVec3::NEG_Z)).is_some(), "looking down");
+        assert!(icon_ray(c, 0.0, &ray(DVec3::ZERO, DVec3::X)).is_none());
+        assert!(icon_ray(c, 8.0, &ray(DVec3::ZERO, DVec3::ZERO)).is_none());
+    }
 
     fn cube(half: f32) -> Vec<Tri> {
         let c = |x: f32, y: f32, z: f32| Vec3::new(x, y, z) * half;

@@ -104,6 +104,10 @@ Only the shortcuts you changed are written in `[keybindings]`. The action ids ar
 
 Shortcuts of the map never run while you type in a text field, while a menu, popup or modal dialog is open, while the 3D camera flies with the keyboard, or while a shortcut is being recorded. After you move the focus to a button or a list with `Tab`, plain keys (letters, digits, Delete, arrows, Enter, Space) belong to the interface, so `Delete` or `H` after a property field never deletes or hides the object you edit. Shortcuts with Ctrl or Alt and the function keys still work.
 
+A click or a drag in a 2D or 3D view always gives the keyboard back to the map. A text field that is no longer visible (scrolled out of its window or panel, or its window moved off the screen) lets go of the keyboard by itself after two frames, so a forgotten cursor in a hidden field can no longer swallow `Delete`, the arrows or `Ctrl+G`. When Hammer Pro loses the focus while you hold a mouse button in the 3D view (Alt+Tab to a voice chat, a notification), the fly mode ends at once: the release is never seen by the editor, and the view used to keep the keyboard until the next right click. The Team Mapping chat gives the keyboard back to the map as soon as Enter sends the message.
+
+If a key still does nothing, `describe_ui` reports in `keyboard` what holds the keyboard (`blocked_by`, `focus`, the modifiers held) and the last key that went to the interface with the reason, and the log (`get_app_log` with `contains` set to `keyboard:`) keeps one line per reason, for example `keyboard: Delete went to the interface, not to the shortcuts: typing in a text field ...`.
+
 A floating window (Transform, Paste special, the texture, entity and lab windows) owns `Tab` from the moment it opens or you click in it until you click in a view or close it: `Tab` and `Shift+Tab` then move between its fields and buttons, wrapping around, instead of cycling the 2D view or reaching the active tool. Code editors (VMT text, BSP entity text) and the property name completion keep `Tab` for themselves.
 
 ## Mouse in the views

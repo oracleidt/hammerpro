@@ -46,6 +46,13 @@ domain! { "compile and play";
                 (Final); false: never (-StaticPropLighting is left out, even from rad_options)."),
             "static_prop_shadows": boolean("Static props cast shadows in the lighting; false: none at all \
                 (-nostaticpropshadows, much faster on maps with many props)."),
+            "rad_file_enabled": boolean("Use the rad_file .rad file in the lighting (-lights, Hammer Pro's compiler and \
+                Valve's vrad.exe) and in the Baked, Player view, Ray traced and Lit previews. false (default): the game \
+                lights.rad and <map>.rad only."),
+            "rad_file": string("The .rad file of rad_file_enabled: texture lights (material r g b brightness, optional \
+                HDR r g b brightness after them, hdr: and ldr: prefixes), noshadow <material> and forcetextureshadow \
+                <model.mdl> lines. Absolute, or relative to the map folder ($path works too). A non empty value turns \
+                rad_file_enabled on unless it is given; empty turns it off. The file must exist (edit_rad_file creates it)."),
             "cordon_only": boolean("Compile only what is inside the cordons."),
             "smart": boolean("Smart pipeline (skip steps whose input did not change)."),
             "compile_hidden": boolean("Compile hidden objects too."),
@@ -74,6 +81,8 @@ domain! { "compile and play";
             "rt_threshold": super::tools_compile_rt::schema("rt_threshold"),
             "rt_light_size": super::tools_compile_rt::schema("rt_light_size"),
             "rt_sun_angle": super::tools_compile_rt::schema("rt_sun_angle"),
+            "rt_luxel_detail": super::tools_compile_rt::schema("rt_luxel_detail"),
+            "rt_look": super::tools_compile_rt::schema("rt_look"),
             "rt_sky_samples": super::tools_compile_rt::schema("rt_sky_samples"),
             "rt_denoise": super::tools_compile_rt::schema("rt_denoise"),
             "rt_supersample": super::tools_compile_rt::schema("rt_supersample"),
@@ -98,6 +107,7 @@ domain! { "compile and play";
             "rt_glow": super::tools_compile_rt::schema("rt_glow"),
             "rt_glow_intensity": super::tools_compile_rt::schema("rt_glow_intensity"),
             "rt_cubemaps": super::tools_compile_rt::schema("rt_cubemaps"),
+            "rt_reflections": super::tools_compile_rt::schema("rt_reflections"),
             "rt_tonemap": super::tools_compile_rt::schema("rt_tonemap"),
             "rt_color_correction": super::tools_compile_rt::schema("rt_color_correction"),
         }, [];
@@ -116,12 +126,12 @@ domain! { "compile and play";
         ambient occlusion ao, aoradius, aoscale, aofacesamples, aopropsamples, aodebug...): each \
         flag forced on (true or a value), forced off (false) or following the preset (null). Ray tracing (off by \
         default): raytracing, raytracing_quality, raytracing_optimal (the Optimal button) and every parameter \
-        rt_samples, rt_max_samples, rt_bounces, rt_threshold, rt_light_size, rt_sun_angle, rt_sky_samples, \
+        rt_samples, rt_max_samples, rt_bounces, rt_threshold, rt_light_size, rt_sun_angle, rt_luxel_detail, rt_look, rt_sky_samples, \
         rt_denoise, rt_supersample, rt_bump, rt_prop_samples, rt_device, rt_chunk, rt_seed (null: automatic; \
         any rt_ value turns ray tracing on), the configuration rt_config (default, optimal, custom; any other rt_ \
         change makes it custom) and rt_reset, and the effects rt_ao, rt_ao_strength, rt_ao_radius, rt_shafts, \
         rt_shaft_intensity, rt_shaft_length, rt_shaft_softness, rt_shaft_light_color, rt_shaft_source, \
-        rt_shaft_dust, rt_glow, rt_glow_intensity, rt_cubemaps, rt_tonemap, rt_color_correction, and rt_gpu_share \
+        rt_shaft_dust, rt_glow, rt_glow_intensity, rt_cubemaps, rt_reflections, rt_tonemap, rt_color_correction, and rt_gpu_share \
         (auto or 0.1 to 1: the share of the graphics card the ray traced editor preview keeps; never on the compile). Starting the game \
         after compiles and the maps folder need confirm: true (only when the user asked). Answers the settings \
         like get_compile_options.",
@@ -138,6 +148,13 @@ domain! { "compile and play";
                 false: never (-StaticPropLighting is left out, even from rad_options)."),
             "static_prop_shadows": boolean("Static props cast shadows in the lighting; false: none at all \
                 (-nostaticpropshadows, much faster on maps with many props). The lighting preview follows it."),
+            "rad_file_enabled": boolean("Use the rad_file .rad file in the lighting (-lights, Hammer Pro's compiler and \
+                Valve's vrad.exe) and in the Baked, Player view, Ray traced and Lit previews. false (default): the game \
+                lights.rad and <map>.rad only."),
+            "rad_file": string("The .rad file of rad_file_enabled: texture lights (material r g b brightness, optional \
+                HDR r g b brightness after them, hdr: and ldr: prefixes), noshadow <material> and forcetextureshadow \
+                <model.mdl> lines. Absolute, or relative to the map folder ($path works too). A non empty value turns \
+                rad_file_enabled on unless it is given; empty turns it off. The file must exist (edit_rad_file creates it)."),
             "threads": integer("Compiler threads (0: automatic).", 0, 256),
             "low_priority": boolean("Keep a processor core for the editor."),
             "stop_on_leak": boolean("Stop after the geometry when the map leaks."),
@@ -185,6 +202,8 @@ domain! { "compile and play";
             "rt_threshold": super::tools_compile_rt::schema("rt_threshold"),
             "rt_light_size": super::tools_compile_rt::schema("rt_light_size"),
             "rt_sun_angle": super::tools_compile_rt::schema("rt_sun_angle"),
+            "rt_luxel_detail": super::tools_compile_rt::schema("rt_luxel_detail"),
+            "rt_look": super::tools_compile_rt::schema("rt_look"),
             "rt_sky_samples": super::tools_compile_rt::schema("rt_sky_samples"),
             "rt_denoise": super::tools_compile_rt::schema("rt_denoise"),
             "rt_supersample": super::tools_compile_rt::schema("rt_supersample"),
@@ -209,6 +228,7 @@ domain! { "compile and play";
             "rt_glow": super::tools_compile_rt::schema("rt_glow"),
             "rt_glow_intensity": super::tools_compile_rt::schema("rt_glow_intensity"),
             "rt_cubemaps": super::tools_compile_rt::schema("rt_cubemaps"),
+            "rt_reflections": super::tools_compile_rt::schema("rt_reflections"),
             "rt_tonemap": super::tools_compile_rt::schema("rt_tonemap"),
             "rt_color_correction": super::tools_compile_rt::schema("rt_color_correction"),
             "confirm": boolean("The user asked for this (needed to start the game after compiles or to set the maps folder)."),
@@ -329,7 +349,11 @@ domain! { "compile and play";
         what lights the props: the world lights, the static props and those with baked vertex lighting), tone \
         (the HDR tone mapping of the focused 3D view: mode, the exposure scale now, its range, the bloom amount, \
         what the env_tonemap_controller of the map sets and the luminance histogram the auto exposure reads), the \
-        lightmap budget, and while the lit mode is on the realtime preview: lights drawn, suns, lights left out, \
+        lightmap budget, skybox_shade (with a sky_camera: the share of the sunlit surfaces the 3D skybox hides from \
+        the sun, like VRAD and the game, because the sky_camera scales them inside or under the skybox geometry; \
+        fraction, sunlit_samples, shaded_samples, sky_camera, sky_cameras, warning true from 25 percent, when the \
+        preview also warns the user), no_skybox_recurse (the compile uses -noskyboxrecurse, so the bake and the \
+        compile ignore the 3D skybox for the sun and the sky light), and while the lit mode is on the realtime preview: lights drawn, suns, lights left out, \
         crowded spots keeping only their strongest lights, HDR or LDR values, sky light occlusion, projectors (the env_projectedtexture entities drawn, setting render.projected_textures), dynamic_lights (the engine dynamic lights drawn: light_dynamic and the point_spotlight beam ends, also over the baked preview and the player view), sky_layers (how \
         many skies lie one above the other toward the sun and straight up: each point is shadowed only by what lies \
         between it and the sky it reaches, like VRAD), relight (the last lighting update: full or incremental, \
@@ -558,6 +582,9 @@ fn compile_options_json(state: &AppState) -> Value {
         "lighting": lower(format!("{:?}", s.lighting)),
         "static_prop_lighting": s.static_prop_lighting,
         "static_prop_shadows": s.static_prop_shadows,
+        "rad_file_enabled": s.rad_file_enabled,
+        "rad_file": s.rad_file,
+        "rad_files": super::tools_rad::rad_files_json(state),
         "bsp_options": options_json(s, StepKind::Bsp),
         "rad_options": options_json(s, StepKind::Rad),
         "extra_bsp_args": s.extra_bsp_args,
@@ -668,6 +695,7 @@ fn apply_options(state: &AppState, s: &mut CompileSettings, a: &Args<'_>, like_w
     if let Some(v) = a.opt_bool("static_prop_shadows")? {
         s.static_prop_shadows = v;
     }
+    super::tools_rad::apply_rad_options(state, s, a)?;
     if let Some(v) = a.opt_bool("cordon_only")? {
         s.compile_cordon_only = v;
     }
@@ -1419,6 +1447,11 @@ fn get_lighting_status(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         "has_bake": l.has_bake,
         "stale": l.stale,
         "paused": l.paused,
+        "skybox_shade": l.skybox_shade.map(|s| json!({
+            "fraction": s.fraction(), "sunlit_samples": s.sunlit, "shaded_samples": s.shaded,
+            "sky_camera": s.camera, "sky_cameras": s.cameras, "warning": s.worth_a_warning(),
+        })),
+        "no_skybox_recurse": state.settings.compile.no_skybox_recurse(),
         "threads": crate::dispatch::lighting::preview_threads(state),
         "priority": format!("{:?}", state.settings.lighting.priority),
         "visible_first": state.settings.lighting.visible_first,

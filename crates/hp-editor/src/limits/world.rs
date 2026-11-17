@@ -120,6 +120,14 @@ pub struct ParticleVolumes {
     pub blockers: Vec<[[f32; 3]; 3]>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct EffectVolume {
+    pub vertices: Vec<[f32; 3]>,
+    pub alphas: Vec<f32>,
+    pub indices: Vec<u32>,
+    pub color: [f32; 4],
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct BspWorld {
     pub materials: Vec<String>,
@@ -134,6 +142,7 @@ pub struct BspWorld {
     pub entity_ids: Vec<u32>,
     pub rope_entities: Vec<hp_vmf::Entity>,
     pub effect_sprites: Vec<hp_vmf::Entity>,
+    pub effect_volumes: Vec<EffectVolume>,
     pub particle_entities: Vec<hp_vmf::Entity>,
     pub particle_volumes: ParticleVolumes,
     pub light: WorldLight,

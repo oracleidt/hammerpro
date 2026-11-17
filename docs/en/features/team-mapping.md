@@ -44,7 +44,7 @@ Select **Teleport** next to a participant to switch to the shared map, move your
 
 ## Chat and pings
 
-The **Chat** box sends a short message (up to 200 characters) to everyone in the session. Messages appear in the chat of each participant with the author colour; when a participant's panel is closed they also appear as a notification and the **Team Mapping** menu shows the number of unread messages.
+The **Chat** box sends a short message (up to 200 characters) to everyone in the session. Messages appear in the chat of each participant with the author colour; when a participant's panel is closed they also appear as a notification and the **Team Mapping** menu shows the number of unread messages. Enter sends the message and gives the keyboard back to the map, so `Delete`, the arrows and the other shortcuts work at once; click the box to write the next message.
 
 **Ping** shows a pulsing marker in your colour with your nickname, for 8 seconds, at the point in the centre of your 3D view. To mark another point, right click in a 2D or 3D view and choose **Ping here for the team**. Every participant sees the marker in the 2D and 3D views; when it is outside the 3D view, an arrow at the border of the view points toward it. Each ping also appears in the chat with a **Go to** button that frames the point.
 

@@ -27,7 +27,7 @@ pub struct Progressive {
     focus: Option<Vec<u32>>,
     face_of_surface: Vec<u32>,
     surface_of_face: std::collections::HashMap<u32, u32>,
-    ao_strength: f32,
+    ao_strength: (f32, f32),
     materials: Vec<super::bake::MaterialInfo>,
     sizes: Vec<(i32, i32)>,
 }
@@ -109,6 +109,8 @@ impl Progressive {
         log(&format!("ray traced preview on {}", baker.device().describe()));
         let face_of_surface: Vec<u32> = scene.faces.iter().map(|f| f.face as u32).collect();
         let surface_of_face = face_of_surface.iter().enumerate().map(|(i, f)| (*f, i as u32)).collect();
+        let ao_strength =
+            super::contact_strengths(rt.params().cinematic, if effects.ao { effects.ao_strength } else { 0.0 });
         Ok(Progressive {
             scene,
             built,
@@ -120,7 +122,7 @@ impl Progressive {
             focus: None,
             face_of_surface,
             surface_of_face,
-            ao_strength: if effects.ao { effects.ao_strength } else { 0.0 },
+            ao_strength,
             materials,
             sizes,
         })

@@ -58,6 +58,11 @@ pub struct Params {
     pub denoise: f32,
     pub supersample: u32,
     pub chunk_luxels: u32,
+    pub light_radius: f32,
+    pub sun_soft_angle: f32,
+    pub luxel_detail: f32,
+    pub contact_ao: bool,
+    pub cinematic: bool,
 }
 
 impl Params {
@@ -74,6 +79,11 @@ impl Params {
                 denoise: 1.0,
                 supersample: 2,
                 chunk_luxels: 0,
+                light_radius: 2.0,
+                sun_soft_angle: 0.0,
+                luxel_detail: 1.0,
+                contact_ao: false,
+                cinematic: false,
             },
             Quality::Normal | Quality::Optimal => Params {
                 min_samples: 64,
@@ -86,6 +96,11 @@ impl Params {
                 denoise: 1.0,
                 supersample: 3,
                 chunk_luxels: 0,
+                light_radius: if q == Quality::Optimal { 6.0 } else { 2.0 },
+                sun_soft_angle: if q == Quality::Optimal { 1.0 } else { 0.0 },
+                luxel_detail: 1.0,
+                contact_ao: q == Quality::Optimal,
+                cinematic: q == Quality::Optimal,
             },
             Quality::Final => Params {
                 min_samples: 256,
@@ -98,6 +113,11 @@ impl Params {
                 denoise: 1.0,
                 supersample: 4,
                 chunk_luxels: 0,
+                light_radius: 8.0,
+                sun_soft_angle: 1.5,
+                luxel_detail: 2.0,
+                contact_ao: true,
+                cinematic: true,
             },
         }
     }
@@ -114,6 +134,9 @@ impl Params {
         self.sky_samples = self.sky_samples.clamp(1, 64);
         self.denoise = if self.denoise.is_finite() { self.denoise.clamp(0.0, 4.0) } else { 1.0 };
         self.supersample = self.supersample.clamp(1, 8);
+        self.light_radius = if self.light_radius.is_finite() { self.light_radius.clamp(0.0, 256.0) } else { 2.0 };
+        self.luxel_detail = if self.luxel_detail.is_finite() { self.luxel_detail.clamp(1.0, 4.0) } else { 1.0 };
+        self.sun_soft_angle = if self.sun_soft_angle.is_finite() { self.sun_soft_angle.clamp(0.0, 45.0) } else { 0.0 };
         self
     }
 }

@@ -429,7 +429,18 @@ fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
     let unlit = (material.flags & M_UNLIT) != 0u;
     var rgb: vec3<f32>;
     var lit_by = vec3<f32>(1.0);
-    if in.baked.w > 0.5 && mode != MODE_FLAT {
+    let surface = select(vec4<f32>(0.0), surface_light(in.state.x, in.clip.xy), mode != MODE_FLAT);
+    let surface_lit = surface.a != 0.0;
+    if surface_lit {
+        let scale = abs(surface.a);
+        lit_by = select(surface.rgb, vec3<f32>(1.0), unlit);
+        if surface.a < 0.0 {
+            rgb = srgb_to_linear(min(linear_to_srgb(albedo.rgb) * lit_by, vec3<f32>(1.0))) * scale;
+        } else {
+            rgb = albedo.rgb * lit_by * scale;
+        }
+        rgb = mix(rgb, albedo.rgb * glow_tint * scale, glow);
+    } else if in.baked.w > 0.5 && mode != MODE_FLAT {
         var baked = in.baked.rgb;
         if bumped {
             baked = model_light_px(in.light_rec, in.static_light, in.world, bn);
@@ -459,12 +470,13 @@ fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
     }
     if reflects {
         let scale = env_light_scale(in.cube, lit_by);
-        rgb += env * scale * select(1.0, bitcast<f32>(view.misc.z), in.baked.w > 0.5 && !unlit);
+        let env_scale = select(select(1.0, bitcast<f32>(view.misc.z), in.baked.w > 0.5 && !unlit), abs(surface.a), surface_lit);
+        rgb += env * scale * env_scale;
     }
     if mode != MODE_FLAT && material.detail_mode != DETAIL_NONE {
         rgb = detail_post_lighting(rgb, detail);
     }
-    if mode == MODE_LIT && in.baked.w <= 0.5 {
+    if mode == MODE_LIT && in.baked.w <= 0.5 && !surface_lit {
         rgb *= bitcast<f32>(view.misc.w);
     }
     let flags = in.state.x;
@@ -500,6 +512,9 @@ fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
     }
     if BLEND_MODE == 0u {
         return vec4<f32>(rgb, 1.0);
+    }
+    if surface_lit {
+        rgb = min(rgb, vec3<f32>(1.0));
     }
     var a: f32;
     if TINT_OPACITY {

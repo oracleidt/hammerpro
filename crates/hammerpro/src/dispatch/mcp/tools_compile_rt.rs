@@ -1,5 +1,6 @@
 use hp_app::settings::{
-    CompileSettings, RayConfigSetting, RayDeviceSetting, RayQualitySetting, RayShaftSourceSetting, RayTracingSettings,
+    CompileSettings, RayConfigSetting, RayDeviceSetting, RayQualitySetting, RayReflectionsSetting,
+    RayShaftSourceSetting, RayTracingSettings,
 };
 use serde_json::{Value, json};
 
@@ -35,6 +36,11 @@ const NUMBERS: &[(&str, Kind, &str)] = &[
         Kind::Real(0.0, 45.0),
         "Ray tracing: angular size of the sun in degrees for soft sun shadows (-rtsunangle; automatic: the light_environment).",
     ),
+    (
+        "rt_luxel_detail",
+        Kind::Real(1.0, 4.0),
+        "Ray tracing: lightmap detail (more visible soft penumbras and contact shadows), luxels per face side multiplied by this (lightmap scale divided), within the engine lightmap size limit and a 32 MB per pass budget; sharper contact shadows and smoother penumbras, longer bake (-rtluxels; automatic: 2 in final, 1 otherwise).",
+    ),
     ("rt_sky_samples", Kind::Int(1, 64), "Ray tracing: sky dome samples per bounce (-rtskysamples)."),
     ("rt_denoise", Kind::Real(0.0, 4.0), "Ray tracing: edge aware denoiser strength, 0 (off) to 4 (-rtdenoise)."),
     ("rt_supersample", Kind::Int(1, 8), "Ray tracing: sample points per luxel side, 1 to 8 (-rtsupersample)."),
@@ -67,7 +73,7 @@ pub(super) const SWITCHES: &[(&str, &str)] = &[
     ("rt_glow", "Ray tracing: glow halos around strong lights (default false, -rtglow)."),
     (
         "rt_cubemaps",
-        "Ray tracing: automatic cubemaps (default true; false is -rtnocubemaps). When the map has no env_cubemap of its own, the geometry step places env_cubemap entities where reflective surfaces need them, with the sizes of suggest_cubemaps, in the compiled map only (the VMF is not changed), and sizes the cubemaps from what they reflect (-autocubemaps); a map with its own cubemaps keeps them. buildcubemaps in game still renders them.",
+        "Ray tracing: automatic cubemaps (default true; false is -rtnocubemaps). When the map has no env_cubemap of its own, the geometry step places env_cubemap entities where reflective surfaces need them, with the sizes of suggest_cubemaps, in the compiled map only (the VMF is not changed), and sizes the cubemaps from what they reflect (-autocubemaps); a map with its own cubemaps keeps them and gets new ones only in the reflective rooms and facades none of them covers. rt_reflections renders them all in the compile; without it buildcubemaps in game does.",
     ),
     (
         "rt_tonemap",
@@ -125,6 +131,12 @@ pub(super) fn schema(key: &str) -> Value {
         }
         "rt_reset" => {
             json!({ "type": "boolean", "description": "true: back to the default ray tracing configuration (Reset to default of the compile window)." })
+        }
+        "rt_look" => {
+            json!({ "type": "string", "enum": ["auto", "classic", "cinematic"], "description": "Ray tracing look (-rtlook): auto (default: cinematic in final and optimal, classic otherwise), classic (the authored falloff of every light, like VRAD) or cinematic (true inverse square light pools from area sources at the same reference brightness, ceiling lamps shining downward with a darker ceiling above, richer colour bleeding, deep contact shadows)." })
+        }
+        "rt_reflections" => {
+            json!({ "type": "string", "enum": ["auto", "on", "off"], "description": "Ray traced reflections: at the end of the ray traced lighting, every env_cubemap of the map (placed and automatic) and the default cubemap are rendered with the path tracer from the lit map (final lightmaps and textures, static props, the 2D and 3D sky, self illuminated and unlit surfaces, light sources as bright spots, bounced light), in LDR and HDR as the map has them, at each cubemap's size with mipmaps, and written into the BSP pakfile where buildcubemaps writes them (materials/maps/<map>/c<x>_<y>_<z>.vtf and .hdr.vtf, cubemapdefault), so reflections are right the first time the map loads. auto (default): on with the final and optimal qualities; on (-rtreflections): every quality; off (-rtnoreflections): placeholders until buildcubemaps runs in game." })
         }
         "rt_shaft_source" => {
             json!({ "type": "string", "enum": ["sun", "sun_and_spots"], "description": "Ray tracing: lights that make shafts, the sun only or the sun and strong spot lights (default) (-rtshaftsource)." })
@@ -207,6 +219,12 @@ pub(super) fn apply(s: &mut CompileSettings, a: &Args<'_>) -> R<()> {
             *effect_slot(rt, key) = v as f32;
         }
     }
+    if let Some(v) = a.opt_enum("rt_look", &["auto", "classic", "cinematic"])? {
+        rt.look = if v == "auto" { String::new() } else { v };
+    }
+    if let Some(v) = a.opt_enum("rt_reflections", &["auto", "on", "off"])? {
+        rt.reflections = RayReflectionsSetting::parse(&v).unwrap_or_default();
+    }
     if let Some(v) = a.opt_enum("rt_shaft_source", &["sun", "sun_and_spots"])? {
         rt.shaft_source = RayShaftSourceSetting::parse(&v).unwrap_or_default();
     }
@@ -251,7 +269,15 @@ pub(super) fn apply(s: &mut CompileSettings, a: &Args<'_>) -> R<()> {
         .map(|(k, _, _)| *k)
         .chain(SWITCHES.iter().map(|(k, _)| *k))
         .chain(EFFECT_NUMBERS.iter().map(|(k, _, _, _)| *k))
-        .chain(["raytracing_quality", "rt_device", "rt_bump", "rt_seed", "rt_shaft_source"]);
+        .chain([
+            "raytracing_quality",
+            "rt_device",
+            "rt_bump",
+            "rt_seed",
+            "rt_shaft_source",
+            "rt_look",
+            "rt_reflections",
+        ]);
     if a.get("raytracing").is_none() && touched.clone().any(|k| a.get(k).is_some() && !auto_requested(a, k)) {
         rt.on = true;
     }
@@ -276,6 +302,7 @@ fn real_slot<'a>(rt: &'a mut RayTracingSettings, key: &str) -> &'a mut Option<f3
         "rt_threshold" => &mut rt.threshold,
         "rt_light_size" => &mut rt.light_size,
         "rt_sun_angle" => &mut rt.sun_angle,
+        "rt_luxel_detail" => &mut rt.luxel_detail,
         _ => &mut rt.denoise,
     }
 }
@@ -304,6 +331,7 @@ pub(super) fn json(s: &CompileSettings) -> Value {
         "rt_glow": rt.glow,
         "rt_glow_intensity": real(rt.glow_intensity),
         "rt_cubemaps": rt.auto_cubemaps,
+        "rt_reflections": rt.reflections.name(),
         "rt_tonemap": rt.tonemap,
         "rt_color_correction": rt.color_correction,
         "raytracing_qualities": ["draft", "normal", "final", "optimal"],
@@ -321,6 +349,8 @@ pub(super) fn json(s: &CompileSettings) -> Value {
         "rt_supersample": rt.supersample,
         "rt_prop_samples": rt.prop_samples,
         "rt_chunk": rt.chunk,
+        "rt_luxel_detail": rt.luxel_detail.map(real),
+        "rt_look": if rt.look.is_empty() { "auto" } else { rt.look.as_str() },
         "rt_defaults": {
             "note": "values used when an rt_ option is null (automatic), for the chosen quality",
             "rt_samples": d.min_samples,
@@ -333,6 +363,10 @@ pub(super) fn json(s: &CompileSettings) -> Value {
             "rt_denoise": real(d.denoise),
             "rt_supersample": d.supersample,
             "rt_chunk": d.chunk_luxels,
+            "rt_luxel_detail": real(d.luxel_detail),
+            "rt_light_radius": real(d.light_radius),
+            "rt_sun_soft_angle": real(d.sun_soft_angle),
+            "rt_look": if d.cinematic { "cinematic" } else { "classic" },
         },
     })
 }
@@ -430,6 +464,7 @@ mod tests {
             "rt_glow",
             "rt_ao_radius",
             "rt_shaft_source",
+            "rt_reflections",
         ] {
             assert!(!super::schema(key).is_null(), "{key}");
         }

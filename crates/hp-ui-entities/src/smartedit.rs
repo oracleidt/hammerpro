@@ -5,7 +5,7 @@ use egui::{Align, ComboBox, DragValue, Id, Label, Layout, Popup, Response, RichT
 use hp_app::actions::key_label;
 use hp_app::runtime::AssetKind;
 use hp_app::state::RightTab;
-use hp_app::{Severity, t, tf, theme};
+use hp_app::{Action, Severity, t, tf, theme};
 use hp_fgd::{ClassKind, Property, PropertyType};
 
 use crate::cx::{Cx, ModelPick, push_recent_model, recent_models, set_model_pick};
@@ -61,7 +61,7 @@ impl SmartEdit {
             buffers: TextBuffers::default(),
             filter: String::new(),
             show_keys: false,
-            update_references: true,
+            update_references: false,
             new_key: String::new(),
             new_value: String::new(),
             browse: None,
@@ -337,8 +337,20 @@ impl SmartEdit {
                 }
                 if row.prop.as_ref().is_some_and(|p| p.kind == PropertyType::TargetSource) && !view.target.is_world() {
                     ui.separator();
-                    ui.checkbox(&mut self.update_references, t!("entities.update_refs"))
-                        .on_hover_text(t!("entities.update_refs_tip"));
+                    let mut on = cx.settings.edit.rename_updates_references;
+                    if ui
+                        .checkbox(&mut on, t!("entities.update_refs"))
+                        .on_hover_text(t!("entities.update_refs_tip"))
+                        .changed()
+                    {
+                        cx.settings.edit.rename_updates_references = on;
+                        *cx.settings_dirty = true;
+                        self.update_references = on;
+                    }
+                    if ui.button(Action::RenameUpdateReferences.label()).clicked() {
+                        cx.request(Action::RenameUpdateReferences);
+                        ui.close();
+                    }
                 }
             });
             ui.allocate_ui_with_layout(vec2(widget_w, row_h), Layout::left_to_right(Align::Center), |ui| {

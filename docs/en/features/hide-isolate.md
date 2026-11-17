@@ -46,6 +46,8 @@ The eye at the end of the tool palette isolates the selection:
 
 **Show editor objects** (on by default, `helpers.show_editor_objects`) shows the entity icons and helper geometry that only exist in the editor, like Hammer++'s "editor objects". Turn it off to see the map closer to the game. World sprites (`env_sprite`) stay visible.
 
+**Show entity icons** (on by default, `helpers.show_entity_icons`, action `toggle_entity_icons`) controls only the icons: off, point entities show their colored box again while the other editor objects stay.
+
 **View > Display options > Show point entities** shows or hides every point entity at once.
 
 ## Tool textures

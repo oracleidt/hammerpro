@@ -39,6 +39,7 @@ const BEAM: WorldBeam = WorldBeam {
     srgb_color: false,
     hdr_scale: 1.0,
     halo_scale: 0.0,
+    glow: None,
 };
 
 fn setup(r: &mut Renderer) {
@@ -158,4 +159,51 @@ fn the_halo_hides_behind_the_world_like_the_engine_pixel_visibility() {
     r.upsert_object(20, wall(-50.0, 4.0));
     let hidden = shot(&mut r, &front);
     assert!(red(&hidden, 64, 20) < 10, "something between the eye and the spotlight hides the whole halo");
+}
+
+#[test]
+fn the_light_glow_fades_with_distance_shows_from_the_front_and_hides_behind_the_world() {
+    let Some((device, queue)) = gpu() else { return };
+    let mut r = Renderer::new(&device, &queue);
+    setup(&mut r);
+    r.set_material(
+        2,
+        &MaterialDesc {
+            texture: Some(TexId::WHITE),
+            flags: MaterialFlags::UNLIT | MaterialFlags::TWO_SIDED,
+            tint: [0.0, 0.0, 0.0, 1.0],
+            ..Default::default()
+        },
+    );
+    let shape = LightGlowShape {
+        size: [30.0, 15.0],
+        min_dist: 100.0,
+        max_dist: 300.0,
+        outer_max_dist: 0.0,
+        one_sided: false,
+        proxy: 2.0,
+    };
+    let glow = WorldBeam { start: [0.0; 3], end: [1.0, 0.0, 0.0], color: [1.0; 3], glow: Some(shape), ..BEAM };
+    r.set_world_beams(&[glow]);
+    let at = |d: f32| view([d, 0.0, 0.0], [-1.0, 0.0, 0.0]);
+    let far = shot(&mut r, &at(400.0));
+    assert!(red(&far, 64, 64) > 200, "past MaxDist the glow is full: {}", red(&far, 64, 64));
+    let half = 64.0 * 30.0 / 400.0;
+    assert!(red(&far, 64 + (half * 0.6) as usize, 64) > 0, "HorizontalGlowSize is half the width");
+    assert_eq!(red(&far, 64 + (half * 1.5) as usize, 64), 0);
+    assert_eq!(red(&far, 64, 64 + (64.0 * 15.0 / 400.0 * 1.5) as usize), 0, "VerticalGlowSize is half the height");
+    let mid = red(&shot(&mut r, &at(200.0)), 64, 64);
+    assert!((170..=205).contains(&mid), "halfway between MinDist and MaxDist, half the linear light: {mid}");
+    assert!(shot(&mut r, &at(50.0)).chunks_exact(4).all(|p| p[..3] == [0; 3]), "closer than MinDist: nothing");
+    let behind = view([-400.0, 0.0, 0.0], [1.0, 0.0, 0.0]);
+    assert!(red(&shot(&mut r, &behind), 64, 64) > 200, "two sided by default");
+    r.set_world_beams(&[WorldBeam { glow: Some(LightGlowShape { one_sided: true, ..shape }), ..glow }]);
+    assert!(red(&shot(&mut r, &at(400.0)), 64, 64) > 200);
+    assert!(shot(&mut r, &behind).chunks_exact(4).all(|p| p[..3] == [0; 3]), "Visible only from front");
+    r.set_world_beams(&[glow]);
+    r.upsert_object(20, wall(200.0, 4.0));
+    let hidden = shot(&mut r, &at(400.0));
+    assert!(red(&hidden, 64 + (half * 0.6) as usize, 64) < 10, "the proxy is hidden: the whole glow goes");
+    r.upsert_object(20, wall(-50.0, 200.0));
+    assert!(red(&shot(&mut r, &at(400.0)), 64, 64) > 200, "a wall behind the glow leaves it");
 }

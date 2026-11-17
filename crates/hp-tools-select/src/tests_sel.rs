@@ -1005,3 +1005,138 @@ fn hidden_displacements_and_disp_only_follow_the_view() {
     click(&mut tool, &mut state, &v, wall, Modifiers::NONE);
     assert_eq!(state.doc.selected_objects(), vec![WALL]);
 }
+
+fn typed_frame(
+    ctx: &egui::Context,
+    state: &mut AppState,
+    tool: &mut SelectTool,
+    events: Vec<Event>,
+    modifiers: Modifiers,
+) -> bool {
+    let mut handled = false;
+    let mut all = vec![Event::ModifiersChanged(modifiers)];
+    all.extend(events);
+    let input = egui::RawInput {
+        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1000.0, 800.0))),
+        events: all,
+        ..Default::default()
+    };
+    let mut out = ctx.run_ui(input, |ui| {
+        handled = tool.key_input(state, ui.ctx());
+    });
+    out.textures_delta.clear();
+    handled
+}
+
+fn digit(k: Key) -> Event {
+    Event::Key { key: k, physical_key: Some(k), pressed: true, repeat: false, modifiers: Modifiers::NONE }
+}
+
+#[test]
+fn typed_angles_rotate_exactly_on_every_axis() {
+    let mut state = state();
+    let mut tool = SelectTool::new();
+    let ctx = egui::Context::default();
+    let v = view2d(ViewKind::Top);
+    state.doc.set_selection(&[WALL]);
+    state.ui.hovered_view = Some(1);
+    let c = scr(&v, bounds(&state, WALL).center());
+    tool.begin_modal(&mut state, &v, ModalKind::Rotate, c + vec2(100.0, 0.0));
+    tool.handle_event(&mut state, &v, PointerEvent::Hover(c + vec2(70.0, -30.0)), Modifiers::NONE);
+    assert!(typed_frame(&ctx, &mut state, &mut tool, vec![digit(Key::Num4), digit(Key::Num5)], Modifiers::NONE));
+    let m = tool.modal().expect("modal");
+    assert!(approx(m.angle, 45.0) && m.axis == DVec3::Z, "{m:?}");
+    assert!(state.runtime.selection.typing_angle, "the 2D views leave the digits to the angle");
+    let hint = tool.status_hint(&state).expect("hint");
+    assert!(hint.contains("45_"), "{hint}");
+    assert!(typed_frame(&ctx, &mut state, &mut tool, vec![key(Key::Backspace, Modifiers::NONE)], Modifiers::NONE));
+    assert!(approx(tool.modal().expect("modal").angle, 4.0));
+    let events = vec![key(Key::Backspace, Modifiers::NONE), Event::Text("90".to_owned())];
+    assert!(typed_frame(&ctx, &mut state, &mut tool, events, Modifiers::NONE));
+    tool.handle_event(&mut state, &v, PointerEvent::Hover(c + vec2(-60.0, 10.0)), Modifiers::NONE);
+    assert!(approx(tool.modal().expect("modal").angle, 90.0), "the mouse does not change a typed angle");
+    assert!(approx(bounds(&state, WALL).size().x, 512.0), "only a preview so far");
+    assert!(key_frame(&ctx, &mut state, &mut tool, vec![key(Key::Enter, Modifiers::NONE)]));
+    let b = bounds(&state, WALL);
+    assert!(approx(b.size().x, 16.0) && approx(b.size().y, 512.0), "{b:?}");
+    assert_eq!(state.doc.undo_label(), Some("Rotate"));
+    assert!(!state.runtime.selection.typing_angle);
+    assert!(state.doc.undo());
+    for (axis, size) in [(Key::X, DVec3::new(512.0, 128.0, 16.0)), (Key::Y, DVec3::new(128.0, 16.0, 512.0))] {
+        tool.begin_modal(&mut state, &v, ModalKind::Rotate, c + vec2(100.0, 0.0));
+        let events = vec![key(axis, Modifiers::NONE), key(Key::Minus, Modifiers::NONE), Event::Text("-90".to_owned())];
+        assert!(typed_frame(&ctx, &mut state, &mut tool, events, Modifiers::NONE));
+        let m = tool.modal().expect("modal");
+        assert!(approx(m.angle, -90.0), "{m:?}");
+        assert!(typed_frame(&ctx, &mut state, &mut tool, vec![key(Key::Enter, Modifiers::NONE)], Modifiers::NONE));
+        let s = bounds(&state, WALL).size();
+        assert!((s - size).length() < 1e-6, "{axis:?}: {s:?}");
+        assert!(state.doc.undo());
+    }
+    tool.begin_modal(&mut state, &v, ModalKind::Rotate, c + vec2(100.0, 0.0));
+    assert!(typed_frame(&ctx, &mut state, &mut tool, vec![digit(Key::Num3)], Modifiers::NONE));
+    assert!(typed_frame(&ctx, &mut state, &mut tool, vec![key(Key::Escape, Modifiers::NONE)], Modifiers::NONE));
+    assert!(!tool.is_modal());
+    assert!(approx(bounds(&state, WALL).size().x, 512.0), "Escape cancels a typed angle");
+}
+
+#[test]
+fn shift_during_a_modal_rotation_duplicates_in_one_step() {
+    let mut state = state();
+    let mut tool = SelectTool::new();
+    let ctx = egui::Context::default();
+    let v = view2d(ViewKind::Top);
+    let solids = state.doc.scene().solids().len();
+    state.doc.set_selection(&[WALL, LIGHT]);
+    state.ui.hovered_view = Some(1);
+    let c = scr(&v, bounds(&state, WALL).center());
+    let before = state.doc.history_len().0;
+    let light = bounds(&state, LIGHT);
+    tool.begin_modal(&mut state, &v, ModalKind::Rotate, c + vec2(100.0, 0.0));
+    assert!(typed_frame(&ctx, &mut state, &mut tool, vec![Event::Text("90".to_owned())], Modifiers::NONE));
+    assert!(typed_frame(&ctx, &mut state, &mut tool, vec![], Modifiers::SHIFT));
+    let hint = tool.status_hint(&state).expect("hint");
+    assert!(hint.contains(&*hp_app::t!("seltool.label.copy")), "{hint}");
+    assert!(state.runtime.selection.drag.is_none(), "the original stays in place while Shift is held");
+    let events = vec![key(Key::Enter, Modifiers::SHIFT)];
+    assert!(typed_frame(&ctx, &mut state, &mut tool, events, Modifiers::SHIFT));
+    assert_eq!(state.doc.scene().solids().len(), solids + 1);
+    assert_eq!(state.doc.undo_label(), Some("Duplicate"));
+    assert_eq!(state.doc.history_len().0, before + 1);
+    let b = bounds(&state, WALL);
+    assert!(approx(b.size().x, 512.0), "the original stays: {b:?}");
+    assert_eq!(bounds(&state, LIGHT), light);
+    let copies = state.doc.selected_objects();
+    assert_eq!(copies.len(), 2);
+    let copy = copies.iter().copied().find(|o| matches!(o, ObjRef::Solid(_))).expect("copied solid");
+    let cb = bounds(&state, copy);
+    assert!(approx(cb.size().x, 16.0) && approx(cb.size().y, 512.0), "the copy is rotated: {cb:?}");
+    assert!(state.doc.undo());
+    assert_eq!(state.doc.scene().solids().len(), solids);
+}
+
+#[test]
+fn typed_angles_work_during_a_handle_rotation_drag() {
+    let mut state = state();
+    let mut tool = SelectTool::new();
+    let ctx = egui::Context::default();
+    let v = view2d(ViewKind::Top);
+    state.doc.set_selection(&[WALL]);
+    tool.set_handle_mode(HandleMode::Rotate);
+    tool.note_view_for_tests(&v);
+    let h = handle_pos(wall_rect(&v, &state), Handle::new(1, 1));
+    tool.handle_event(&mut state, &v, PointerEvent::DragStart { origin: h, pos: h }, Modifiers::NONE);
+    tool.handle_event(&mut state, &v, PointerEvent::Drag(h + vec2(10.0, 20.0)), Modifiers::NONE);
+    let down = Event::PointerButton {
+        pos: h,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: Modifiers::NONE,
+    };
+    let events = vec![down, Event::Text("90".to_owned()), key(Key::Enter, Modifiers::NONE)];
+    assert!(typed_frame(&ctx, &mut state, &mut tool, events, Modifiers::NONE));
+    assert!(!tool.is_dragging());
+    let b = bounds(&state, WALL);
+    assert!(approx(b.size().x, 16.0) && approx(b.size().y, 512.0), "{b:?}");
+    assert_eq!(state.doc.undo_label(), Some("Rotate"));
+}

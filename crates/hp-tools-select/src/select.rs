@@ -83,6 +83,7 @@ struct Drag {
     elements: bool,
     ghost: Vec<[DVec3; 2]>,
     ghost_points: Vec<DVec3>,
+    typed: String,
 }
 
 impl Drag {
@@ -105,6 +106,14 @@ impl Drag {
         matches!(self.op, DragOp::Modal(_))
     }
 
+    fn rotates(&self) -> bool {
+        match &self.op {
+            DragOp::Rotate { .. } | DragOp::GizmoRotate { .. } => true,
+            DragOp::Modal(m) => m.kind == ModalKind::Rotate,
+            _ => false,
+        }
+    }
+
     fn is_clone(&self) -> bool {
         match self.op {
             DragOp::Move { .. }
@@ -114,7 +123,8 @@ impl Drag {
             | DragOp::Skew { .. }
             | DragOp::GizmoRotate { .. }
             | DragOp::GizmoScale { .. }
-            | DragOp::FaceStretch { .. } => self.mods.shift && !self.elements,
+            | DragOp::FaceStretch { .. }
+            | DragOp::Modal(_) => self.mods.shift && !self.elements,
             _ => false,
         }
     }
@@ -816,6 +826,7 @@ impl SelectTool {
             elements,
             ghost,
             ghost_points,
+            typed: String::new(),
         });
     }
 
@@ -838,6 +849,7 @@ impl SelectTool {
             elements: false,
             ghost: Vec::new(),
             ghost_points: Vec::new(),
+            typed: String::new(),
         });
     }
 
@@ -1318,9 +1330,21 @@ impl SelectTool {
                 }
             }
         }
+        if let Some(v) = crate::modal::typed_value(&d.typed) {
+            let v = normalize_deg(v);
+            match &mut d.op {
+                DragOp::Rotate { angle, .. } | DragOp::GizmoRotate { angle, .. } => *angle = v,
+                DragOp::Modal(m) if m.kind == ModalKind::Rotate => {
+                    m.axis = crate::modal::typed_axis(view, pivot, m.axes, m.lock);
+                    m.angle = v;
+                }
+                _ => {}
+            }
+        }
     }
 
     fn publish_drag(&self, state: &mut AppState) {
+        state.runtime.selection.typing_angle = self.drag.as_ref().is_some_and(|d| d.rotates() && !d.elements);
         let live = self.drag.as_ref().filter(|d| d.transforms() && !d.elements && !d.is_clone());
         let Some(d) = live else {
             state.runtime.selection.drag = None;
@@ -1438,6 +1462,7 @@ impl SelectTool {
         let keep = state.settings.selection.clone_keeps_visgroups;
         let anchor = match d.op {
             DragOp::Rotate { .. } | DragOp::GizmoRotate { .. } => d.pivot,
+            DragOp::Modal(m) if m.kind == ModalKind::Rotate => d.pivot,
             _ => d.bounds.center(),
         };
         let link = extra::path_link(state, &d.objs);
@@ -1838,6 +1863,7 @@ impl Tool for SelectTool {
         self.cycle = None;
         self.pick_click = None;
         state.runtime.selection.modal_transform = false;
+        state.runtime.selection.typing_angle = false;
         state.runtime.selection.drag = None;
     }
 
@@ -2094,6 +2120,10 @@ impl SelectTool {
             Some(DragOp::Modal(m)) => Some(*m),
             _ => None,
         }
+    }
+
+    pub(crate) fn note_view_for_tests(&mut self, view: &ViewInfo) {
+        self.note_view(view);
     }
 
     pub(crate) fn begin_modal(&mut self, state: &mut AppState, view: &ViewInfo, kind: ModalKind, pos: Pos2) {

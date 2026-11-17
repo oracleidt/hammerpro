@@ -46,6 +46,8 @@ L'œil au bout de la palette d'outils isole la sélection :
 
 **Afficher les objets d'éditeur** (activé par défaut, `helpers.show_editor_objects`) affiche les icônes d'entités et les aides qui n'existent que dans l'éditeur, comme les « editor objects » de Hammer++. Désactivez-le pour voir la map plus proche du jeu. Les sprites du jeu (`env_sprite`) restent visibles.
 
+**Afficher les icônes des entités** (activé par défaut, `helpers.show_entity_icons`, action `toggle_entity_icons`) ne règle que les icônes : désactivé, les entités ponctuelles redeviennent des boîtes colorées et les autres objets d'éditeur restent.
+
 **Affichage > Options d'affichage > Afficher les entités ponctuelles** affiche ou masque toutes les entités ponctuelles d'un coup.
 
 ## Textures outils

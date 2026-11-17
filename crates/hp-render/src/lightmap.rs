@@ -156,6 +156,7 @@ struct Kit {
     module: OnceLock<wgpu::ShaderModule>,
     baked: [OnceLock<PipelineSet>; 2],
     grid: [OnceLock<PipelineSet>; 2],
+    surface: OnceLock<PipelineSet>,
 }
 
 impl Kit {
@@ -185,6 +186,29 @@ impl Kit {
         slot.get_or_init(|| {
             [false, true]
                 .map(|alpha| [false, true].map(|two| pipeline(device, module, layout, samples, fs, alpha, two)))
+        })
+    }
+
+    fn surface_pipelines(&self, device: &wgpu::Device, shared: &crate::pipelines::Shared) -> &PipelineSet {
+        if let Some(set) = self.surface.get() {
+            return set;
+        }
+        let module = self.module.get_or_init(|| {
+            device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("hp-render lightmap"),
+                source: wgpu::ShaderSource::Wgsl(SHADER.into()),
+            })
+        });
+        let bind = self.bind_layout(device);
+        let layout = self.pipeline_layout.get_or_init(|| {
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("hp-render lightmap"),
+                bind_group_layouts: &[Some(&shared.view_bgl), Some(&shared.material_bgl), Some(bind)],
+                immediate_size: 0,
+            })
+        });
+        self.surface.get_or_init(|| {
+            [false, true].map(|alpha| [false, true].map(|two| surface_pipeline(device, module, layout, alpha, two)))
         })
     }
 }
@@ -248,6 +272,7 @@ impl crate::Renderer {
             for samples in [1, 4] {
                 kit.pipelines(&device, &shared, samples, false);
             }
+            kit.surface_pipelines(&device, &shared);
         });
         if let Err(e) = spawned {
             log::warn!("hp-render: cannot start the lightmap pipeline thread: {e}");
@@ -1037,6 +1062,48 @@ impl Renderer {
     }
 }
 
+fn surface_pipeline(
+    device: &wgpu::Device,
+    module: &wgpu::ShaderModule,
+    layout: &wgpu::PipelineLayout,
+    alpha_test: bool,
+    two_sided: bool,
+) -> wgpu::RenderPipeline {
+    let constants = [("ALPHA_TEST", if alpha_test { 1.0 } else { 0.0 })];
+    let options = wgpu::PipelineCompilationOptions { constants: &constants, zero_initialize_workgroup_memory: false };
+    let buffers = [Some(wgpu::VertexBufferLayout {
+        array_stride: size_of::<LightmapVertex>() as u64,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: &VERTEX_ATTRS,
+    })];
+    crate::pipeline_cache::with(device, |cache| {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("hp-render lightmap surface light"),
+            layout: Some(layout),
+            vertex: wgpu::VertexState {
+                module,
+                entry_point: Some("vs_lm"),
+                compilation_options: options.clone(),
+                buffers: &buffers,
+            },
+            primitive: wgpu::PrimitiveState {
+                cull_mode: if two_sided { None } else { Some(wgpu::Face::Back) },
+                ..crate::surface_light::primitive()
+            },
+            depth_stencil: Some(crate::surface_light::depth_state()),
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module,
+                entry_point: Some("fs_decal_light"),
+                compilation_options: options,
+                targets: &[Some(crate::surface_light::target())],
+            }),
+            multiview_mask: None,
+            cache,
+        })
+    })
+}
+
 fn pipeline(
     device: &wgpu::Device,
     module: &wgpu::ShaderModule,
@@ -1130,41 +1197,62 @@ impl PassHook for LightmapPass {
         if cx.is_ortho || lm.display == LightmapDisplay::Off || lm.blocks.is_empty() {
             return;
         }
-        let Some(bind_group) = &lm.bind_group else { return };
         let set = lm.kit.pipelines(cx.device(), &r.shared, cx.samples, lm.display == LightmapDisplay::Grid);
-        let view_proj = Mat4::from_cols_array_2d(&cx.view_proj);
-        pass.set_bind_group(0, cx.view_bind_group, &[]);
-        pass.set_bind_group(2, bind_group, &[]);
-        let mut current: Option<(usize, usize)> = None;
-        let mut material = u32::MAX;
-        for block in lm.blocks.values() {
-            if !box_visible(&view_proj, block.lo, block.hi) {
+        draw_blocks(cx, pass, set);
+    }
+}
+
+impl LightmapPass {
+    pub(crate) fn surface_drawn(r: &Renderer, is_ortho: bool) -> bool {
+        !is_ortho && r.lightmap.display == LightmapDisplay::Baked && !r.lightmap.blocks.is_empty()
+    }
+
+    pub(crate) fn draw_surface(cx: &HookContext<'_>, pass: &mut wgpu::RenderPass<'_>) {
+        let r = cx.renderer;
+        if !Self::surface_drawn(r, cx.is_ortho) {
+            return;
+        }
+        let set = r.lightmap.kit.surface_pipelines(cx.device(), &r.shared);
+        draw_blocks(cx, pass, set);
+    }
+}
+
+fn draw_blocks(cx: &HookContext<'_>, pass: &mut wgpu::RenderPass<'_>, set: &PipelineSet) {
+    let r = cx.renderer;
+    let lm = &r.lightmap;
+    let Some(bind_group) = &lm.bind_group else { return };
+    let view_proj = Mat4::from_cols_array_2d(&cx.view_proj);
+    pass.set_bind_group(0, cx.view_bind_group, &[]);
+    pass.set_bind_group(2, bind_group, &[]);
+    let mut current: Option<(usize, usize)> = None;
+    let mut material = u32::MAX;
+    for block in lm.blocks.values() {
+        if !box_visible(&view_proj, block.lo, block.hi) {
+            continue;
+        }
+        pass.set_vertex_buffer(0, block.vbuf.slice(..));
+        pass.set_index_buffer(block.ibuf.slice(..), wgpu::IndexFormat::Uint32);
+        for d in &block.draws {
+            let desc = r.scene.materials.get(d.material as usize).and_then(|m| m.desc);
+            let Some((kind, two_sided)) = classify_with(desc.as_ref(), cx.options.force_opaque, false) else {
                 continue;
+            };
+            let alpha = match kind {
+                MeshPass::Opaque => 0,
+                MeshPass::AlphaTest => 1,
+                MeshPass::Translucent | MeshPass::Additive | MeshPass::Modulate => continue,
+            };
+            let Some(mg) = r.mat_gpu.get(d.material as usize) else { continue };
+            let key = (alpha, usize::from(two_sided));
+            if current != Some(key) {
+                pass.set_pipeline(&set[key.0][key.1]);
+                current = Some(key);
             }
-            pass.set_vertex_buffer(0, block.vbuf.slice(..));
-            pass.set_index_buffer(block.ibuf.slice(..), wgpu::IndexFormat::Uint32);
-            for d in &block.draws {
-                let desc = r.scene.materials.get(d.material as usize).and_then(|m| m.desc);
-                let Some((kind, two_sided)) = classify_with(desc.as_ref(), cx.options.force_opaque, false) else {
-                    continue;
-                };
-                let alpha = match kind {
-                    MeshPass::Opaque => 0,
-                    MeshPass::AlphaTest => 1,
-                    MeshPass::Translucent | MeshPass::Additive | MeshPass::Modulate => continue,
-                };
-                let Some(mg) = r.mat_gpu.get(d.material as usize) else { continue };
-                let key = (alpha, usize::from(two_sided));
-                if current != Some(key) {
-                    pass.set_pipeline(&set[key.0][key.1]);
-                    current = Some(key);
-                }
-                if material != d.material {
-                    pass.set_bind_group(1, &mg.bind_group, &[]);
-                    material = d.material;
-                }
-                pass.draw_indexed(d.first..d.first + d.count, 0, 0..1);
+            if material != d.material {
+                pass.set_bind_group(1, &mg.bind_group, &[]);
+                material = d.material;
             }
+            pass.draw_indexed(d.first..d.first + d.count, 0, 0..1);
         }
     }
 }

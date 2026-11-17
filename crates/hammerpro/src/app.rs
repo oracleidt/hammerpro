@@ -538,7 +538,30 @@ impl HammerProApp {
                 || self.state.runtime.startup.resources.is_some(),
             keyboard: self.viewports.captures_keyboard() || self.shell.capturing_shortcut(),
             context_menu: self.viewports.is_context_menu_open(),
+            reason: self.capture_reason(),
         }
+    }
+
+    fn capture_reason(&self) -> &'static str {
+        if self.shell.dialog_open(&self.state) {
+            "a dialog of the menu is open (settings, shortcuts, about, palette)"
+        } else if self.modal_open() {
+            "a prompt is waiting for an answer"
+        } else if self.state.runtime.startup.resources.is_some() {
+            "the content is still loading"
+        } else if let Some(why) = self.viewports.keyboard_capture_reason() {
+            why
+        } else if self.shell.capturing_shortcut() {
+            "the shortcut editor is waiting for a key"
+        } else if self.viewports.is_context_menu_open() {
+            "the view context menu is open"
+        } else {
+            ""
+        }
+    }
+
+    pub(crate) fn keyboard_report(&self, ctx: &egui::Context) -> serde_json::Value {
+        self.keys.report(ctx, self.app_capture())
     }
 
     fn begin_frame(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {

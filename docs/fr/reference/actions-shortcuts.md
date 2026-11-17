@@ -96,6 +96,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Couleurs d'affichage aléatoires | `random_display_colors` |  |  |  |
 | Couleurs d'affichage par défaut | `reset_display_colors` |  |  |  |
 | Définir la distance maximale... | `set_max_distance` |  |  |  |
+| Renommer et mettre à jour les références... | `rename_update_references` |  |  |  |
 
 ## Menu Map
 
@@ -179,6 +180,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Options d'affichage > Afficher les overlays | `toggle_overlays` |  |  |  |
 | Options d'affichage > Afficher les connexions | `toggle_connections` |  |  |  |
 | Options d'affichage > Afficher les objets d'éditeur | `toggle_editor_objects` |  |  | `Alt+O` |
+| Options d'affichage > Afficher les icônes des entités | `toggle_entity_icons` |  |  |  |
 | Options d'affichage > Afficher les entités ponctuelles | `toggle_point_entities` |  |  |  |
 | Options d'affichage > Afficher les noms des entités en 2D | `toggle_entity_names` |  |  |  |
 | Options d'affichage > Aides de toutes les entités | `toggle_helpers_all` |  |  |  |

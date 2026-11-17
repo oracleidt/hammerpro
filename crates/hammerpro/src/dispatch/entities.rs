@@ -59,6 +59,7 @@ const HANDLED: &[Action] = &[
     Action::EntityHelp,
     Action::EditSoundscapes,
     Action::SetMaxDistance,
+    Action::RenameUpdateReferences,
     Action::PathInsertPoint,
     Action::PathRemovePoint,
 ];
@@ -100,6 +101,7 @@ impl Package for Entities {
                 }
             }
             Action::SetMaxDistance => app.state.runtime.entities.set_max_distance = true,
+            Action::RenameUpdateReferences => app.state.runtime.entities.rename_references = true,
             Action::EditSoundscapes => app.state.runtime.entities.show_soundscapes = true,
             Action::PathInsertPoint => {
                 hp_tools_create::path::insert_after_selection(&mut app.state);

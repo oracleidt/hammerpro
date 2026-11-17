@@ -81,7 +81,11 @@ const SPECS: &[ToolSpec] = &[
         description: "What is on screen: open maps, views and their rectangles, panels (panes gives the dock and \
             console rectangles; panels gives the saved dock_width and console_height, settings ui.dock_width and \
             ui.console_height, and the shown dock_shown_width and console_shown_height), open windows and dialogs \
-            with their visible texts, open menus, tooltips, the focused widget, the status bar, toasts, the end of \
+            with their visible texts, open menus, tooltips, the focused widget, the keyboard state (keyboard: \
+            whether the shortcuts are free or blocked, blocked_by with the reasons, the widget holding the \
+            keyboard focus, text_field_focused, the modifiers and keys held, last_unhandled_key with the key, the \
+            reason and how many frames ago, last_focus_released when a hidden field gave the keyboard back), the \
+            status bar, toasts, the end of \
             the console, the dialogs open as separate windows of the system (separate_windows: the Compile and \
             run window by default, the UV editor and the portals window when taken out) and the buttons of Hammer \
             Pro's title bar (title_bar: minimize, maximize or restore, close, with their rectangles for ui_click; \

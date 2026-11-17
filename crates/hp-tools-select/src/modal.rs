@@ -1,4 +1,4 @@
-use egui::Pos2;
+use egui::{Event, Key, Pos2};
 use glam::{DMat4, DVec2, DVec3};
 use hp_app::ViewInfo;
 use hp_app::grid::GridFrame;
@@ -214,6 +214,111 @@ pub fn lock_scale(lock: Lock, factor: f64) -> DVec3 {
     }
 }
 
+const MAX_TYPED: usize = 16;
+
+pub fn typed_push(buffer: &mut String, ch: char) -> bool {
+    let ch = if ch == ',' { '.' } else { ch };
+    let ok = match ch {
+        '0'..='9' => true,
+        '.' => !buffer.contains('.'),
+        '-' => buffer.is_empty(),
+        _ => false,
+    };
+    if ok && buffer.len() < MAX_TYPED {
+        buffer.push(ch);
+    }
+    ok
+}
+
+pub fn typed_value(buffer: &str) -> Option<f64> {
+    buffer.trim().parse::<f64>().ok().filter(|v| v.is_finite())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TypedKey {
+    Char(char),
+    Backspace,
+}
+
+fn digit_key(key: Key) -> Option<char> {
+    const DIGITS: [Key; 10] =
+        [Key::Num0, Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8, Key::Num9];
+    DIGITS.iter().position(|k| *k == key).and_then(|i| char::from_digit(i as u32, 10))
+}
+
+fn key_char(key: Key, physical: Option<Key>) -> Option<char> {
+    physical.and_then(digit_key).or_else(|| match key {
+        Key::Minus => Some('-'),
+        Key::Period | Key::Comma => Some('.'),
+        k => digit_key(k),
+    })
+}
+
+fn numeric_text(s: &str) -> bool {
+    !s.is_empty() && s.chars().all(|c| c.is_ascii_digit() || matches!(c, '-' | '.' | ','))
+}
+
+pub fn take_typed(events: &mut Vec<Event>) -> Vec<TypedKey> {
+    let mut out = Vec::new();
+    let mut pending: Option<char> = None;
+    events.retain(|e| match e {
+        Event::Key { key, physical_key, pressed: true, modifiers, .. }
+            if !modifiers.ctrl && !modifiers.alt && !modifiers.command && !modifiers.mac_cmd =>
+        {
+            if let Some(c) = pending.take() {
+                out.push(TypedKey::Char(c));
+            }
+            if *key == Key::Backspace {
+                out.push(TypedKey::Backspace);
+                return false;
+            }
+            match key_char(*key, *physical_key) {
+                Some(c) => {
+                    pending = Some(c);
+                    false
+                }
+                None => true,
+            }
+        }
+        Event::Text(s) if numeric_text(s) => {
+            pending = None;
+            out.extend(s.chars().map(TypedKey::Char));
+            false
+        }
+        Event::Text(_) => match pending.take() {
+            Some(c) => {
+                out.push(TypedKey::Char(c));
+                false
+            }
+            None => true,
+        },
+        _ => true,
+    });
+    if let Some(c) = pending {
+        out.push(TypedKey::Char(c));
+    }
+    out
+}
+
+pub fn typed_axis(view: &ViewInfo, pivot: DVec3, axes: [DVec3; 3], lock: Lock) -> DVec3 {
+    match lock {
+        Lock::Axis(k) | Lock::Plane(k) => axes[k.min(2)],
+        Lock::Free if view.is_2d() => view.kind.toward_viewer(),
+        Lock::Free => {
+            let t = toward_viewer(view, pivot);
+            let k = (0..3).max_by(|a, b| t.dot(axes[*a]).abs().total_cmp(&t.dot(axes[*b]).abs())).unwrap_or(2);
+            let a = axes[k];
+            if t.dot(a) < 0.0 { -a } else { a }
+        }
+    }
+}
+
+pub fn axis_label(axis: DVec3) -> String {
+    let k = axis.abs().max_position();
+    let name = ["X", "Y", "Z"][k];
+    if axis[k] < 0.0 { format!("-{name}") } else { name.to_owned() }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Modal {
     pub kind: ModalKind,
@@ -326,5 +431,55 @@ mod tests {
         m.scale = DVec3::new(2.0, 1.0, 1.0);
         let mat = m.matrix(DVec3::new(10.0, 0.0, 0.0));
         assert!((mat.transform_point3(DVec3::new(20.0, 5.0, 0.0)) - DVec3::new(30.0, 5.0, 0.0)).length() < 1e-9);
+    }
+
+    #[test]
+    fn typed_numbers_come_from_digits_text_and_the_numpad() {
+        let mut b = String::new();
+        for ch in ['-', '9', ',', '5'] {
+            assert!(typed_push(&mut b, ch));
+        }
+        assert!(!typed_push(&mut b, '.'));
+        assert!(!typed_push(&mut b, '-'));
+        assert!(!typed_push(&mut b, 'x'));
+        assert_eq!(typed_value(&b), Some(-9.5));
+        assert_eq!(typed_value("-"), None);
+        let k = |key: Key, physical: Option<Key>| Event::Key {
+            key,
+            physical_key: physical,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let mut events = vec![
+            k(Key::Minus, None),
+            Event::Text("-".to_owned()),
+            k(Key::Num1, Some(Key::Num1)),
+            Event::Text("&".to_owned()),
+            k(Key::Num8, Some(Key::Num8)),
+            k(Key::Backspace, None),
+            Event::Text("0".to_owned()),
+            k(Key::X, Some(Key::X)),
+            Event::Text("x".to_owned()),
+            k(Key::Period, None),
+        ];
+        let typed = take_typed(&mut events);
+        use TypedKey::{Backspace, Char};
+        assert_eq!(typed, vec![Char('-'), Char('1'), Char('8'), Backspace, Char('0'), Char('.')]);
+        assert_eq!(events.len(), 2, "the axis key stays for the lock: {events:?}");
+    }
+
+    #[test]
+    fn typed_angles_turn_around_a_world_axis_in_3d() {
+        let v = top();
+        assert_eq!(typed_axis(&v, DVec3::ZERO, WORLD_AXES, Lock::Free), DVec3::Z);
+        assert_eq!(typed_axis(&v, DVec3::ZERO, WORLD_AXES, Lock::Axis(0)), DVec3::X);
+        let cam =
+            Camera3d { pos: DVec3::new(0.0, -800.0, 100.0), yaw_deg: 90.0, pitch_deg: -7.0, ..Camera3d::default() };
+        let v3 = ViewInfo { index: 0, kind: ViewKind::Perspective, cam3d: cam, ..top() };
+        let a = typed_axis(&v3, DVec3::ZERO, WORLD_AXES, Lock::Free);
+        assert_eq!(a, DVec3::NEG_Y);
+        assert_eq!(axis_label(a), "-Y");
+        assert_eq!(typed_axis(&v3, DVec3::ZERO, WORLD_AXES, Lock::Plane(2)), DVec3::Z);
     }
 }

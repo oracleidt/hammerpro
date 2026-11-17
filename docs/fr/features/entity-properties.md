@@ -63,9 +63,30 @@ Survolez un libellé pour voir le libellé, la clé, le type, la description, la
 - **Rétablir la valeur par défaut** (la valeur du FGD, ou suppression de la clé s'il n'y en a pas) ;
 - **Copier la valeur**, **Copier le nom de la clé** ;
 - **Supprimer la clé** ;
-- sur la clé du nom : **Renommer met à jour les sorties** (activé par défaut). Quand le nom change, les sorties des autres entités qui ciblent l'ancien nom suivent, seulement si aucune autre entité ne garde ce nom.
+- sur la clé du nom : **Mettre à jour les références en renommant** (le paramètre de **Paramètres > Édition**) et **Renommer et mettre à jour les références...**. Voir [Renommer et références](#renommer-et-références).
 
 Les champs texte s'appliquent avec `Entrée` ou quand ils perdent le focus ; `Échap` annule la saisie. Les guillemets doubles sont refusés dans les valeurs (le fichier de la map deviendrait illisible).
+
+
+### Renommer et références
+
+Avec **Paramètres > Édition > Mettre à jour les références en renommant** activé (clé `[edit] rename_updates_references`, activé par défaut), changer le nom d'une entité change aussi chaque endroit de la map qui utilise l'ancien nom, dans la même étape d'annulation. La barre d'état indique *N références renommées*. Cela marche depuis le champ du nom du panneau de propriétés (une ou plusieurs entités), la table des clés brutes et les outils MCP `set_keyvalue` et `set_entity_keyvalues`.
+
+**Renommer et mettre à jour les références...** (clic droit dans une vue, clic droit sur le libellé du nom, le menu du panneau de propriétés, action `rename_update_references`) fait la même chose une fois quand le paramètre est désactivé : tapez le nouveau nom, la fenêtre montre combien d'entités et de références changent avant d'appliquer.
+
+Ce qui suit le nouveau nom :
+
+- la cible de chaque sortie (`doora,Open` devient `doorb,Open`) ;
+- `parentname` (l'attache après la virgule est gardée), `target`, `filtername`, `damagefilter` et toute clé que le FGD type en `target_destination`, `target_name_or_class` ou `filterclass` ;
+- les paramètres des sorties vers des entrées qui prennent un nom d'entité : `SetParent`, `SetDamageFilter`, `SetTarget`, `SetMeasureTarget`, `SetMeasureReference`, `SetTargetEntity`, `SetLightingOrigin`, et les entrées que le FGD type en cible ;
+- les paramètres `replaceNN` d'un `func_instance` dont la valeur est l'ancien nom ;
+- renommer un `func_instance` : les noms préfixés de son contenu utilisés dans la map (`room1-relay` devient `room2-relay` ; en style suffixe `relay-room1` devient `relay-room2` ; sans préfixe : rien).
+
+Ce qui ne change jamais, exprès :
+
+- **Noms partagés.** Quand une autre entité que vous n'avez pas renommée porte encore l'ancien nom, les références restent telles quelles (elles atteignent toujours cette entité) et la barre d'état dit combien ont été gardées. Sélectionnez toutes les entités de ce nom pour les renommer ensemble, les références suivent alors.
+- **Jokers.** Une cible comme `door*` est un motif, pas un nom : elle n'est jamais réécrite. Quand elle ne correspond plus au nouveau nom, la barre d'état la compte pour que vous la vérifiiez.
+- Les paramètres `AddOutput` et les paramètres de texte libre, les noms qui commencent par `!` (`!player`, `!activator`) et les noms qui sont aussi un nom de classe.
 
 ### Widgets selon le type de clé
 
@@ -218,7 +239,7 @@ Voir [Clés du worldspawn](../compiler/worldspawn-keys.md).
 | Coller les keyvalues colle aussi le nom | **Paramètres > Entités et navigateurs**, `[entities] paste_targetname` | désactivé |
 | Les nouvelles sorties utilisent le séparateur ESC | **Paramètres > Entités et navigateurs**, `[entities] io_esc_delimiter` | activé |
 | Volume de l'écoute des sons | **Paramètres > Entités et navigateurs**, `[browser] sound_volume` | 80 % |
-| Renommer met à jour les sorties | clic droit sur le libellé du nom | activé |
+| Mettre à jour les références en renommant | **Paramètres > Édition**, clic droit sur le libellé du nom, `[edit] rename_updates_references` | activé |
 
 ## Astuces
 

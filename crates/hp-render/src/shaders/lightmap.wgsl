@@ -264,3 +264,31 @@ fn fs_grid(in: LmOut) -> @location(0) vec4<f32> {
     }
     return finish(rgb, in);
 }
+
+@fragment
+fn fs_decal_light(in: LmOut) -> @location(0) vec4<f32> {
+    let tuv = in.uv * material.inv_tex_size;
+    if ALPHA_TEST {
+        var albedo = textureSample(tex, samp, base_uv_of(tuv));
+        albedo.a = material_texture_alpha(albedo.a);
+        albedo = albedo * material_tint() * unpack_srgba(in.state.y);
+        if alpha_tested_out(ALPHA_TEST, albedo.a) {
+            discard;
+        }
+    }
+    let f = lm_face(in.face);
+    var light = baked_light(f, in.lm);
+    let ldr = (lm.mode & LM_LDR) != 0u;
+    let scale = select(lm.exposure * bitcast<f32>(view.misc.w), lm.exposure, ldr);
+    var pn = normalize(cross(dpdy(in.world), dpdx(in.world)) + vec3<f32>(0.0, 0.0, 1e-9));
+    pn = select(pn, -pn, dot(pn, view.eye.xyz - in.world) < 0.0);
+    let delta = direct_lighting(in.world, pn, pn, in.clip.xy, in.state.x, false, true);
+    let projected = projector_light(in.world, pn);
+    if ldr {
+        light = pow(max(pow(max(light, vec3<f32>(0.0)), vec3<f32>(2.2)) + delta, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.2));
+        light += pow(projected, vec3<f32>(1.0 / 2.2));
+    } else {
+        light = max(light + delta, vec3<f32>(0.0)) + projected;
+    }
+    return vec4<f32>(light, select(max(scale, 1e-6), -max(scale, 1e-6), ldr));
+}

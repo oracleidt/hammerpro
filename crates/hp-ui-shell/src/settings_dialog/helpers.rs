@@ -54,6 +54,13 @@ impl SettingsPage for HelpersPage {
             .checkbox(&mut s.show_editor_objects, t!("action.toggle_editor_objects"))
             .on_hover_text(t!("shell.helpers.editor_objects_tip"))
             .changed();
+        changed |= ui
+            .add_enabled(
+                s.show_editor_objects,
+                egui::Checkbox::new(&mut s.show_entity_icons, t!("action.toggle_entity_icons")),
+            )
+            .on_hover_text(t!("shell.helpers.entity_icons_tip"))
+            .changed();
         heading(ui, t!("shell.helpers.connections"));
         hp_app::widgets::choice_row(ui, |ui| {
             changed |= ui.radio_value(&mut s.connections, ConnectionsMode::Off, t!("shell.helpers.hidden")).changed();
@@ -111,6 +118,11 @@ pub(crate) const TR: TrTable = &[
         "shell.helpers.editor_objects_tip",
         "Entity icons and helpers that only exist in the editor. World sprites stay visible.",
         "Icônes d'entités et aides qui n'existent que dans l'éditeur. Les sprites du jeu restent visibles.",
+    ),
+    (
+        "shell.helpers.entity_icons_tip",
+        "Draw the FGD iconsprite of point entities in the 3D view, like Hammer. Off shows coloured boxes.",
+        "Affiche l'iconsprite du FGD des entités ponctuelles dans la vue 3D, comme Hammer. Désactivé, elles sont des boîtes colorées.",
     ),
     ("shell.helpers.connections", "Input/output connections", "Connexions entrées/sorties"),
     ("shell.helpers.link_valid", "Valid", "Valide"),

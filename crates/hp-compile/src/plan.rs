@@ -257,6 +257,7 @@ pub struct PlanOptions {
     pub rad_flags: Vec<flags::FlagChoice>,
     pub static_prop_lighting: bool,
     pub static_prop_shadows: bool,
+    pub lights_file: Option<PathBuf>,
     pub target: Option<String>,
     pub raytracing: Option<crate::raytracing::RayTracingOptions>,
 }
@@ -283,6 +284,7 @@ impl Default for PlanOptions {
             rad_flags: Vec::new(),
             static_prop_lighting: true,
             static_prop_shadows: true,
+            lights_file: None,
             target: None,
             raytracing: None,
         }
@@ -543,10 +545,23 @@ pub fn rad_step_flags(mode: RadMode, opts: &PlanOptions) -> (Vec<String>, Vec<St
         extra.retain(|a| !a.eq_ignore_ascii_case(flags::NO_STATIC_PROP_SHADOWS));
         flags.push(flags::NO_STATIC_PROP_SHADOWS.to_owned());
     }
+    if let Some(file) = &opts.lights_file {
+        drop_lights(&mut flags);
+        drop_lights(&mut extra);
+        flags.push(flags::LIGHTS.to_owned());
+        flags.push(file.display().to_string());
+    }
     if let Some(rt) = &opts.raytracing {
         flags.extend(rt.args());
     }
     (flags, extra)
+}
+
+fn drop_lights(args: &mut Vec<String>) {
+    while let Some(at) = args.iter().position(|a| a.eq_ignore_ascii_case(flags::LIGHTS)) {
+        let end = (at + 2).min(args.len());
+        args.drain(at..end);
+    }
 }
 
 fn push_content_args(args: &mut Vec<String>, content: &[String]) {

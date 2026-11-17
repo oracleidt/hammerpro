@@ -64,7 +64,7 @@ pub use lab::{
 pub use launch::{ContentUse, GameState, LaunchRuntime, MapLoadReport, content_use};
 pub use lighting::{
     BakeKind, BakePhase, BakeProgress, BakeSummary, BudgetEntry, BudgetSummary, IndirectPhase, IndirectStatus,
-    LightCostEntry, LightingRuntime, PreparedStatus, PreviewStats, RayTracingStatus, RelightStats,
+    LightCostEntry, LightingRuntime, PreparedStatus, PreviewStats, RayTracingStatus, RelightStats, SkyboxShadeStatus,
 };
 pub use livelink::{FireForm, LiveLinkRuntime};
 pub use mcp::{McpClientRow, McpRuntime};

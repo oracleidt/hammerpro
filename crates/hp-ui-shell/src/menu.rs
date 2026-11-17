@@ -69,6 +69,7 @@ fn hammer_order(group: MenuGroup) -> &'static [Action] {
         MenuGroup::ViewDisplay => &[
             A::TogglePointEntities,
             A::ToggleEditorObjects,
+            A::ToggleEntityIcons,
             A::ToggleHelpersAll,
             A::ToggleConnections,
             A::ToggleOverlays,

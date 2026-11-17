@@ -321,6 +321,7 @@ pub(super) fn describe(host: &mut dyn UiHost, ctx: &egui::Context, tree: Option<
         .filter(|c| c.kind == "panel" && c.title == "status bar")
         .flat_map(|c| c.texts.iter().map(String::as_str).chain(c.controls.iter().filter_map(|x| x["text"].as_str())))
         .collect();
+    let keyboard = host.keyboard(ctx);
     let open_maps = host.open_maps();
     let prompts = host.prompts();
     let rects = host.view_rects();
@@ -430,6 +431,7 @@ pub(super) fn describe(host: &mut dyn UiHost, ctx: &egui::Context, tree: Option<
         "panes": of(&["panel"]),
         "status_bar": status_bar,
         "focused": focused,
+        "keyboard": keyboard,
         "toasts": toasts,
         "console_tail": tail,
         "accessibility_tree": tree.is_some(),

@@ -87,6 +87,7 @@ fn job(id: u64, map: Option<hp_vmf::Map>, solids: HashMap<u32, SolidInfo>) -> Jo
         quiet: false,
         priority: BakePriority::BelowNormal,
         raytracing: None,
+        rad: Default::default(),
     }
 }
 
@@ -326,6 +327,7 @@ fn big_first_bakes_show_the_atlas_at_once_then_stream_the_nearest_lightmaps() {
     assert!(!layout.patch && !layout.blocks.is_empty(), "the geometry comes first");
     assert!(layout.faces.iter().all(|f| f.texels != u32::MAX), "unlit faces show a neutral light meanwhile");
     assert!(partials[1..].iter().all(|p| p.patch && p.layout == layout.layout));
+    assert!(partials.iter().all(|p| p.hdr), "every streamed patch says it holds HDR lightmaps");
     assert!(done.patch && done.layout == layout.layout, "the final lightmaps patch the streamed atlas");
     assert_eq!(done.faces.len(), layout.faces.len());
 }

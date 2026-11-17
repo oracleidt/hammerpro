@@ -153,9 +153,28 @@ pub struct LightCostEntry {
     pub luxels: u64,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SkyboxShadeStatus {
+    pub sunlit: u32,
+    pub shaded: u32,
+    pub camera: [f32; 3],
+    pub cameras: u32,
+}
+
+impl SkyboxShadeStatus {
+    pub fn fraction(&self) -> f32 {
+        if self.sunlit == 0 { 0.0 } else { self.shaded as f32 / self.sunlit as f32 }
+    }
+
+    pub fn worth_a_warning(&self) -> bool {
+        self.sunlit >= 16 && self.fraction() >= 0.25
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct LightingRuntime {
     pub relight: RelightStats,
+    pub skybox_shade: Option<SkyboxShadeStatus>,
     pub prepared: PreparedStatus,
     pub costs: Option<Vec<LightCostEntry>>,
     pub costs_wanted: bool,

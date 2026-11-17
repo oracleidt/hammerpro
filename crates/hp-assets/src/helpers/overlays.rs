@@ -308,7 +308,7 @@ impl DerivedProducer for OverlayProducer {
                     key: u64::from(id),
                     mesh,
                     owner: Some(id),
-                    flags: ObjectFlags::NO_GAME_WIRE,
+                    flags: ObjectFlags::NO_GAME_WIRE | ObjectFlags::SURFACE_DECAL | ObjectFlags::NO_SHADOW,
                 }),
                 None => out.remove.push(u64::from(id)),
             }

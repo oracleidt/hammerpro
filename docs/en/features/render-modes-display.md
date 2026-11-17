@@ -47,6 +47,7 @@ Directly in the **View** menu:
 | **Show overlays** | Overlays drawn on their faces (see [Decals and overlays](decals-overlays.md)). | On |
 | **Show connections** | Input/output lines: off, selected, all (each use goes to the next). See [I/O and logical view](io-logical-view.md). | Selected |
 | **Show editor objects** | Entity icons and helper geometry that only exist in the editor. | On |
+| **Show entity icons** | The FGD `iconsprite` of point entities (env_cubemap, light, env_sun, logic_*...) drawn in the 3D views like Hammer, light icons in their light color, over a wire selection box, picked on the icon. Hidden in the player view. Off, or when the game content lacks the icon material, entities show colored boxes. Classes missing from the FGD use `materials/editor/<classname>.vmt` when it exists. 2D views keep their boxes. | On |
 | **Show point entities** | Every point entity. | On |
 | **Show entity labels in 2D** | Class names and target names next to point entities in 2D. The **Aa** toolbar button next to **2D** toggles them without hiding the entities or changing 3D rendering. | On |
 | **Helpers of every entity** | Helpers of every entity instead of the selected ones only. | Off |

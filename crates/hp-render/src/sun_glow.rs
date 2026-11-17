@@ -3,7 +3,7 @@ use glam::{Vec3, Vec4};
 
 use crate::camera::Camera;
 use crate::pipelines::{self, Blend, Desc};
-use crate::types::{RenderMode, SunGlow, ViewOptions, ViewParams, WorldBeam, WorldSprite};
+use crate::types::{LightGlowShape, RenderMode, SunGlow, ViewOptions, ViewParams, WorldBeam, WorldSprite};
 use crate::{DrawCtx, FrameCounter, Renderer};
 
 pub(crate) const RANGE: f32 = 0.766_044_4;
@@ -184,19 +184,79 @@ pub(crate) fn halo_look(dir: Vec3, start: Vec3, eye: Vec3, width: f32) -> Option
     Some((fade, scale))
 }
 
+pub(crate) fn light_glow_fade(glow: &LightGlowShape, pos: Vec3, facing: Vec3, eye: Vec3) -> f32 {
+    let to_eye = eye - pos;
+    let distance = to_eye.length();
+    if glow.one_sided && to_eye.dot(facing) < 0.0 {
+        return 0.0;
+    }
+    let fade = if glow.outer_max_dist > glow.max_dist && distance > glow.max_dist {
+        remap(distance, glow.max_dist, glow.outer_max_dist, 1.0, 0.0)
+    } else {
+        remap(distance, glow.min_dist, glow.max_dist, 0.0, 1.0)
+    };
+    fade.clamp(0.0, 1.0)
+}
+
+fn light_glow_uniform(
+    beam: &WorldBeam,
+    glow: &LightGlowShape,
+    cam: &Camera,
+    exposure: f32,
+    highlight: f32,
+) -> Option<(u32, SunGlowUniform)> {
+    let pos = Vec3::from(beam.start);
+    let facing = (Vec3::from(beam.end) - pos).normalize_or_zero();
+    if !glow.size.iter().all(|v| v.is_finite() && *v > 0.0) {
+        return None;
+    }
+    let clip = cam.view_proj * pos.extend(1.0);
+    if clip.w <= 0.0 {
+        return None;
+    }
+    let fade = light_glow_fade(glow, pos, facing, cam.eye);
+    if fade <= 0.0 {
+        return None;
+    }
+    let to_glow = pos - cam.eye;
+    let distance = to_glow.length().max(1e-6);
+    let (right, up) = basis(to_glow / distance, glow.size[0], glow.size[1]);
+    let proxy = if glow.proxy.is_finite() { glow.proxy.max(0.0) } else { 0.0 };
+    let radius = proxy * cam.height / (2.0 * distance * cam.tan_half_fov);
+    let rgb = beam.color.map(|v| if v.is_finite() { v.clamp(0.0, 1.0) * fade } else { 0.0 });
+    let center = screen_of(cam, pos);
+    Some((
+        beam.material,
+        SunGlowUniform {
+            base: [pos.x, pos.y, pos.z, clip.z / clip.w],
+            right: [right.x, right.y, right.z, 1.0],
+            up: [up.x, up.y, up.z, f32::from(beam.srgb_color)],
+            color: [rgb[0], rgb[1], rgb[2], radius],
+            proxy: [center[0], center[1], 1.0, MODE_GLOW],
+            params: [exposure, MODE_ADDITIVE, highlight, 0.0],
+        },
+    ))
+}
+
 fn beam_uniform(beam: &WorldBeam, cam: &Camera, hdr: bool, flags: crate::ObjectFlags) -> Option<(u32, SunGlowUniform)> {
     let start = Vec3::from(beam.start);
     let end = Vec3::from(beam.end);
+    let exposure = if hdr && beam.hdr_scale.is_finite() { beam.hdr_scale.max(0.0) } else { 1.0 };
+    let highlight = 1.0
+        + if flags.contains(crate::ObjectFlags::SELECTED) { 2.0 } else { 0.0 }
+        + if flags.contains(crate::ObjectFlags::HOVERED) { 4.0 } else { 0.0 };
+    if let Some(glow) = &beam.glow {
+        if !start.is_finite() || !end.is_finite() {
+            return None;
+        }
+        return light_glow_uniform(beam, glow, cam, exposure, highlight);
+    }
     if !start.is_finite() || !end.is_finite() || !beam.width.is_finite() || beam.width <= 0.0 {
         return None;
     }
     let dir = (end - start).try_normalize()?;
-    let exposure = if hdr && beam.hdr_scale.is_finite() { beam.hdr_scale.max(0.0) } else { 1.0 };
     let color = beam.color.map(|v| if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 });
     let srgb = f32::from(beam.srgb_color);
-    let highlight = 1.0
-        + if flags.contains(crate::ObjectFlags::SELECTED) { 2.0 } else { 0.0 }
-        + if flags.contains(crate::ObjectFlags::HOVERED) { 4.0 } else { 0.0 };
     if beam.halo_scale > 0.0 && beam.halo_scale.is_finite() {
         let (fade, scale) = halo_look(dir, start, cam.eye, beam.width)?;
         let probe = start + dir * HALO_PROXY_AHEAD;
@@ -425,7 +485,7 @@ impl Renderer {
                 .filter(|sprite| shown(sprite.object))
                 .filter_map(|sprite| Some((far(sprite.pos), sprite.object, world_uniform(sprite, cam, hdr)?)))
                 .chain(self.world_beams.iter().filter(|beam| shown(beam.object)).filter_map(|beam| {
-                    let at = if beam.halo_scale > 0.0 {
+                    let at = if beam.halo_scale > 0.0 || beam.glow.is_some() {
                         beam.start
                     } else {
                         ((Vec3::from(beam.start) + Vec3::from(beam.end)) * 0.5).to_array()
@@ -578,6 +638,32 @@ mod tests {
     fn the_sprite_shrinks_as_the_sun_comes_to_the_middle_of_the_view() {
         assert!((sprite_size(1.0, 16.0) - 1120.0).abs() < 1e-3);
         assert!((sprite_size(RANGE, 16.0) - 2400.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn the_light_glow_fades_with_the_camera_distance_like_the_engine() {
+        let glow = LightGlowShape {
+            size: [30.0; 2],
+            min_dist: 500.0,
+            max_dist: 2000.0,
+            outer_max_dist: 0.0,
+            one_sided: false,
+            proxy: 2.0,
+        };
+        let at = |d: f32, g: &LightGlowShape| light_glow_fade(g, Vec3::ZERO, Vec3::X, Vec3::new(d, 0.0, 0.0));
+        assert_eq!(at(100.0, &glow), 0.0, "closer than MinDist the glow is fully translucent");
+        assert!((at(1250.0, &glow) - 0.5).abs() < 1e-4);
+        assert_eq!(at(5000.0, &glow), 1.0, "past MaxDist it stays full without OuterMaxDist");
+        let outer = LightGlowShape { outer_max_dist: 4000.0, ..glow };
+        assert!((at(3000.0, &outer) - 0.5).abs() < 1e-4, "fades out between MaxDist and OuterMaxDist");
+        assert_eq!(at(4500.0, &outer), 0.0);
+        assert!((at(1250.0, &outer) - 0.5).abs() < 1e-4);
+        let front = LightGlowShape { one_sided: true, ..glow };
+        assert_eq!(at(3000.0, &front), 1.0, "seen from the front");
+        assert_eq!(at(-3000.0, &front), 0.0, "Visible only from front hides it from behind");
+        assert_eq!(at(-3000.0, &glow), 1.0);
+        let same = LightGlowShape { min_dist: 800.0, max_dist: 800.0, ..glow };
+        assert_eq!((at(700.0, &same), at(900.0, &same)), (0.0, 1.0));
     }
 
     #[test]

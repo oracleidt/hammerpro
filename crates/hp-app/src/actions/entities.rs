@@ -15,6 +15,7 @@ action_list! { entities_actions {
     ShowParticleBrowser => "show_particle_browser", View, ViewPanels, None, Ready;
     EntityHelp => "entity_help", Help, HelpDocs, None, Ready;
     SetMaxDistance => "set_max_distance", Edit, EditProperties, None, Ready;
+    RenameUpdateReferences => "rename_update_references", Edit, Hidden, None, Ready;
     ToolPath => "tool_path", Tools, ToolsSwitch, None, Ready;
     PathInsertPoint => "path_insert_point", Tools, ToolsPaths, None, Ready;
     PathRemovePoint => "path_remove_point", Tools, ToolsPaths, None, Ready;
@@ -32,9 +33,11 @@ fn entity_selected(state: &AppState) -> bool {
 
 pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
     match action {
-        Action::CopyKeyvalues | Action::EntityHelp | Action::EditColor | Action::SetMaxDistance => {
-            Some(entity_selected(state))
-        }
+        Action::CopyKeyvalues
+        | Action::EntityHelp
+        | Action::EditColor
+        | Action::SetMaxDistance
+        | Action::RenameUpdateReferences => Some(entity_selected(state)),
         Action::PasteKeyvalues => Some(state.runtime.entities.clipboard.is_some() && entity_selected(state)),
         Action::PathInsertPoint | Action::PathRemovePoint => Some(entity_selected(state)),
         Action::SetDisplayColor | Action::RandomDisplayColors | Action::ResetDisplayColors => {
@@ -82,6 +85,11 @@ pub(super) const TR: TrTable = &[
     ("action.show_particle_browser", "Particle browser", "Navigateur de particules"),
     ("action.entity_help", "Entity help", "Aide de l'entité"),
     ("action.set_max_distance", "Set maximum distance...", "Définir la distance maximale..."),
+    (
+        "action.rename_update_references",
+        "Rename and update references...",
+        "Renommer et mettre à jour les références...",
+    ),
     ("action.tool_path", "Path tool", "Outil chemin"),
     ("tool.path", "Path", "Chemin"),
     ("action.path_insert_point", "Insert path point after selection", "Insérer un point de chemin après la sélection"),

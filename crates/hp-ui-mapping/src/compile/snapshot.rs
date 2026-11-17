@@ -233,6 +233,7 @@ fn context_hash(
         format!("{:?}", s.bsp_flag_choices),
         format!("{:?}", s.rad_flag_choices),
         format!("props {} {}", s.static_prop_lighting, s.static_prop_shadows),
+        format!("rad {:?}", s.chosen_rad_file()),
         stamp_text(&tools.compiler),
         stamp_text(&game_dir.join("gameinfo.txt")),
     ];
@@ -248,10 +249,32 @@ fn context_hash(
     incremental::context_hash(parts.iter().map(String::as_str))
 }
 
-fn with_lights_rad(mut fp: Fingerprint, game_dir: &Path) -> Fingerprint {
+fn rad_sources(s: &CompileSettings, source: Option<&Path>) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = source.map(|p| p.with_extension("rad")).into_iter().collect();
+    out.extend(s.lights_file().and_then(|f| hp_app::settings::resolve_rad_path(&f, source)));
+    out
+}
+
+pub(crate) fn sync_map_rad(target: &Target) {
+    let Some(source) = target.source.as_deref() else { return };
+    let (from, to) = (source.with_extension("rad"), target.vmf().with_extension("rad"));
+    if from == to {
+        return;
+    }
+    if from.is_file() {
+        let _ = std::fs::copy(&from, &to);
+    } else if to.is_file() {
+        let _ = std::fs::remove_file(&to);
+    }
+}
+
+fn with_lights_rad(mut fp: Fingerprint, game_dir: &Path, extra: &[PathBuf]) -> Fingerprint {
     let mut h = hp_compile::stable_hash::StableHasher::new();
     std::hash::Hasher::write_u64(&mut h, fp.bake);
     h.str(&stamp_text(&game_dir.join("lights.rad")));
+    for p in extra {
+        h.str(&stamp_text(p));
+    }
     fp.bake = h.finish_u64();
     fp
 }
@@ -335,8 +358,11 @@ pub(crate) fn prepare_snapshot(mut input: SnapshotInput) -> SnapshotOutput {
     let signature = external.as_ref().map(super::compilers::signature);
 
     let t_fp = Instant::now();
-    let fingerprint =
-        with_lights_rad(to_compile_fp(hp_editor::fingerprint::fingerprint_map(&input.snapshot.map)), &tools.game_dir);
+    let fingerprint = with_lights_rad(
+        to_compile_fp(hp_editor::fingerprint::fingerprint_map(&input.snapshot.map)),
+        &tools.game_dir,
+        &rad_sources(s, input.target.source.as_deref()),
+    );
     let fp_ms = t_fp.elapsed().as_millis();
 
     let t_mat = Instant::now();
@@ -437,6 +463,7 @@ pub(crate) fn prepare_snapshot(mut input: SnapshotInput) -> SnapshotOutput {
     for ext in ["lin", "pts"] {
         let _ = std::fs::remove_file(input.target.vmf().with_extension(ext));
     }
+    sync_map_rad(&input.target);
     let write_ms = t_write.elapsed().as_millis();
     if input.snapshot.is_cordoned() && !input.background {
         messages.push((
@@ -538,6 +565,7 @@ pub(crate) fn prepare_snapshot(mut input: SnapshotInput) -> SnapshotOutput {
         };
     }
     let extras = PlanExtras {
+        map: input.target.source.clone(),
         modes: Some(modes),
         deferred_pack: deferred,
         launch_flags: input.launch_flags.clone(),

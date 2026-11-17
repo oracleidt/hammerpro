@@ -20,6 +20,7 @@ mod panel;
 mod panel_tabs;
 mod particles;
 mod pick;
+pub mod rename;
 mod smartedit;
 mod sound_browser;
 mod sounds;

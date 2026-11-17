@@ -22,6 +22,8 @@ pub const RT_FLAGS: &[(&str, bool)] = &[
     ("-rtnobump", false),
     ("-rtpropsamples", true),
     ("-rtchunk", true),
+    ("-rtluxels", true),
+    ("-rtlook", true),
     (LANG_FLAG, true),
     ("-rtao", false),
     ("-rtnoao", false),
@@ -38,6 +40,8 @@ pub const RT_FLAGS: &[(&str, bool)] = &[
     ("-rtglow", false),
     ("-rtglowintensity", true),
     ("-rtnocubemaps", false),
+    ("-rtreflections", false),
+    ("-rtnoreflections", false),
     ("-rtnotonemap", false),
     ("-rtcolorcorrection", false),
     (GPU_SHARE_FLAG, true),
@@ -53,6 +57,8 @@ pub fn gpu_share_args(share: Option<f32>) -> Vec<String> {
 }
 
 pub const SHAFT_SOURCES: [&str; 2] = ["sun", "sun_and_spots"];
+
+pub const REFLECTION_MODES: [&str; 3] = ["auto", "on", "off"];
 
 pub const BSP_AUTO_CUBEMAPS: &str = "-rtautocubemaps";
 
@@ -76,6 +82,7 @@ pub struct RayEffectsOptions {
     pub glow: bool,
     pub glow_intensity: f32,
     pub auto_cubemaps: bool,
+    pub reflections: String,
     pub tonemap: bool,
     pub color_correction: bool,
 }
@@ -96,6 +103,7 @@ impl Default for RayEffectsOptions {
             glow: false,
             glow_intensity: 1.0,
             auto_cubemaps: true,
+            reflections: "auto".to_owned(),
             tonemap: true,
             color_correction: false,
         }
@@ -103,6 +111,14 @@ impl Default for RayEffectsOptions {
 }
 
 impl RayEffectsOptions {
+    pub fn reflections_mode(&self) -> &'static str {
+        match self.reflections.trim().to_ascii_lowercase().as_str() {
+            "on" | "always" | "true" => "on",
+            "off" | "never" | "false" => "off",
+            _ => "auto",
+        }
+    }
+
     fn push_args(&self, out: &mut Vec<String>) {
         let d = RayEffectsOptions::default();
         let mut flag = |on: bool, name: &str| {
@@ -116,6 +132,8 @@ impl RayEffectsOptions {
         flag(self.shaft_dust, "-rtshaftdust");
         flag(self.glow, "-rtglow");
         flag(!self.auto_cubemaps, "-rtnocubemaps");
+        flag(self.reflections_mode() == "on", "-rtreflections");
+        flag(self.reflections_mode() == "off", "-rtnoreflections");
         flag(!self.tonemap, "-rtnotonemap");
         flag(self.color_correction, "-rtcolorcorrection");
         let reals = [
@@ -162,6 +180,8 @@ pub struct RayTracingOptions {
     pub bump: bool,
     pub prop_samples: Option<u32>,
     pub chunk: Option<u32>,
+    pub luxel_detail: Option<f32>,
+    pub look: String,
     pub lang: String,
     pub effects: RayEffectsOptions,
 }
@@ -184,6 +204,8 @@ impl Default for RayTracingOptions {
             bump: true,
             prop_samples: None,
             chunk: None,
+            luxel_detail: None,
+            look: String::new(),
             lang: String::new(),
             effects: RayEffectsOptions::default(),
         }
@@ -228,6 +250,7 @@ impl RayTracingOptions {
             ("-rtlightsize", self.light_size),
             ("-rtsunangle", self.sun_angle),
             ("-rtdenoise", self.denoise),
+            ("-rtluxels", self.luxel_detail),
         ];
         for (flag, v) in ints {
             if let Some(v) = v {
@@ -238,6 +261,11 @@ impl RayTracingOptions {
             if let Some(v) = v.filter(|v| v.is_finite()) {
                 push(flag, number(v));
             }
+        }
+        let look = self.look.trim().to_ascii_lowercase();
+        if look == "classic" || look == "cinematic" {
+            out.push("-rtlook".to_owned());
+            out.push(look);
         }
         if !self.bump {
             out.push("-rtnobump".to_owned());
@@ -297,6 +325,8 @@ mod tests {
             bump: false,
             prop_samples: Some(64),
             chunk: Some(65536),
+            luxel_detail: Some(1.5),
+            look: "Cinematic".into(),
             lang: "ru".into(),
             effects: RayEffectsOptions::default(),
         };
@@ -305,7 +335,7 @@ mod tests {
             words(
                 "-raytracing -rtquality final -rtdevice cpu -rtseed 7 -rtsamples 32 -rtmaxsamples 512 -rtbounces 8 \
                  -rtskysamples 3 -rtsupersample 4 -rtpropsamples 64 -rtchunk 65536 -rtthreshold 0.025 -rtlightsize 1.5 \
-                 -rtsunangle 0.5 -rtdenoise 0 -rtnobump -rtlang ru"
+                 -rtsunangle 0.5 -rtdenoise 0 -rtluxels 1.5 -rtlook cinematic -rtnobump -rtlang ru"
             )
         );
         for a in o.args().iter().filter(|a| a.starts_with('-')) {
@@ -335,13 +365,14 @@ mod tests {
             glow: true,
             glow_intensity: 3.0,
             auto_cubemaps: false,
+            reflections: "off".into(),
             tonemap: false,
             color_correction: true,
         };
         assert_eq!(
             o.args(),
             words(
-                "-raytracing -rtnoao -rtnoshafts -rtshaftwhite -rtshaftdust -rtglow -rtnocubemaps -rtnotonemap \
+                "-raytracing -rtnoao -rtnoshafts -rtshaftwhite -rtshaftdust -rtglow -rtnocubemaps -rtnoreflections -rtnotonemap \
                  -rtcolorcorrection -rtaostrength 0.75 -rtaoradius 64 -rtshaftintensity 2 -rtshaftlength 1.5 \
                  -rtshaftsoftness 0.5 -rtglowintensity 3 -rtshaftsource sun"
             )
@@ -351,6 +382,10 @@ mod tests {
         }
         let old: RayTracingOptions = serde_json::from_str(r#"{"quality":"final"}"#).expect("old");
         assert_eq!(old.effects, RayEffectsOptions::default());
+        o.effects = RayEffectsOptions { reflections: "On".into(), ..RayEffectsOptions::default() };
+        assert_eq!(o.args(), words("-raytracing -rtreflections"));
+        o.effects.reflections = "auto".into();
+        assert_eq!(o.args(), [RAYTRACING_FLAG]);
     }
 
     #[test]

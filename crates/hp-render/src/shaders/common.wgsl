@@ -99,6 +99,7 @@ fn light_falloff(l: Light, dist: f32, model: bool) -> f32 {
 @group(0) @binding(5) var<storage, read> clusters: array<vec2<u32>>;
 @group(0) @binding(6) var<storage, read> light_indices: array<u32>;
 @group(0) @binding(22) var control_map: texture_depth_2d_array;
+@group(0) @binding(23) var decal_light: texture_2d<f32>;
 @group(0) @binding(7) var shadow_map: texture_depth_2d_array;
 @group(0) @binding(8) var shadow_samp: sampler_comparison;
 @group(0) @binding(9) var<storage, read> model_lights: array<vec4<f32>>;
@@ -192,9 +193,11 @@ const F_COMPILED_LIGHT: u32 = 32768u;
 const F_NO_PROBE: u32 = 65536u;
 const F_NO_SHADOW: u32 = 131072u;
 const F_NO_BAKED_SHADOW: u32 = 524288u;
+const F_SURFACE_DECAL: u32 = 1048576u;
 
 const OPT_WALKABLE: u32 = 1u;
 const OPT_FOG: u32 = 2u;
+const OPT_DECAL_LIGHT: u32 = 4u;
 const OPT_GRID_3D: u32 = 8u;
 const OPT_SKY_PASS: u32 = 16u;
 const OPT_MODEL_FADE: u32 = 32u;
@@ -292,6 +295,15 @@ fn hidden_in_view(flags: u32) -> bool {
         return true;
     }
     return (view.opts.x & OPT_SKY_PASS) != 0u && (flags & F_SKY_3D) == 0u;
+}
+
+fn surface_light(flags: u32, frag: vec2<f32>) -> vec4<f32> {
+    if (flags & F_SURFACE_DECAL) == 0u || (view.opts.x & OPT_DECAL_LIGHT) == 0u {
+        return vec4<f32>(0.0);
+    }
+    let dims = textureDimensions(decal_light);
+    let p = min(vec2<u32>(max(frag, vec2<f32>(0.0))), max(dims, vec2<u32>(1u)) - vec2<u32>(1u));
+    return textureLoad(decal_light, p, 0);
 }
 
 fn fog_on() -> bool {

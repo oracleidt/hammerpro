@@ -622,3 +622,55 @@ fn light_shafts_add_their_light_in_the_baked_view_only() {
     assert!(rim[0] < middle[0], "and fades away from it: {middle:?} {rim:?}");
     assert!(far[0] <= dark[0] + 2, "far from the halo nothing changes: {far:?}");
 }
+
+#[test]
+fn surface_decals_take_the_lightmap_of_their_face() {
+    let Some((device, queue)) = gpu() else {
+        eprintln!("no GPU adapter: test skipped");
+        return;
+    };
+    const DECAL: ObjectId = 2;
+    const DECAL_MAT: MaterialId = 8;
+    let mut r = Renderer::new(&device, &queue);
+    r.set_material(MAT, &MaterialDesc { texture: None, tint: [0.2, 0.2, 0.2, 1.0], ..Default::default() });
+    r.set_material(DECAL_MAT, &MaterialDesc { texture: None, tint: [1.0; 4], ..Default::default() });
+    r.set_lightmap_tracking(true);
+    r.upsert_object(FLOOR, floor_mesh());
+    let mut decal = floor_mesh();
+    for b in &mut decal.batches {
+        b.material = DECAL_MAT;
+        for v in &mut b.vertices {
+            v.pos[2] = 0.2;
+        }
+    }
+    decal.aabb_min[2] = 0.2;
+    decal.aabb_max[2] = 0.2;
+    r.upsert_object(DECAL, decal);
+    r.set_object_flags(DECAL, ObjectFlags::SURFACE_DECAL | ObjectFlags::NO_SHADOW);
+    let generation = r.lightmap_generation(FLOOR);
+    r.add_lightmap_faces(&[(0, LightmapFace { object: FLOOR, generation, scale: 16.0, flags: 0 })]);
+    let verts = floor_lm(0);
+    r.add_lightmap_block(1, &[LightmapBatch { material: MAT, vertices: &verts, indices: &[0, 1, 2, 0, 2, 3] }]);
+    assert!(r.ensure_lightmap_layers(64, 1));
+    let (w, h) = (33u32, 33u32);
+    let texels: Vec<u32> =
+        (0..w * h).map(|i| if i % w < 16 { texel(1.0, 0.0, 0.0) } else { texel(0.0, 0.0, 0.25) }).collect();
+    r.write_lightmap(0, LightmapRect { layer: 0, x: 3, y: 5, w, h, density: 1.0, bumped: false }, &texels);
+    r.set_lightmap_display(LightmapDisplay::Baked, 1.0);
+
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    let left = pixel(&r, 32, 64);
+    let right = pixel(&r, 96, 64);
+    assert!(left[0] > 200 && left[1] < 40 && left[2] < 40, "the decal takes the red light of its face: {left:?}");
+    assert!(right[0] < 40 && right[2] > 60 && right[2] < 200, "and the blue light on the other half: {right:?}");
+
+    r.set_object_flags(DECAL, ObjectFlags::NO_SHADOW);
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    assert_ne!(pixel(&r, 32, 64), left, "without the flag the decal is not lit by the lightmap");
+
+    r.set_object_flags(DECAL, ObjectFlags::SURFACE_DECAL | ObjectFlags::NO_SHADOW);
+    r.set_lightmap_display(LightmapDisplay::Off, 1.0);
+    r.render_view(0, &params(RenderMode::Textured), &Overlay::default());
+    let plain = pixel(&r, 32, 64);
+    assert!(plain[0] > 150 && plain[1] > 150, "textured mode keeps the plain decal: {plain:?}");
+}

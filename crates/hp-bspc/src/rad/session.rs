@@ -599,6 +599,12 @@ impl Session {
         self.scene.shadow.len()
     }
 
+    pub fn skybox_shade(&self) -> Option<super::SkyboxShade> {
+        let state = self.state.as_ref()?;
+        let work = progress::Work::new();
+        make_ctx(&self.scene, &state.lights, state.params, &work, 0).skybox_shade()
+    }
+
     pub fn styled_entities(&self) -> Option<&[hp_bsp::Entity]> {
         self.state.as_ref().map(|s| s.entities.as_slice())
     }
@@ -1333,7 +1339,7 @@ fn write(
         let detail = detail::light(src, &ctx, &light, models, passes)?;
         let t = Instant::now();
         let prop_files = if opts.props.lighting && scene.static_props.len() > 0 {
-            let bounced = opts.bounces > 0 && map.vis.clusters > 0;
+            let bounced = opts.bounces > 0;
             let (files, n, _) =
                 props::light(&ctx, &light, &scene.static_props, &opts.props, bounced, passes, ctl.cancelled);
             log(&format!("static props: {n} with vertex lighting in {} ms", t.elapsed().as_millis()));
@@ -1657,6 +1663,7 @@ impl Scene {
             collision: shadows,
             texture_shadows: opts.props.texture_shadows,
             lighting: opts.props.lighting,
+            every_model: opts.raytracing.is_some(),
         };
         let (static_props, prop_tris, occluders) = {
             let with_pak = props::MapPak { pak: src.pakfile().ok().filter(|p| !p.is_empty()), inner: models };
@@ -1667,7 +1674,7 @@ impl Scene {
                 (props::StaticProps::default(), Vec::new())
             };
             let (prop_tris, occluders) = if shadows {
-                static_props.occluders(opts.props.polys, &rules, models, &mut prop_lines)
+                static_props.occluders(opts.props.polys, opts.raytracing.is_none(), &rules, models, &mut prop_lines)
             } else {
                 (Vec::new(), props::Occluders::default())
             };

@@ -665,6 +665,7 @@ fn typing_a_name_and_enter_renames_with_references() {
     let mut state = setup();
     let fgd = test_fgd();
     let mut panel = EntityPanel::new();
+    state.settings.edit.rename_updates_references = true;
     state.doc.set_selection(&[ObjRef::Entity(5)]);
     let id = panel.field_id("targetname");
     let frames = vec![vec![], vec![], vec![egui::Event::Text("_2".into())], vec![key(egui::Key::Enter)], vec![]];
@@ -682,6 +683,34 @@ fn typing_a_name_and_enter_renames_with_references() {
     assert_eq!(light.get("targetname"), Some("main_light_2"));
     let trigger = &state.doc.scene().entity(6).unwrap().entity;
     assert_eq!(trigger.connections[0].target, "main_light_2", "outputs follow the rename");
+    assert_eq!(state.doc.history_len().0, 1, "one undo step");
+    assert!(state.doc.undo());
+    assert_eq!(state.doc.scene().entity(5).unwrap().entity.get("targetname"), Some("main_light"));
+}
+
+#[test]
+fn typing_a_name_with_the_setting_off_keeps_references() {
+    let mut state = setup();
+    state.settings.edit.rename_updates_references = false;
+    let fgd = test_fgd();
+    let mut panel = EntityPanel::new();
+    state.doc.set_selection(&[ObjRef::Entity(5)]);
+    let id = panel.field_id("targetname");
+    let frames = vec![vec![], vec![], vec![egui::Event::Text("_2".into())], vec![key(egui::Key::Enter)], vec![]];
+    drive(
+        &mut state,
+        frames,
+        |ctx, i| {
+            if i == 1 {
+                ctx.memory_mut(|m| m.request_focus(id));
+            }
+        },
+        |ui, state| panel.ui_with_fgd(ui, state, Some(&fgd)),
+    );
+    let light = &state.doc.scene().entity(5).unwrap().entity;
+    assert_eq!(light.get("targetname"), Some("main_light_2"));
+    let trigger = &state.doc.scene().entity(6).unwrap().entity;
+    assert_eq!(trigger.connections[0].target, "main_light", "the setting is off");
     assert_eq!(state.doc.history_len().0, 1, "one undo step");
     assert!(state.doc.undo());
     assert_eq!(state.doc.scene().entity(5).unwrap().entity.get("targetname"), Some("main_light"));

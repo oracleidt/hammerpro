@@ -1277,6 +1277,27 @@ pub const TR: TrTable = &[
         "Static props cast shadows in the lighting (lightmaps, bounced light, detail props, ambient light, prop lighting). Off: no prop shadow at all and their models are not even loaded (-nostaticpropshadows), much faster on maps with many props.",
         "Les props statiques projettent des ombres dans l'éclairage (lightmaps, lumière rebondie, props de détail, lumière ambiante, éclairage des props). Décoché : aucune ombre de prop et leurs modèles ne sont même pas chargés (-nostaticpropshadows), bien plus rapide sur les maps avec beaucoup de props.",
     ),
+    ("compile.rad_row", "Light file (.rad)", "Fichier de lumières (.rad)"),
+    ("compile.rad_file", "Use a .rad file", "Utiliser un fichier .rad"),
+    (
+        "compile.rad_file_tip",
+        "Adds this .rad file to the lighting step (-lights): its texture lights (material r g b brightness, with optional HDR values), noshadow materials and forcetextureshadow models, read after the game lights.rad and before the map .rad, so its lines win over lights.rad. Hammer Pro's compiler and Valve's vrad.exe both get it, and the Baked, Player view, Ray traced and Lit previews use the same files. A relative path starts at the map folder. Off: the game lights.rad and the map .rad only, like before.",
+        "Ajoute ce fichier .rad à l'étape d'éclairage (-lights) : ses textures lumineuses (matériau r v b luminosité, avec des valeurs HDR facultatives), ses matériaux noshadow et ses modèles forcetextureshadow, lus après le lights.rad du jeu et avant le .rad de la map, donc ses lignes l'emportent sur lights.rad. Le compilateur de Hammer Pro et vrad.exe de Valve le reçoivent tous les deux, et les aperçus Précalculé, Vue joueur, Ray tracing et Éclairé utilisent les mêmes fichiers. Un chemin relatif part du dossier de la map. Décoché : seulement le lights.rad du jeu et le .rad de la map, comme avant.",
+    ),
+    ("compile.rad_file_hint", "path of the .rad file", "chemin du fichier .rad"),
+    ("compile.rad_file_browse", "Browse...", "Parcourir..."),
+    ("compile.rad_file_filter", "Light files (.rad)", "Fichiers de lumières (.rad)"),
+    (
+        "compile.rad_file_missing",
+        "File not found: {0} (the lighting reads the game lights.rad and the map .rad only)",
+        "Fichier introuvable : {0} (l'éclairage lit seulement le lights.rad du jeu et le .rad de la map)",
+    ),
+    ("compile.rad_file_empty", "Choose a .rad file", "Choisissez un fichier .rad"),
+    (
+        "compile.rad_file_default",
+        "Always read: the game lights.rad, then this file, then <map>.rad beside the map",
+        "Toujours lus : le lights.rad du jeu, puis ce fichier, puis <map>.rad à côté de la map",
+    ),
     (
         "compile.opt.menu_bsp",
         "All geometry and visibility options (hammerpro --bspc)",
@@ -1491,6 +1512,16 @@ pub const TR: TrTable = &[
         "Ray tracing : luxels par lot GPU (0 par défaut : automatique, dimensionné pour que le pilote n'expire jamais).",
     ),
     (
+        "compile.flag.rtluxels",
+        "Ray tracing: lightmap detail, 1 to 4: luxels per face side multiplied, within the engine lightmap limit and 32 MB per pass (default from the quality: 1, 1, 2).",
+        "Ray tracing : détail des lightmaps, 1 à 4 : luxels par côté de face multipliés, dans la limite de lightmap du moteur et 32 Mo par passe (par défaut selon la qualité : 1, 1, 2).",
+    ),
+    (
+        "compile.flag.rtlook",
+        "Ray tracing: look, classic (authored falloff like VRAD) or cinematic (inverse square light pools, ceiling lamps shining down, richer bounce, contact shadows; default in final and optimal).",
+        "Ray tracing : rendu, classic (décroissance réglée comme VRAD) ou cinematic (flaques de lumière en inverse du carré, plafonniers vers le bas, rebonds plus colorés, ombres de contact ; par défaut en final et optimal).",
+    ),
+    (
         "compile.flag.rtlang",
         "Ray tracing: language of the messages in the log (en, fr, ru). Hammer Pro passes the language of the editor.",
         "Ray tracing : langue des messages du journal (en, fr, ru). Hammer Pro passe la langue de l'éditeur.",
@@ -1575,6 +1606,16 @@ pub const TR: TrTable = &[
         "compile.flag.rtnocubemaps",
         "Ray tracing: no automatic cubemap placement (by default env_cubemap entities are placed and sized for the new lighting when the map has none).",
         "Ray tracing : pas de placement automatique des cubemaps (par défaut des env_cubemap sont placés et dimensionnés pour le nouvel éclairage quand la map n'en a pas).",
+    ),
+    (
+        "compile.flag.rtreflections",
+        "Ray tracing: render every env_cubemap and the default cubemap with the ray tracer and write them into the BSP like buildcubemaps, at every quality (by default on with Final and Optimal).",
+        "Ray tracing : rend chaque env_cubemap et la cubemap par défaut avec le ray tracer et les écrit dans le BSP comme buildcubemaps, à toutes les qualités (par défaut activé avec Final et Optimal).",
+    ),
+    (
+        "compile.flag.rtnoreflections",
+        "Ray tracing: no ray traced cubemaps (the cubemaps stay placeholders until buildcubemaps runs in game).",
+        "Ray tracing : pas de cubemaps ray tracées (les cubemaps restent des textures provisoires jusqu'à buildcubemaps en jeu).",
     ),
     (
         "compile.flag.rtnotonemap",

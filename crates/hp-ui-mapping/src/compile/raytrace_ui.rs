@@ -1,6 +1,7 @@
 use egui::{RichText, Ui};
 use hp_app::settings::{
-    CompileSettings, FlagChoiceSetting, RayConfigSetting, RayDeviceSetting, RayQualitySetting, RayShaftSourceSetting,
+    CompileSettings, FlagChoiceSetting, RayConfigSetting, RayDeviceSetting, RayQualitySetting, RayReflectionsSetting,
+    RayShaftSourceSetting,
 };
 use hp_app::{t, tf, theme};
 use hp_compile::RayTracingOptions;
@@ -43,6 +44,8 @@ pub(crate) fn plan_options(s: &CompileSettings) -> Option<RayTracingOptions> {
         bump: rt.bump,
         prop_samples: rt.prop_samples,
         chunk: rt.chunk,
+        luxel_detail: rt.luxel_detail,
+        look: rt.look.clone(),
         lang: hp_app::i18n::lang().code().to_owned(),
         effects: RayEffectsOptions {
             ao: rt.ao,
@@ -58,6 +61,7 @@ pub(crate) fn plan_options(s: &CompileSettings) -> Option<RayTracingOptions> {
             glow: rt.glow,
             glow_intensity: rt.glow_intensity,
             auto_cubemaps: rt.auto_cubemaps,
+            reflections: rt.reflections.name().to_owned(),
             tonemap: rt.tonemap,
             color_correction: rt.color_correction,
         },
@@ -143,6 +147,14 @@ fn shaft_source_label(v: RayShaftSourceSetting) -> &'static str {
     match v {
         RayShaftSourceSetting::Sun => t!("raytrace.shaft_source.sun"),
         RayShaftSourceSetting::SunAndSpots => t!("raytrace.shaft_source.sun_and_spots"),
+    }
+}
+
+fn reflections_label(v: RayReflectionsSetting) -> &'static str {
+    match v {
+        RayReflectionsSetting::Auto => t!("raytrace.reflections.auto"),
+        RayReflectionsSetting::On => t!("raytrace.reflections.on"),
+        RayReflectionsSetting::Off => t!("raytrace.reflections.off"),
     }
 }
 
@@ -250,6 +262,18 @@ fn effects_grid(ui: &mut Ui, s: &mut CompileSettings, salt: &str) {
         let tip = t!("raytrace.cubemaps_tip");
         label(ui, "raytrace.cubemaps", tip);
         ui.checkbox(&mut rt.auto_cubemaps, t!("raytrace.on")).on_hover_text(tip);
+        ui.end_row();
+        let tip = t!("raytrace.reflections_tip");
+        label(ui, "raytrace.reflections", tip);
+        egui::ComboBox::from_id_salt((salt, "rt_reflections"))
+            .selected_text(reflections_label(rt.reflections))
+            .show_ui(ui, |ui| {
+                for v in RayReflectionsSetting::ALL {
+                    ui.selectable_value(&mut rt.reflections, v, reflections_label(v));
+                }
+            })
+            .response
+            .on_hover_text(tip);
         ui.end_row();
         let tip = t!("raytrace.tonemap_tip");
         label(ui, "raytrace.tonemap", tip);
@@ -480,6 +504,30 @@ fn body(ui: &mut Ui, s: &mut CompileSettings, salt: &str, compile: bool) {
                         tip,
                         &default_text(d.supersample.to_string()),
                     );
+                    ui.end_row();
+                    let tip = t!("raytrace.look_tip");
+                    label(ui, "raytrace.look", tip);
+                    let auto_look =
+                        if d.cinematic { t!("raytrace.look.cinematic") } else { t!("raytrace.look.classic") };
+                    let look_text = |v: &str| match v {
+                        "classic" => t!("raytrace.look.classic").to_owned(),
+                        "cinematic" => t!("raytrace.look.cinematic").to_owned(),
+                        _ => default_text(auto_look.to_owned()),
+                    };
+                    egui::ComboBox::from_id_salt((salt, "rt_look"))
+                        .selected_text(look_text(rt.look.as_str()))
+                        .show_ui(ui, |ui| {
+                            for v in ["", "classic", "cinematic"] {
+                                ui.selectable_value(&mut rt.look, v.to_owned(), look_text(v));
+                            }
+                        })
+                        .response
+                        .on_hover_text(tip);
+                    ui.end_row();
+                    let tip = t!("raytrace.luxel_detail_tip");
+                    label(ui, "raytrace.luxel_detail", tip);
+                    let text = default_text(format!("x{}", number(d.luxel_detail)));
+                    opt_f32(ui, &mut rt.luxel_detail, d.luxel_detail.max(2.0), 1.0..=4.0, 0.05, tip, &text);
                     ui.end_row();
                     let tip = t!("raytrace.bump_tip");
                     label(ui, "raytrace.bump", tip);

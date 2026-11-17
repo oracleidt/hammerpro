@@ -63,9 +63,30 @@ Hover a label to see the display name, key, type, description, default value, an
 - **Reset to default** (the FGD default, or removes the key when there is none);
 - **Copy value**, **Copy key name**;
 - **Remove key**;
-- on the name key: **Renaming updates outputs** (on by default). When the name changes, the outputs of other entities that target the old name follow it, only when no other entity keeps that name.
+- on the name key: **Update references when renaming** (the setting of **Settings > Editing**) and **Rename and update references...**. See [Renaming and references](#renaming-and-references).
 
 Text fields apply on `Enter` or when they lose the focus; `Escape` cancels the edit. Double quotes are refused in values (the map file could not be read back).
+
+
+### Renaming and references
+
+With **Settings > Editing > Update references when renaming** on (key `[edit] rename_updates_references`, on by default), changing the name of an entity also changes every place of the map that uses the old name, in the same undo step. The status bar says *Renamed N references*. It works from the name field of the properties panel (one or several entities), the raw key table and the MCP tools `set_keyvalue` and `set_entity_keyvalues`.
+
+**Rename and update references...** (right click in a view, right click the name label, the menu of the properties panel, action `rename_update_references`) does the same once while the setting is off: type the new name, the window shows how many entities and references change before you apply.
+
+What follows the new name:
+
+- the target of every output (`doora,Open` becomes `doorb,Open`);
+- `parentname` (the attachment after the comma is kept), `target`, `filtername`, `damagefilter` and every key the FGD types as `target_destination`, `target_name_or_class` or `filterclass`;
+- output parameters of inputs that take an entity name: `SetParent`, `SetDamageFilter`, `SetTarget`, `SetMeasureTarget`, `SetMeasureReference`, `SetTargetEntity`, `SetLightingOrigin`, and inputs the FGD types as a target;
+- the `replaceNN` parameters of a `func_instance` whose value is the old name;
+- renaming a `func_instance`: the fixup names of its content used in the map (`room1-relay` becomes `room2-relay`; with the postfix fixup style `relay-room1` becomes `relay-room2`; no fixup style: nothing).
+
+What never changes, on purpose:
+
+- **Shared names.** When another entity that you did not rename still has the old name, the references stay as they are (they still reach that entity) and the status bar says how many were kept. Select every entity with that name to rename them together, then the references follow.
+- **Wildcards.** A target like `door*` is a pattern, not a name: it is never rewritten. When it no longer matches the new name the status bar counts it so you can check it.
+- `AddOutput` parameters and free text parameters, names starting with `!` (`!player`, `!activator`) and names that are also a class name.
 
 ### Widgets by key type
 
@@ -218,7 +239,7 @@ See [Worldspawn keys](../compiler/worldspawn-keys.md).
 | Paste keyvalues also pastes the name | **Settings > Entities and browsers**, `[entities] paste_targetname` | off |
 | New outputs use the ESC separator | **Settings > Entities and browsers**, `[entities] io_esc_delimiter` | on |
 | Sound preview volume | **Settings > Entities and browsers**, `[browser] sound_volume` | 80% |
-| Renaming updates outputs | right click a name label | on |
+| Update references when renaming | **Settings > Editing**, right click a name label, `[edit] rename_updates_references` | on |
 
 ## Tips
 

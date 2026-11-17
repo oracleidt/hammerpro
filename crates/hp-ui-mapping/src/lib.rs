@@ -17,6 +17,7 @@ pub mod optimize;
 pub mod portals;
 pub mod prefabs;
 pub mod propper;
+pub mod rad_editor;
 pub mod release;
 mod scatter;
 

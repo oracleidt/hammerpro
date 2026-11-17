@@ -67,6 +67,39 @@ fn z_is_left_to_a_modal_transform() {
 }
 
 #[test]
+fn digits_are_left_to_a_typed_rotation_in_2d() {
+    register_translations();
+    let ctx = egui::Context::default();
+    let mut vp = Viewports::new();
+    let mut state = test_state();
+    let mut time = 0.0;
+    frame(&ctx, &mut vp, &mut state, &mut time, vec![]);
+    frame(&ctx, &mut vp, &mut state, &mut time, vec![]);
+    let Some((kind, rect)) = vp.view_rects().iter().flatten().copied().find(|(k, _)| k.is_2d()) else {
+        panic!("a 2D view is visible")
+    };
+    let p = rect.center() + vec2(10.0, 10.0);
+    frame(&ctx, &mut vp, &mut state, &mut time, vec![Event::PointerMoved(p)]);
+    let nine = |pressed| Event::Key {
+        key: Key::Num9,
+        physical_key: Some(Key::Num9),
+        pressed,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    };
+    let before = state.cameras.cam2d(kind).zoom;
+    state.runtime.selection.typing_angle = true;
+    frame(&ctx, &mut vp, &mut state, &mut time, vec![nine(true)]);
+    assert_eq!(state.cameras.cam2d(kind).zoom, before, "the digit belongs to the typed angle");
+    let kept = ctx.input(|i| i.events.iter().any(|e| matches!(e, Event::Key { key: Key::Num9, pressed: true, .. })));
+    assert!(kept, "the digit is still there for the tool");
+    frame(&ctx, &mut vp, &mut state, &mut time, vec![nine(false)]);
+    state.runtime.selection.typing_angle = false;
+    frame(&ctx, &mut vp, &mut state, &mut time, vec![nine(true)]);
+    assert_ne!(state.cameras.cam2d(kind).zoom, before, "without a rotation the digit zooms like Hammer");
+}
+
+#[test]
 fn a_press_in_a_view_takes_the_keyboard_from_a_field() {
     register_translations();
     let ctx = egui::Context::default();

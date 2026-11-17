@@ -76,6 +76,7 @@ Mostly on **Settings > Viewports**; the `show_*` toggles are also in the **View*
 | `new_brush_color` | none | Display color `[r, g, b]` given to new brushes; none: Hammer's random default color. |
 | `undo_restores_selection` | `true` | Selection changes are undo steps: `Ctrl+Z` brings back the previous selection (faces included). They never mark the map as modified. |
 | `keep_displacements_on_cut` | `true` | Clip, Slice, Carve and Intersect keep displacements on the cut pieces (exact on grid lines, resampled elsewhere, seams sewn); off: cut faces become flat brush faces like in Hammer. **Settings > Editing**. |
+| `rename_updates_references` | `false` | Changing an entity name also renames the outputs, parent, filter, name keys and name parameters that use the old name, in one undo step (kept while another entity still has the old name; wildcards and AddOutput untouched). **Settings > Editing**. |
 
 ## `[ui]`: interface
 
@@ -301,6 +302,7 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `connections` | `"Selected"` | I/O lines: `Off`, `Selected`, `All`. |
 | `show_overlays` | `true` | Draw `info_overlay` on their faces. |
 | `show_editor_objects` | `true` | Entity icons and helper geometry. |
+| `show_entity_icons` | `true` | Point entities draw their FGD iconsprite in the 3D views like Hammer; off shows colored boxes. Needs `show_editor_objects`. |
 | `show_entity_names` | `true` | Names of point entities in 2D views. |
 | `show_brush_centers` | `true` | Small x at each visible brush center in 2D; constant screen size. |
 | `show_ropes` | `true` | Draw ropes as they hang in game. |

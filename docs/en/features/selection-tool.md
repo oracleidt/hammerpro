@@ -122,6 +122,7 @@ Modifiers during any drag:
 | Key | Effect |
 |---|---|
 | `Shift` | Clone: the drag makes a transformed copy and leaves the original (one "Duplicate" undo step). A cloned single path node links itself after its source |
+| Digits | During a rotation: exact angle in degrees, see [Exact rotation angles](#exact-rotation-angles) |
 | `Alt` | No grid snap for this drag |
 | `Escape` | Cancels the drag |
 
@@ -159,8 +160,21 @@ With objects selected and the pointer over a view, press:
 - `G`, `R` or `E` again to switch the transform.
 - A click or `Enter` applies, `Escape` or a right click cancels.
 - `Alt`: no snap. For rotations, the free rotation key turns off the angle snap.
+- Hold `Shift` when you apply to duplicate: a transformed copy is placed and the original stays where it was (one "Duplicate" undo step, the copies become the selection). While `Shift` is held the preview turns green and the value reads **Copy**. You can press and release `Shift` at any time without interrupting the transform.
 
 While a modal transform runs, `Z` locks the Z axis instead of entering mouselook.
+
+### Exact rotation angles
+
+While a rotation runs (`R`, a corner handle in **Rotate** mode in a 2D view, or a gizmo ring), type a number to turn the selection by exactly that many degrees:
+
+- The digits of the top row (also without `Shift` on an AZERTY keyboard) or of the numeric keypad, `-` for the other direction, `.` or `,` for decimals, `Backspace` to erase. While a rotation runs, the digits type the angle instead of picking a zoom level of the 2D views.
+- The typed value shows next to the gizmo, in the 2D views and in the status bar, followed by `_` (for example `Z: 90_°`), and the preview follows it. The mouse no longer changes the angle until the number is erased.
+- `Enter` applies (with `R` a click does too, with a handle or a ring releasing the button does), `Escape` cancels. Hold `Shift` to place a rotated copy instead: `R`, `Z`, `90`, `Shift+Enter`.
+- The axis: `X`, `Y` or `Z` during `R` (the gizmo axes, so the entity axes with **Local**), the ring you drag, or without an axis key the view axis: in a 2D view the axis pointing at you (90 turns counterclockwise on screen), in the 3D view the world axis closest to the view direction, shown before the value.
+- Positive angles turn counterclockwise seen from the positive end of the axis, so `90` and `-90` are opposite quarter turns. Angles are exact, without the rotation step. Brushes, entities, props and mixed selections turn together, and the change is one undo step.
+
+The MCP tool `rotate_objects` does the same by number (`axis`, `degrees`, `pivot`), and its `duplicate` option rotates copies and keeps the originals.
 
 ### Alt + mouse wheel: model scale
 

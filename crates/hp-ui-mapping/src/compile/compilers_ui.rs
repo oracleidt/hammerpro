@@ -831,12 +831,14 @@ fn preview_lines(
     let target =
         super::snapshot::target_for(state.doc.path(), cordoned, &untitled, state.settings.compile.bsp_beside_vmf)?;
     let vmf = target.vmf();
+    let lights = s.chosen_rad_file().and_then(|f| hp_app::settings::resolve_rad_path(f, state.doc.path()));
     let cx = super::compilers::Context {
         vmf: &vmf,
         tools,
         modes: super::plan::effective_modes(s),
         lighting: super::plan::effective_lighting(s),
         threads: super::plan::threads_of(s),
+        lights: lights.as_deref(),
     };
     let steps = super::compilers::profile_steps(p, &cx)?;
     Ok(steps

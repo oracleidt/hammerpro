@@ -41,7 +41,7 @@ pub use compilers_ui::{
     settings_page_ui as compilers_settings_ui, valve_flag_text, valve_group_text, valve_managed_text,
 };
 pub(crate) use notices::notice_text;
-pub use options_ui::{compile_options_ui, effective_step_flags};
+pub use options_ui::{compile_options_ui, effective_step_flags, rad_file_ui};
 pub use plan::content_args as compile_content_args;
 pub(crate) use plan::{PrepInput, prepare};
 pub use raytrace_ui::preview_args as raytracing_preview_args;

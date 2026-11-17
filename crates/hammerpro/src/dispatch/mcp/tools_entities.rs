@@ -27,12 +27,17 @@ domain! { "entities and io";
         targets that do not exist.",
         { "id": integer("Entity id.", 1, i64::from(u32::MAX)) }, ["id"];
     set_keyvalue: Edit, "Set a keyvalue on entities",
-        "Set (or with value null, remove) one key on several entities at once, or rename a key (rename_to).",
+        "Set (or with value null, remove) one key on several entities at once, or rename a key (rename_to). \
+        Setting targetname with update_references (default: the setting edit.rename_updates_references, on \
+        unless the user turned it off) also renames every output target, parent, filter, name key and name \
+        parameter that uses the old name, in the same undo step; references stay when another entity keeps the \
+        old name, wildcard targets are never rewritten, AddOutput parameters are never touched.",
         {
             "ids": ids("Entity ids (default: the selected entities)."),
             "key": string("Key."),
             "value": string("Value (omit to remove the key)."),
             "rename_to": string("New key name (renames instead of setting)."),
+            "update_references": boolean("When key is targetname: also update the references to the old name (default: the setting edit.rename_updates_references)."),
         }, ["key"];
     set_entity_class: Edit, "Change the class of entities",
         "Change the class of entities (keyvalues stay). A brush entity whose new FGD class has an origin key \
@@ -84,9 +89,19 @@ domain! { "entities and io";
         target name resolves to, and the broken ones (no entity has the target name).",
         { "broken_only": boolean("Only connections whose target exists nowhere."), "limit": limit(), "offset": offset() }, [];
     rename_targetname: Edit, "Rename an entity name",
-        "Rename a targetname on every entity that has it, and (default) in every output, parameter and key that \
-        refers to it.",
-        { "old": string("Current name."), "new": string("New name."), "update_references": boolean("Fix references (default true).") }, ["old", "new"];
+        "Rename a targetname on every entity that has it, and (default) in every reference to it: output targets, \
+        parentname (the attachment after the comma is kept), filtername and every key the FGD types as \
+        target_destination, target_name_or_class or filterclass, func_instance replace parameters, the fixup \
+        names of a renamed func_instance (room1-relay becomes room2-relay), and output parameters of inputs that \
+        take an entity name (SetParent, SetDamageFilter, SetTarget... or FGD typed inputs). AddOutput parameters \
+        and wildcard targets (door*) are never rewritten; wildcards_left counts the wildcard references that no \
+        longer match. Names starting with ! and names that are also a class name keep their references. One undo \
+        step. Works whatever the setting edit.rename_updates_references says.",
+        {
+            "old": string("Current name."), "new": string("New name."),
+            "update_references": boolean("Fix references (default true)."),
+            "ids": ids("Only rename these entities (default: every entity with the old name). References are kept when another entity still has the old name."),
+        }, ["old", "new"];
     find_entities: Read, "Find entities",
         "Find entities by class pattern, targetname pattern, and a key with a value pattern.",
         {
@@ -325,11 +340,24 @@ fn set_keyvalue(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let ids = target_entities(state, a, "ids")?;
     let key = a.str("key", 63)?.to_owned();
     check_key(&key)?;
+    a.opt_bool("update_references")?;
     if key.eq_ignore_ascii_case("classname") {
         return Err("use set_entity_class to change the class".to_owned());
     }
     let n = match (a.opt_str("value", MAX_VALUE)?, a.opt_str("rename_to", 63)?) {
         (Some(_), Some(_)) => return Err("give value or rename_to, not both".to_owned()),
+        (Some(v), None) if key.trim().eq_ignore_ascii_case("targetname") && !v.trim().is_empty() => {
+            check_value(&key, v)?;
+            check_name(v)?;
+            let refs = a.opt_bool("update_references")?.unwrap_or(state.settings.edit.rename_updates_references);
+            let v = v.to_owned();
+            let r = rename_edit(state, "set_keyvalue", |doc, fgd| {
+                hp_ui_entities::rename::rename_ids(doc, fgd, &ids, &v, refs, true)
+            })?;
+            let mut out = report_json(&r);
+            out["entities_changed"] = json!(r.renamed);
+            return Ok(ToolResult::json(out));
+        }
         (Some(v), None) => {
             check_value(&key, v)?;
             let v = v.to_owned();
@@ -586,15 +614,59 @@ fn rename_targetname(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         return Err("old and new must not be empty".to_owned());
     }
     check_value("new", &new)?;
-    if new.contains([',', '\u{1b}']) {
-        return Err("new must not contain commas".to_owned());
-    }
+    check_name(&new).map_err(|_| "new must not contain commas".to_owned())?;
     if state.doc.entities_named(&old).is_empty() {
         return Err(format!("no entity is named {old}"));
     }
+    let only = if a.map.contains_key("ids") { Some(a.ids("ids")?) } else { None };
+    if let Some(ids) = &only
+        && !state.doc.entities_named(&old).iter().any(|id| ids.contains(id))
+    {
+        return Err(format!("none of the given entities is named {old}"));
+    }
     let refs = a.opt_bool("update_references")?.unwrap_or(true);
-    let n = edit(state, "rename_targetname", |doc| doc.rename_targetname(&old, &new, refs))?;
-    Ok(ToolResult::json(json!({ "changed": n })))
+    let r = rename_edit(state, "rename_targetname", |doc, fgd| {
+        hp_app::runtime::helpers::rename_entities(doc, fgd, only.as_deref(), &old, &new, refs)
+    })?;
+    let mut out = report_json(&r);
+    out["changed"] = json!(r.renamed);
+    Ok(ToolResult::json(out))
+}
+
+pub(super) fn check_name(name: &str) -> R<()> {
+    if name.contains([',', '\u{1b}']) {
+        return Err("an entity name must not contain commas".to_owned());
+    }
+    Ok(())
+}
+
+pub(super) fn rename_edit<T>(
+    state: &mut AppState,
+    tool: &str,
+    f: impl FnOnce(&mut hp_editor::Document, Option<&hp_fgd::ResolvedFgd>) -> hp_editor::EditResult<T>,
+) -> R<T> {
+    if state.doc.in_transaction() {
+        return Err("Hammer Pro is in the middle of another edit (a drag in a view?); try again".to_owned());
+    }
+    let label = super::tools::undo_label(tool);
+    let fgd = state.assets.fgd();
+    state.doc.transaction(label, |doc| f(doc, fgd)).map_err(|e| e.to_string())
+}
+
+pub(super) fn report_json(r: &hp_editor::rename_refs::RenameReport) -> Value {
+    use hp_editor::rename_refs::RefsKept;
+    let kept = r.kept.map(|k| match k {
+        RefsKept::SharedName => "another entity still has the old name",
+        RefsKept::ClassName => "the old name is also a class name",
+        RefsKept::Special => "names starting with ! are special",
+    });
+    json!({
+        "renamed": r.renamed,
+        "references": r.references,
+        "wildcards_left": r.wildcards,
+        "references_kept": r.kept_references,
+        "kept_because": kept,
+    })
 }
 
 fn find_entities(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
@@ -1041,6 +1113,56 @@ mod tests {
             ok(&mut s, "query_box", json!({ "min": [-1000, -1000, -100], "max": [1000, 1000, 1000], "inside": true }));
         assert!(q["solids_total"].as_u64().unwrap() >= 2);
         assert!(q["entities"].as_array().unwrap().iter().any(|e| e["id"] == t));
+    }
+
+    #[test]
+    fn renaming_follows_the_setting_and_the_parameter() {
+        let mut s = hp_app::testing::test_state();
+        assert!(s.settings.edit.rename_updates_references, "on by default");
+        s.settings.edit.rename_updates_references = false;
+        ok(&mut s, "set_keyvalue", json!({ "ids": [5], "key": "targetname", "value": "doora" }));
+        ok(&mut s, "set_keyvalue", json!({ "ids": [6], "key": "parentname", "value": "doora,hand" }));
+        ok(&mut s, "add_connection", json!({ "ids": [6], "output": "OnTrigger", "target": "doora", "input": "Open" }));
+        let target =
+            |s: &hp_app::AppState| s.doc.scene().entity(6).unwrap().entity.connections.last().unwrap().target.clone();
+        let r = ok(&mut s, "set_keyvalue", json!({ "ids": [5], "key": "targetname", "value": "doorb" }));
+        assert_eq!((r["entities_changed"].as_u64(), r["references"].as_u64()), (Some(1), Some(0)));
+        assert_eq!(target(&s), "doora");
+        ok(&mut s, "set_keyvalue", json!({ "ids": [5], "key": "targetname", "value": "doora" }));
+        let r = ok(
+            &mut s,
+            "set_keyvalue",
+            json!({ "ids": [5], "key": "targetname", "value": "doorb", "update_references": true }),
+        );
+        assert_eq!(r["references"], 2);
+        assert_eq!(target(&s), "doorb");
+        assert_eq!(s.doc.scene().entity(6).unwrap().entity.get("parentname"), Some("doorb,hand"));
+        assert_eq!(s.doc.undo_labels().last().copied(), Some("MCP: set_keyvalue"));
+        s.settings.edit.rename_updates_references = true;
+        let r = ok(&mut s, "set_entity_keyvalues", json!({ "id": 5, "set": { "targetname": "doorc" } }));
+        assert_eq!(r["rename"]["references"], 2);
+        assert_eq!(target(&s), "doorc");
+        let r = ok(
+            &mut s,
+            "set_entity_keyvalues",
+            json!({ "id": 5, "set": { "targetname": "doord" }, "update_references": false }),
+        );
+        assert_eq!(r["rename"]["references"], 0);
+        assert_eq!(target(&s), "doorc");
+        ok(
+            &mut s,
+            "set_keyvalue",
+            json!({ "ids": [4, 5], "key": "targetname", "value": "doorc", "update_references": false }),
+        );
+        let r = ok(&mut s, "rename_targetname", json!({ "old": "doorc", "new": "doore", "ids": [4] }));
+        assert_eq!((r["changed"].as_u64(), r["references"].as_u64()), (Some(1), Some(0)));
+        assert_eq!(r["references_kept"], 2);
+        assert_eq!(target(&s), "doorc");
+        err(
+            &mut s,
+            "set_keyvalue",
+            json!({ "ids": [5], "key": "targetname", "value": "a,b", "update_references": true }),
+        );
     }
 
     #[test]

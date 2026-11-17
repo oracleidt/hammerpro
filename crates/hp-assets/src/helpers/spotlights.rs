@@ -167,6 +167,7 @@ pub(crate) fn beam_parts(
         srgb_color: srgb[0],
         hdr_scale: s.hdr_scale,
         halo_scale: 0.0,
+        glow: None,
     };
     let halo =
         WorldBeam { material: materials[1], color: s.color, srgb_color: srgb[1], halo_scale: HALO_SCALE, ..beam };

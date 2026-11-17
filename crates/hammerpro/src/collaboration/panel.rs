@@ -19,6 +19,10 @@ fn rate_text(bytes: u32) -> String {
     size_text(u64::from(bytes))
 }
 
+fn chat_field_id() -> egui::Id {
+    egui::Id::unique("hp_team_chat_input")
+}
+
 impl Controller {
     pub(crate) fn ui(&mut self, state: &mut AppState, ctx: &egui::Context, tab: u64, persistent: bool) -> bool {
         if tab == self.bound_tab && self.session.is_some() && self.canonical.is_some() {
@@ -455,10 +459,12 @@ impl Controller {
             let width = (ui.available_width() - 150.0).max(120.0);
             let edit = ui.add(
                 egui::TextEdit::singleline(&mut self.chat_input)
+                    .id(chat_field_id())
                     .hint_text(t!("team.message_hint"))
                     .char_limit(super::people::MAX_CHAT_CHARS)
                     .desired_width(width),
             );
+            let edit = edit.on_hover_text(t!("team.message_tip"));
             let entered = edit.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
             let ready = !self.chat_input.trim().is_empty() && self.canonical.is_some();
             if ui.add_enabled(ready, egui::Button::new(t!("team.send"))).clicked() || (entered && ready) {
@@ -466,9 +472,7 @@ impl Controller {
                 match self.send_note(state, &text, None) {
                     Ok(()) => {
                         self.chat_input.clear();
-                        if entered {
-                            edit.request_focus();
-                        }
+                        edit.surrender_focus();
                     }
                     Err(error) => self.message(state, format!("{error:#}")),
                 }

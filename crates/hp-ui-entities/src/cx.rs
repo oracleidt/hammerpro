@@ -103,7 +103,21 @@ impl<'a> Cx<'a> {
                 self.notify(Severity::Warning, t!("entities.no_quotes").to_owned());
                 continue;
             }
+            let op = match op {
+                Op::SetKey { target, key, value, merge: false }
+                    if key.trim().eq_ignore_ascii_case("targetname") && !target.is_world() =>
+                {
+                    Op::Targetname { target, value, update_references: self.settings.edit.rename_updates_references }
+                }
+                op => op,
+            };
             match apply(self.doc, self.fgd, op) {
+                Ok(Applied::Renamed(report)) => {
+                    if let Some((severity, text)) = crate::rename::report_text(&report) {
+                        self.notify(severity, text);
+                    }
+                    last = Some(Applied::Renamed(report));
+                }
                 Ok(r) => last = Some(r),
                 Err(e) => {
                     let text = tf!("entities.edit_failed", e);

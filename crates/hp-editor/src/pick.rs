@@ -22,6 +22,8 @@ pub struct PickOptions<'a> {
     pub entity_ray: Option<&'a EntityRayFn<'a>>,
 }
 
+pub const ENTITY_ICON_REACH: f64 = 16.0;
+
 pub type EntityRayFn<'a> = dyn Fn(&Entity, &Ray) -> EntityRay + 'a;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -638,7 +640,8 @@ impl Document {
                 }
                 let Some(b) = point_entity_bounds(&node.entity, entity_bounds) else { continue };
                 let limit = if closest_only { best } else { max_t };
-                if rt.test(&b, limit).is_none() {
+                let reach = if opts.entity_ray.is_some() { b.expand(ENTITY_ICON_REACH) } else { b };
+                if rt.test(&reach, limit).is_none() {
                     continue;
                 }
                 let found = match opts.entity_ray.map_or(EntityRay::Bounds, |f| f(&node.entity, ray)) {

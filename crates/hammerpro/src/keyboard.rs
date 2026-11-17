@@ -25,6 +25,7 @@ pub struct AppCapture {
     pub dialog: bool,
     pub keyboard: bool,
     pub context_menu: bool,
+    pub reason: &'static str,
 }
 
 impl AppCapture {
@@ -94,11 +95,90 @@ fn is_focus_tab(event: &Event) -> bool {
     )
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct DroppedKey {
+    pub key: String,
+    pub action: String,
+    pub reason: String,
+    pub frame: u64,
+}
+
 #[derive(Debug, Default)]
 pub struct KeyRouter {
     start: FrameStart,
     start_capture: AppCapture,
     stashed_tabs: Vec<Event>,
+    hidden_focus: Option<(egui::Id, u32)>,
+    released: Option<String>,
+    dropped: Option<DroppedKey>,
+    logged: Option<(String, f64)>,
+    frame: u64,
+}
+
+pub const HIDDEN_FOCUS_FRAMES: u32 = 2;
+const LOG_REPEAT_SECONDS: f64 = 5.0;
+
+fn shown_rect(ctx: &egui::Context, id: egui::Id) -> Option<(egui::LayerId, egui::Rect, bool)> {
+    ctx.viewport(|v| v.this_pass.widgets.get(id).or_else(|| v.prev_pass.widgets.get(id)).copied())
+        .map(|w| (w.layer_id, w.interact_rect, w.visible))
+}
+
+fn last_shown_rect(ctx: &egui::Context, id: egui::Id) -> Option<(egui::LayerId, egui::Rect, bool)> {
+    ctx.viewport(|v| v.prev_pass.widgets.get(id).copied()).map(|w| (w.layer_id, w.interact_rect, w.visible))
+}
+
+fn focus_is_hidden(ctx: &egui::Context, id: egui::Id) -> bool {
+    let Some((layer, rect, visible)) = last_shown_rect(ctx, id) else { return false };
+    if !visible || !rect.is_positive() {
+        return true;
+    }
+    let global = match ctx.memory(|m| m.to_global.get(&layer).copied()) {
+        Some(to_global) => to_global * rect,
+        None => rect,
+    };
+    !global.intersects(ctx.viewport_rect())
+}
+
+fn meant_for_the_map(keys: &hp_app::actions::KeyBindings, event: &Event) -> Option<String> {
+    let Event::Key { key, pressed: true, modifiers, .. } = event else { return None };
+    let chord = modifiers.ctrl || modifiers.alt || modifiers.command || modifiers.mac_cmd;
+    let writes = matches!(key, Key::Space | Key::Backspace | Key::Enter | Key::Tab | Key::Escape)
+        || (is_typing_key(*key) && *key != Key::Delete);
+    if writes && !chord {
+        return None;
+    }
+    let mut probe = vec![event.clone()];
+    if let Some(action) = keys.take_triggered(&mut probe).first() {
+        return Some(action.id().to_owned());
+    }
+    let nudge =
+        matches!(key, Key::ArrowLeft | Key::ArrowRight | Key::ArrowUp | Key::ArrowDown | Key::PageUp | Key::PageDown);
+    (nudge && !modifiers.ctrl && !modifiers.command).then(|| "nudge".to_owned())
+}
+
+fn key_name(event: &Event) -> Option<String> {
+    let Event::Key { key, pressed: true, modifiers, .. } = event else { return None };
+    let mut out = String::new();
+    for (on, name) in [(modifiers.ctrl, "Ctrl+"), (modifiers.alt, "Alt+"), (modifiers.shift, "Shift+")] {
+        if on {
+            out.push_str(name);
+        }
+    }
+    out.push_str(key.name());
+    Some(out)
+}
+
+pub fn focus_text(ctx: &egui::Context) -> Option<String> {
+    let id = ctx.memory(|m| m.focused())?;
+    let kind = if ctx.text_edit_focused() { "text field" } else { "widget" };
+    let place = match shown_rect(ctx, id) {
+        Some((layer, rect, visible)) => {
+            let state = if visible && rect.is_positive() { "shown" } else { "hidden" };
+            format!("{state}, {:?} layer, at {:.0} {:.0}", layer.order, rect.min.x, rect.min.y)
+        }
+        None => "not drawn".to_owned(),
+    };
+    Some(format!("{kind} {} ({place})", id.short_debug_format()))
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -115,6 +195,8 @@ impl KeyRouter {
         keep_tabs: bool,
         capture: AppCapture,
     ) {
+        self.frame += 1;
+        self.release_hidden_focus(ctx);
         self.start = FrameStart::capture(ctx);
         self.start_capture = capture;
         self.stashed_tabs.clear();
@@ -146,6 +228,112 @@ impl KeyRouter {
         self.start.any_focus || ctx.memory(|m| m.focused()).is_some()
     }
 
+    fn release_hidden_focus(&mut self, ctx: &egui::Context) {
+        let Some(id) = ctx.memory(|m| m.focused()) else {
+            self.hidden_focus = None;
+            return;
+        };
+        if !focus_is_hidden(ctx, id) {
+            self.hidden_focus = None;
+            return;
+        }
+        let seen = match self.hidden_focus {
+            Some((held, n)) if held == id => n + 1,
+            _ => 1,
+        };
+        self.hidden_focus = Some((id, seen));
+        if seen >= HIDDEN_FOCUS_FRAMES {
+            let text = focus_text(ctx).unwrap_or_default();
+            ctx.memory_mut(|m| m.surrender_focus(id));
+            self.hidden_focus = None;
+            log::info!("keyboard: released the focus of a {text}, it is not visible");
+            self.released = Some(text);
+        }
+    }
+
+    pub fn reasons(&self, ctx: &egui::Context, capture: AppCapture) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for c in [capture, self.start_capture] {
+            if !c.any() {
+                continue;
+            }
+            let why = if !c.reason.is_empty() {
+                c.reason
+            } else if c.dialog {
+                "a dialog is open"
+            } else if c.keyboard {
+                "a view or the shortcut editor has the keyboard"
+            } else {
+                "the view context menu is open"
+            };
+            if !out.iter().any(|o| o == why) {
+                out.push(why.to_owned());
+            }
+        }
+        if self.start.text_focus || ctx.text_edit_focused() {
+            out.push(format!("typing in a {}", focus_text(ctx).unwrap_or_else(|| "text field".to_owned())));
+        }
+        if self.start.popup || egui::Popup::is_any_open(ctx) {
+            out.push("a menu or list is open".to_owned());
+        }
+        if self.start.modal {
+            out.push("a modal window is open".to_owned());
+        }
+        out
+    }
+
+    fn note_dropped(&mut self, ctx: &egui::Context, state: &AppState, events: &[Event], reason: String) {
+        let Some((key, action)) = events.iter().find_map(|e| Some((key_name(e)?, meant_for_the_map(&state.keys, e)?)))
+        else {
+            return;
+        };
+        let now = ctx.input(|i| i.time);
+        let repeat = self.logged.as_ref().is_some_and(|(r, at)| *r == reason && now - at < LOG_REPEAT_SECONDS);
+        if !repeat {
+            log::info!("keyboard: {key} ({action}) went to the interface, not to the shortcuts: {reason}");
+            self.logged = Some((reason.clone(), now));
+        }
+        self.dropped = Some(DroppedKey { key, action, reason, frame: self.frame });
+    }
+
+    #[cfg(test)]
+    pub fn last_dropped(&self) -> Option<&DroppedKey> {
+        self.dropped.as_ref()
+    }
+
+    pub fn report(&self, ctx: &egui::Context, capture: AppCapture) -> serde_json::Value {
+        let modifiers = ctx.input(|i| i.modifiers);
+        let held: Vec<&str> = [(modifiers.ctrl, "ctrl"), (modifiers.alt, "alt"), (modifiers.shift, "shift")]
+            .into_iter()
+            .filter_map(|(on, name)| on.then_some(name))
+            .collect();
+        let keys_down: Vec<String> = ctx.input(|i| i.keys_down.iter().map(|k| k.name().to_owned()).collect());
+        let reasons = self.reasons(ctx, capture);
+        let focus = focus_text(ctx);
+        let shortcuts = if !reasons.is_empty() {
+            "blocked"
+        } else if focus.is_some() {
+            "typing and arrow keys go to the focused widget"
+        } else {
+            "free"
+        };
+        serde_json::json!({
+            "shortcuts": shortcuts,
+            "blocked_by": reasons,
+            "focus": focus,
+            "text_field_focused": ctx.text_edit_focused(),
+            "modifiers_held": held,
+            "keys_down": keys_down,
+            "last_unhandled_key": self.dropped.as_ref().map(|d| serde_json::json!({
+                "key": d.key,
+                "action": d.action,
+                "reason": d.reason,
+                "frames_ago": self.frame.saturating_sub(d.frame),
+            })),
+            "last_focus_released": self.released,
+        })
+    }
+
     pub fn after_ui(
         &mut self,
         ctx: &egui::Context,
@@ -156,12 +344,23 @@ impl KeyRouter {
         hp_app::dialog_keys::finish_frame(ctx);
         let tabs = std::mem::take(&mut self.stashed_tabs);
         if self.blocked(ctx, capture) {
+            let events = ctx.input(|i| i.events.clone());
+            let reason = self.reasons(ctx, capture).join(", ");
+            self.note_dropped(ctx, state, &events, reason);
             return Routed::default();
         }
         if !tabs.is_empty() {
             ctx.input_mut(|i| i.events.extend(tabs));
         }
         if self.widget_focus(ctx) {
+            let taken: Vec<Event> = ctx.input(|i| i.events.iter().filter(|e| is_widget_key(e)).cloned().collect());
+            if !taken.is_empty() {
+                let reason = format!(
+                    "the {} has the keyboard focus (click the map or press Escape)",
+                    focus_text(ctx).unwrap_or_else(|| "widget".to_owned())
+                );
+                self.note_dropped(ctx, state, &taken, reason);
+            }
             ctx.input_mut(|i| i.events.retain(|e| !is_widget_key(e)));
         }
         if !egui::DragAndDrop::has_any_payload(ctx) {
@@ -253,6 +452,7 @@ mod tests {
         tool: KeyTool,
         text: String,
         focus_field: bool,
+        clip_field: bool,
         focus_button: bool,
         open_combo: bool,
         list_hovered: bool,
@@ -277,6 +477,7 @@ mod tests {
                 tool: KeyTool::default(),
                 text: "hello".into(),
                 focus_field: false,
+                clip_field: false,
                 focus_button: false,
                 open_combo: false,
                 list_hovered: false,
@@ -306,7 +507,16 @@ mod tests {
                         let _ = ui.button("Open");
                     });
                 });
-                let r = ui.text_edit_singleline(&mut self.text);
+                let field = egui::TextEdit::singleline(&mut self.text).id(egui::Id::unique("harness_field"));
+                let r = if self.clip_field {
+                    ui.scope(|ui| {
+                        ui.set_clip_rect(egui::Rect::from_min_size(egui::pos2(700.0, 500.0), egui::vec2(1.0, 1.0)));
+                        ui.add(field)
+                    })
+                    .inner
+                } else {
+                    ui.add(field)
+                };
                 if std::mem::take(&mut self.focus_field) {
                     r.request_focus();
                 }
@@ -646,6 +856,78 @@ mod tests {
             assert_eq!(h.last().actions, vec![Action::SelectAll], "dialog {which}");
             assert_eq!(h.tool.calls, calls + 1, "dialog {which}");
         }
+    }
+
+    #[test]
+    fn a_focused_field_scrolled_out_of_sight_gives_the_keyboard_back() {
+        let mut h = Harness::new();
+        h.focus_field = true;
+        h.frame(vec![]);
+        h.frame(vec![]);
+        assert!(h.ctx.text_edit_focused());
+        h.frame(vec![key(Key::Delete, Modifiers::NONE)]);
+        assert_eq!(h.last(), &Routed::default(), "a shown field keeps Delete");
+        h.clip_field = true;
+        for _ in 0..HIDDEN_FOCUS_FRAMES + 1 {
+            h.frame(vec![]);
+        }
+        assert_eq!(h.ctx.memory(|m| m.focused()), None, "the hidden field let go of the keyboard");
+        h.frame(vec![release(Key::Delete), key(Key::Delete, Modifiers::NONE)]);
+        assert_eq!(h.last().actions, vec![Action::Delete]);
+        h.frame(vec![release(Key::Delete), key(Key::G, CTRL)]);
+        assert_eq!(h.last().actions, vec![Action::Group]);
+    }
+
+    #[test]
+    fn a_field_that_is_only_briefly_clipped_keeps_the_focus() {
+        let mut h = Harness::new();
+        h.focus_field = true;
+        h.frame(vec![]);
+        h.frame(vec![]);
+        h.clip_field = true;
+        h.frame(vec![]);
+        h.clip_field = false;
+        h.frame(vec![]);
+        h.frame(vec![]);
+        assert!(h.ctx.text_edit_focused(), "one clipped frame (a scroll in progress) is not enough");
+    }
+
+    #[test]
+    fn keys_that_miss_the_shortcuts_are_reported_with_the_reason() {
+        let mut h = Harness::new();
+        h.frame(vec![]);
+        let free = h.router.report(&h.ctx, AppCapture::default());
+        assert_eq!(free["shortcuts"], "free");
+        assert!(h.router.last_dropped().is_none());
+        h.focus_field = true;
+        h.frame(vec![]);
+        h.frame(vec![]);
+        h.frame(vec![key(Key::Delete, Modifiers::NONE)]);
+        let dropped = h.router.last_dropped().expect("Delete was reported");
+        assert_eq!(dropped.key, "Delete");
+        assert_eq!(dropped.action, "delete");
+        assert!(dropped.reason.contains("typing in a text field"), "{}", dropped.reason);
+        let report = h.router.report(&h.ctx, AppCapture::default());
+        assert_eq!(report["shortcuts"], "blocked");
+        assert_eq!(report["text_field_focused"], true);
+        assert_eq!(report["last_unhandled_key"]["key"], "Delete");
+        let frame = h.router.last_dropped().map(|d| d.frame);
+        h.frame(vec![release(Key::Delete), key(Key::H, Modifiers::NONE), Event::Text("h".into())]);
+        assert_eq!(h.router.last_dropped().map(|d| d.frame), frame, "typing a letter is not a lost shortcut");
+        h.frame(vec![release(Key::H), key(Key::Escape, Modifiers::NONE)]);
+        h.frame(vec![release(Key::Escape)]);
+        h.focus_button = true;
+        h.frame(vec![]);
+        h.frame(vec![]);
+        h.frame(vec![key(Key::ArrowLeft, Modifiers::NONE)]);
+        let dropped = h.router.last_dropped().expect("the arrow was reported");
+        assert_eq!(dropped.key, "Left");
+        assert_eq!(dropped.action, "nudge");
+        assert!(dropped.reason.contains("widget"), "{}", dropped.reason);
+        assert!(dropped.reason.contains("keyboard focus"), "{}", dropped.reason);
+        let capture = AppCapture { keyboard: true, reason: "the 3D view is in mouselook", ..AppCapture::default() };
+        let report = h.router.report(&h.ctx, capture);
+        assert_eq!(report["blocked_by"][0], "the 3D view is in mouselook");
     }
 
     #[test]

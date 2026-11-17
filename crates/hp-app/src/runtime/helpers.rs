@@ -35,6 +35,47 @@ pub fn fgd_target_key(fgd: &hp_fgd::ResolvedFgd, class: &str, key: &str) -> Opti
     ))
 }
 
+pub fn fgd_input_takes_name(fgd: &hp_fgd::ResolvedFgd, class: &str, input: &str) -> Option<bool> {
+    let d = fgd.class(class)?.input(input)?;
+    Some(matches!(
+        d.arg_type,
+        hp_fgd::PropertyType::TargetDestination
+            | hp_fgd::PropertyType::TargetNameOrClass
+            | hp_fgd::PropertyType::FilterClass
+    ))
+}
+
+pub fn with_rename_rules<R>(
+    fgd: Option<&hp_fgd::ResolvedFgd>,
+    f: impl FnOnce(&hp_editor::rename_refs::RenameRules<'_>) -> R,
+) -> R {
+    let fgd = fgd.filter(|f| !f.is_empty());
+    let keys = |class: &str, key: &str| fgd.and_then(|f| fgd_target_key(f, class, key));
+    let inputs = |class: &str, input: &str| fgd.and_then(|f| fgd_input_takes_name(f, class, input));
+    f(&hp_editor::rename_refs::RenameRules { is_target_key: Some(&keys), input_takes_name: Some(&inputs) })
+}
+
+pub fn rename_entities(
+    doc: &mut Document,
+    fgd: Option<&hp_fgd::ResolvedFgd>,
+    only: Option<&[hp_editor::Id]>,
+    old: &str,
+    new: &str,
+    update_references: bool,
+) -> hp_editor::EditResult<hp_editor::rename_refs::RenameReport> {
+    with_rename_rules(fgd, |rules| doc.rename_entity_names(only, old, new, update_references.then_some(rules)))
+}
+
+pub fn rename_preview(
+    doc: &Document,
+    fgd: Option<&hp_fgd::ResolvedFgd>,
+    only: Option<&[hp_editor::Id]>,
+    old: &str,
+    new: &str,
+) -> hp_editor::EditResult<hp_editor::rename_refs::RenameReport> {
+    with_rename_rules(fgd, |rules| doc.rename_preview(only, old, new, Some(rules)))
+}
+
 pub fn array_frame(state: &crate::AppState) -> hp_editor::ArrayFrame {
     let frame = state.target_grid().frame;
     let step = if state.snap_enabled() { frame.step.max(glam::DVec3::ZERO) } else { glam::DVec3::ZERO };
@@ -82,12 +123,20 @@ pub struct SceneDisplay {
     pub ropes: bool,
     pub simulate_ropes: bool,
     pub editor_objects: bool,
+    pub entity_icons: bool,
     pub game_look: bool,
 }
 
 impl Default for SceneDisplay {
     fn default() -> Self {
-        Self { overlays: true, ropes: true, simulate_ropes: false, editor_objects: true, game_look: false }
+        Self {
+            overlays: true,
+            ropes: true,
+            simulate_ropes: false,
+            editor_objects: true,
+            entity_icons: true,
+            game_look: false,
+        }
     }
 }
 
@@ -99,6 +148,7 @@ impl SceneDisplay {
             ropes: h.show_ropes,
             simulate_ropes: h.simulate_ropes,
             editor_objects: h.show_editor_objects,
+            entity_icons: h.show_entity_icons,
             game_look: false,
         }
     }

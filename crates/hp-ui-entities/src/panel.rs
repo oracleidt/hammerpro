@@ -197,6 +197,7 @@ impl EntityPanel {
         let mut cx = Cx::with_particles(state, fgd, thumbs, particles.as_deref());
         let mut ops: Vec<Op> = Vec::new();
         let mut go_to = None;
+        smart.update_references = cx.settings.edit.rename_updates_references;
         smart.begin_frame();
         io.buffers.begin_frame();
         smart.poll_picks(&mut cx, &mut ops);
@@ -377,6 +378,7 @@ fn panel_menu(ui: &mut Ui, cx: &mut Cx, view: &EntityView) {
     ui.separator();
     entry(ui, cx, Action::FindReplaceText, true);
     entry(ui, cx, Action::SetMaxDistance, entities);
+    entry(ui, cx, Action::RenameUpdateReferences, entities);
     entry(ui, cx, Action::EntityHelp, view.single_class().is_some());
     ui.separator();
     let mut real = cx.settings.placement.show_real_dimensions;

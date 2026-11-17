@@ -487,3 +487,22 @@ fn the_cache_keeps_the_visibility_of_the_builtin_compiler() {
     let external = external.with_cache(3, builds, "m", 0);
     assert!(!args(&external, StepKind::Bsp).iter().any(|a| a == crate::cache::VIS_CACHE_ARG));
 }
+
+#[test]
+fn the_chosen_rad_file_replaces_any_lights_flag() {
+    let fin = |opts: &PlanOptions| rad_flags_of(&CompilePlan::preset(Preset::Final, &tools(), &vmf(), opts).unwrap());
+    let menu = PlanOptions {
+        extra_rad_args: "-lights old.rad -softsun 1".to_owned(),
+        rad_flags: vec![FlagChoice { flag: "-lights".into(), on: true, value: "menu.rad".into() }],
+        ..PlanOptions::default()
+    };
+    let flags = fin(&menu);
+    assert_eq!(flags.iter().filter(|a| a.eq_ignore_ascii_case("-lights")).count(), 1, "{flags:?}");
+    let chosen = PlanOptions { lights_file: Some(PathBuf::from("E:/rad/my lights.rad")), ..menu };
+    let flags = fin(&chosen);
+    assert_eq!(flags.iter().filter(|a| a.eq_ignore_ascii_case("-lights")).count(), 1, "{flags:?}");
+    let at = flags.iter().position(|a| a == "-lights").expect("lights");
+    assert_eq!(flags[at + 1], PathBuf::from("E:/rad/my lights.rad").display().to_string());
+    assert!(!flags.iter().any(|a| a == "menu.rad" || a == "old.rad"), "{flags:?}");
+    assert!(fin(&PlanOptions::default()).iter().all(|a| !a.eq_ignore_ascii_case("-lights")));
+}

@@ -30,7 +30,7 @@ pub use ao::AoOptions;
 pub use hp_raytrace::{DevicePreference as RtDevice, Quality as RtQuality};
 pub use output::check_lighting;
 pub use props::PropOptions;
-pub use raytrace::{Effects as RtEffects, RayTracing, ShaftSource};
+pub use raytrace::{Effects as RtEffects, Look as RtLook, RayTracing, ShaftSource};
 pub use texlights::{LightFile, LightFileData, TexLight, TexLightOptions};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -214,6 +214,20 @@ impl Phases {
     }
 }
 
+pub use bake::SkyboxShade;
+
+pub fn skybox_warning(shade: &SkyboxShade) -> String {
+    let at = shade.cameras.iter().map(|c| format!("({:.0} {:.0} {:.0})", c.x, c.y, c.z)).collect::<Vec<_>>().join(", ");
+    let percent = shade.fraction() * 100.0;
+    format!(
+        "{} {percent:.0}% {} {at}, {} {}",
+        "Warning: the 3D skybox hides the sun from",
+        "of the sunlit surfaces: scaled by the sky_camera at",
+        "they fall inside or under the skybox geometry, so they get no sun and less sky light (VRAD and the game do the same).",
+        "Move the sky_camera so the map lies in open air in the skybox, or compile with -noskyboxrecurse."
+    )
+}
+
 fn ms(t: Instant) -> u128 {
     t.elapsed().as_millis()
 }
@@ -246,8 +260,9 @@ fn run_with(
     if !(19..=21).contains(&src.version()) {
         return Err(format!("BSP version {} is not supported", src.version()));
     }
-    let src = raytrace::fit_lightmaps(src, opts, log)?;
+    let (src, luxel_detail) = raytrace::fit_lightmaps(src, opts, log)?;
     let map = data::MapData::read(&src)?;
+    let game_models = models;
     let with_pak = props::MapPak { pak: src.pakfile().ok().filter(|p| !p.is_empty()), inner: models };
     let models: &dyn crate::props::ModelSource = &with_pak;
     work.add(1);
@@ -327,6 +342,7 @@ fn run_with(
         collision: shadows,
         texture_shadows: opts.props.texture_shadows,
         lighting: opts.props.lighting,
+        every_model: opts.raytracing.is_some(),
     };
     let (mut static_props, mut prop_lines) = if shadows || opts.props.lighting {
         runner.par(|| props::StaticProps::read(&src, models, what, &rules))?
@@ -335,7 +351,9 @@ fn run_with(
     };
     work.add(1);
     let (prop_tris, occluders) = if shadows {
-        runner.par(|| static_props.occluders(opts.props.polys, &rules, models, &mut prop_lines))
+        runner.par(|| {
+            static_props.occluders(opts.props.polys, opts.raytracing.is_none(), &rules, models, &mut prop_lines)
+        })
     } else {
         (Vec::new(), props::Occluders::default())
     };
@@ -438,6 +456,17 @@ fn run_with(
             Some(rt) => raytrace::prop_ao(rt).map(|o| ao::Ao::new(&o, opts.quality, &map)),
         },
     };
+    if let Some(shade) = runner.par(|| ctx.skybox_shade()) {
+        if shade.worth_a_warning() {
+            log(&skybox_warning(&shade));
+        } else {
+            log(&format!(
+                "3D skybox: it hides the sun from {:.0}% of the sunlit surfaces ({} samples)",
+                shade.fraction() * 100.0,
+                shade.sunlit
+            ));
+        }
+    }
     let t = Instant::now();
     let mut fx_out = raytrace::effects::EffectOutput::default();
     let mut light: Vec<bake::FaceLight> = if let Some(rt) = &opts.raytracing {
@@ -449,6 +478,7 @@ fn run_with(
             &src,
             rt_materials.unwrap_or_default(),
             rt,
+            luxel_detail,
             opts,
             &entities,
             log,
@@ -536,7 +566,7 @@ fn run_with(
     }
     let t = Instant::now();
     let prop_files = if opts.props.lighting && static_props.len() > 0 {
-        let bounced = opts.bounces > 0 && map.vis.clusters > 0;
+        let bounced = opts.bounces > 0;
         let (files, n, vertices) =
             runner.par(|| props::light(&ctx, &light, &static_props, &opts.props, bounced, &passes, &|| false));
         log(&format!("static props: {n} with vertex lighting ({vertices} vertices) in {} ms", ms(t)));
@@ -662,6 +692,10 @@ fn run_with(
         edit.replace_lump_with_version(lump::DISPINFO, d, version).map_err(fail)?;
     }
     let out = edit.to_vec().map_err(fail)?;
+    let out = match opts.raytracing.as_ref().filter(|rt| raytrace::reflections::wanted(rt)) {
+        Some(rt) => raytrace::reflections::bake(out, game_models, rt, log)?,
+        None => out,
+    };
     work.finish();
     stage(report, "write", t);
     phases.mark("write");

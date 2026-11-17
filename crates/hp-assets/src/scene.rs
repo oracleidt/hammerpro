@@ -78,6 +78,7 @@ pub(crate) struct SceneSync {
     pub initialized: bool,
     pub display: Option<RenderDisplay>,
     pub editor_objects: Option<bool>,
+    pub entity_icons: Option<bool>,
     pub game_look: bool,
     pub upload_queue: VecDeque<Id>,
     pub upload_pending: AHashSet<Id>,
@@ -264,10 +265,11 @@ fn point_entity_flags(doc: &Document, id: Id, room: Option<&SkyRoom>, props: Sta
             f |= ObjectFlags::NO_SHADOW;
         }
         if n.entity.classname.eq_ignore_ascii_case("prop_static") {
+            let forced = || n.entity.get("model").is_some_and(crate::lights::texture_shadow_forced);
             match props {
                 StaticPropShadows::None => f |= ObjectFlags::NO_SHADOW,
-                StaticPropShadows::Collision => f |= ObjectFlags::HULL_SHADOW,
-                StaticPropShadows::Mesh => {}
+                StaticPropShadows::Collision if !forced() => f |= ObjectFlags::HULL_SHADOW,
+                StaticPropShadows::Collision | StaticPropShadows::Mesh => {}
             }
         } else {
             f |= ObjectFlags::NO_BAKED_SHADOW;
@@ -494,6 +496,10 @@ impl AssetManager {
         if self.scene.editor_objects.replace(editor_objects).is_some_and(|e| e != editor_objects) {
             self.scene.force_entities = true;
         }
+        let entity_icons = editor_objects && scene_display.entity_icons;
+        if self.scene.entity_icons.replace(entity_icons).is_some_and(|e| e != entity_icons) {
+            self.scene.force_entities = true;
+        }
         if std::mem::replace(&mut self.scene.game_look, scene_display.game_look) != scene_display.game_look {
             self.scene.force_entities = true;
         }
@@ -509,6 +515,7 @@ impl AssetManager {
                     || p.detail_tint != display.detail_tint,
                 p.highlight_invalid != display.highlight_invalid
                     || p.prop_shadows != display.prop_shadows
+                    || crate::lights::take_forced_changed()
                     || p.fog_volume_texture != display.fog_volume_texture
                     || p.displacements != display.displacements
                     || p.displacements_in_2d != display.displacements_in_2d
@@ -1205,8 +1212,8 @@ impl AssetManager {
             Some(previous) => (Some(previous), true),
             None => (model, false),
         };
-        let editor_objects = self.scene.editor_objects.unwrap_or(true);
-        let sprite = match (&desc.sprite, opts.show_helpers && (editor_objects || !desc.sprite_is_icon)) {
+        let icons = self.scene.entity_icons.unwrap_or(true);
+        let sprite = match (&desc.sprite, opts.show_helpers && (icons || !desc.sprite_is_icon)) {
             (Some(s), true) => {
                 let kind = if desc.sprite_is_icon {
                     MatKind::Sprite
@@ -1219,15 +1226,8 @@ impl AssetManager {
             }
             _ => None,
         };
-        if model.is_some() || game_look {
-            renderer.remove_object(obj);
-        } else {
-            let fill = if self.scene.display.is_some_and(|d| d.object_colors_3d) { desc.color } else { desc.classic };
-            let [r, g, b] = fill;
-            let mat = self.flat_material([r, g, b, BOX_ALPHA]);
-            let (min, max) = (desc.origin + desc.bounds.0, desc.origin + desc.bounds.1);
-            renderer.upsert_object(obj, box_mesh(min, max, mat, sprite.is_none(), desc.color));
-        }
+        let sprite = sprite.filter(|m| !desc.sprite_is_icon || !self.icon_missing(*m));
+        self.upsert_entity_box(renderer, id, &desc, model.is_some(), sprite.is_none());
         renderer.set_object_wire_colors(obj, desc.color, desc.classic);
         renderer.set_object_flags(obj, flags);
         if flags.contains(ObjectFlags::SELECTED) {
@@ -1384,6 +1384,9 @@ impl AssetManager {
             return;
         }
         let mut ready = std::mem::take(&mut self.models.newly_ready);
+        if crate::playworld::lighting_waits_done(&mut self.play_world.lighting_waits, &ready) {
+            self.scene.instances_dirty = true;
+        }
         ready.extend(self.scene.realize_later.drain());
         if !opts.show_models {
             return;
@@ -1588,11 +1591,47 @@ impl AssetManager {
         renderer.set_model_instances(&list);
     }
 
+    fn icon_missing(&self, material: hp_render::MaterialId) -> bool {
+        self.mats.desc(material).is_some_and(|d| d.texture == Some(hp_render::TexId::MISSING))
+    }
+
+    fn upsert_entity_box(&mut self, renderer: &mut Renderer, id: Id, desc: &EntityDesc, model: bool, filled: bool) {
+        let obj = entity_object(id);
+        if model || self.scene.game_look {
+            renderer.remove_object(obj);
+            return;
+        }
+        let fill = if self.scene.display.is_some_and(|d| d.object_colors_3d) { desc.color } else { desc.classic };
+        let [r, g, b] = fill;
+        let mat = self.flat_material([r, g, b, BOX_ALPHA]);
+        let (min, max) = (desc.origin + desc.bounds.0, desc.origin + desc.bounds.1);
+        renderer.upsert_object(obj, box_mesh(min, max, mat, filled, desc.color));
+    }
+
+    fn drop_missing_icons(&mut self, renderer: &mut Renderer) {
+        let mut verdicts: AHashMap<hp_render::MaterialId, bool> = AHashMap::new();
+        let mut missing = Vec::new();
+        for (id, s) in &self.scene.ents {
+            let Some(m) = s.sprite.filter(|_| s.desc.sprite_is_icon) else { continue };
+            if *verdicts.entry(m).or_insert_with(|| self.icon_missing(m)) {
+                missing.push(*id);
+            }
+        }
+        for id in missing {
+            let Some(s) = self.scene.ents.get_mut(&id) else { continue };
+            s.sprite = None;
+            let (desc, model) = (s.desc.clone(), s.model.is_some());
+            self.upsert_entity_box(renderer, id, &desc, model, true);
+            renderer.set_object_wire_colors(entity_object(id), desc.color, desc.classic);
+        }
+    }
+
     fn rebuild_sprites(&mut self, renderer: &mut Renderer) {
         if !self.scene.sprites_dirty {
             return;
         }
         self.scene.sprites_dirty = false;
+        self.drop_missing_icons(renderer);
         let list: Vec<SpriteInstance> = self
             .scene
             .ents

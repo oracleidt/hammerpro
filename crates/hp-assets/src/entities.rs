@@ -181,6 +181,7 @@ pub(crate) fn entity_desc(e: &Entity, fgd: Option<&ResolvedFgd>) -> EntityDesc {
         {
             (e.get("model").map(str::to_owned), true)
         }
+        None if e.get("model").is_none() => (guessed_icon(&e.classname), false),
         _ => (None, false),
     };
     let sprite = sprite.and_then(|s| sprite_material(&s));
@@ -248,6 +249,12 @@ pub(crate) fn entity_desc(e: &Entity, fgd: Option<&ResolvedFgd>) -> EntityDesc {
         light,
         decal,
     }
+}
+
+fn guessed_icon(classname: &str) -> Option<String> {
+    let class = classname.trim();
+    let plain = !class.is_empty() && class.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+    plain.then(|| format!("editor/{}", class.to_ascii_lowercase()))
 }
 
 pub(crate) fn decal_material(e: &Entity, class: Option<&ResolvedClass>) -> Option<String> {
@@ -435,7 +442,11 @@ mod tests {
         assert_eq!(d.model.map(|m| m.0).as_deref(), Some("models/x.mdl"));
         assert_eq!(d.color, DEFAULT_EDITOR_COLOR);
         let no_fgd = entity_desc(&light, None);
-        assert_eq!(no_fgd.sprite, None);
+        assert_eq!(no_fgd.sprite.as_deref(), Some("editor/light"));
+        assert!(no_fgd.sprite_is_icon);
+        assert_eq!(entity_desc(&unknown, None).sprite, None, "a model wins over a guessed icon");
+        assert_eq!(entity_desc(&ent("Env_Cubemap", &[]), None).sprite.as_deref(), Some("editor/env_cubemap"));
+        assert_eq!(entity_desc(&ent("bad/../name", &[]), None).sprite, None);
     }
 
     #[test]

@@ -97,11 +97,11 @@ impl SelectTool {
                 size_labels(painter, view, rect, &moved, hsize);
                 let below = rect.center_bottom() + egui::vec2(0.0, HANDLE_GAP + hsize + 2.0);
                 match &d.op {
-                    DragOp::Rotate { angle, .. } | DragOp::GizmoRotate { angle, .. } => {
+                    DragOp::Rotate { .. } | DragOp::GizmoRotate { .. } => {
                         if let Some(c) = view.world_to_screen(d.pivot)
                             && clip.contains(c)
                         {
-                            label(painter, c, Align2::CENTER_CENTER, &format!("{}°", fmt_deg(*angle)));
+                            label(painter, c, Align2::CENTER_CENTER, &self.drag_value_text(d));
                         }
                     }
                     DragOp::Move { delta, .. } | DragOp::GizmoMove { delta, .. } => {
@@ -350,16 +350,24 @@ impl SelectTool {
         let copy = |s: String| if d.is_clone() { format!("{} {s}", t!("seltool.label.copy")) } else { s };
         match &d.op {
             DragOp::GizmoMove { delta, .. } | DragOp::Move { delta, .. } => copy(hp_app::widgets::fmt_vec3(*delta)),
-            DragOp::GizmoRotate { angle, .. } | DragOp::Rotate { angle, .. } => copy(format!("{}°", fmt_deg(*angle))),
+            DragOp::GizmoRotate { angle, .. } | DragOp::Rotate { angle, .. } => {
+                copy(format!("{}°", deg_text(d, *angle)))
+            }
             DragOp::GizmoScale { scale, .. } => copy(fmt_factors(*scale)),
             DragOp::Modal(m) => {
                 let value = match m.kind {
                     ModalKind::Move => hp_app::widgets::fmt_vec3(m.delta),
-                    ModalKind::Rotate => format!("{}°", fmt_deg(m.angle)),
+                    ModalKind::Rotate => format!("{}°", deg_text(d, m.angle)),
                     ModalKind::Scale => fmt_factors(m.scale),
                 };
-                let lock = m.lock.label();
-                if lock.is_empty() { value } else { format!("{lock}: {value}") }
+                let lock = match m.lock {
+                    crate::modal::Lock::Free if m.kind == ModalKind::Rotate && !d.typed.is_empty() => {
+                        crate::modal::axis_label(m.axis)
+                    }
+                    l => l.label().to_owned(),
+                };
+                let value = if lock.is_empty() { value } else { format!("{lock}: {value}") };
+                copy(value)
             }
             _ => String::new(),
         }
@@ -655,13 +663,13 @@ impl SelectTool {
                 }
                 DragOp::Rotate { angle, .. } | DragOp::GizmoRotate { angle, .. } => {
                     let key = if d.is_clone() { "seltool.hint.rotate_clone" } else { "seltool.hint.rotate" };
-                    tf!(key, fmt_deg(*angle), self.free_rotation_key(state))
+                    tf!(key, deg_text(d, *angle), self.free_rotation_key(state))
                 }
                 DragOp::Skew { amount, .. } => {
                     let key = if d.is_clone() { "seltool.hint.skew_clone" } else { "seltool.hint.skew" };
                     tf!(key, signed(*amount))
                 }
-                DragOp::Modal(m) => tf!(m.kind.hint_key(), self.drag_value_text(d)),
+                DragOp::Modal(m) => tf!(m.kind.hint_key(), self.drag_value_text(d), self.free_rotation_key(state)),
             });
         }
         if let Some((text, time)) = &self.wheel_note
@@ -704,6 +712,10 @@ impl SelectTool {
     fn free_rotation_key(&self, state: &AppState) -> &'static str {
         if state.settings.selection.free_rotation_with_alt { t!("seltool.key.alt") } else { t!("seltool.key.ctrl") }
     }
+}
+
+fn deg_text(d: &super::Drag, angle: f64) -> String {
+    if d.typed.is_empty() { fmt_deg(angle) } else { format!("{}_", d.typed) }
 }
 
 fn fmt_factors(s: DVec3) -> String {

@@ -137,7 +137,10 @@ pub const EDITOR_TOOLS: &[ToolSpec] = &[
         name: "set_entity_keyvalues",
         title: "Edit entity keyvalues",
         description: "Set or remove keyvalues of one entity (the world uses its id from get_map_info: skyname, \
-            detailmaterial...). Setting \"classname\" changes the class of an entity. One undo step.",
+            detailmaterial...). Setting \"classname\" changes the class of an entity. Setting \"targetname\" with \
+            update_references (default: the setting edit.rename_updates_references) also renames the references \
+            to the old name (outputs, parent, filter, name keys and parameters) and answers them in rename. One \
+            undo step.",
         kind: ToolKind::Edit,
         schema: || {
             object(
@@ -145,6 +148,7 @@ pub const EDITOR_TOOLS: &[ToolSpec] = &[
                     "id": integer("Entity id.", 1, u64::from(u32::MAX)),
                     "set": keyvalues("Keyvalues to set."),
                     "remove": { "type": "array", "items": { "type": "string" }, "maxItems": 1000, "description": "Keys to remove." },
+                    "update_references": { "type": "boolean", "description": "When targetname is set: also update the references to the old name (default: the setting edit.rename_updates_references)." },
                 }),
                 &["id"],
             )
@@ -239,7 +243,8 @@ pub const EDITOR_TOOLS: &[ToolSpec] = &[
         title: "Rotate objects",
         description: "Rotate objects around an axis through a pivot (default: the center of their bounds). Entities \
             turn with their angles; lights (light_spot, light_environment, light_directional) also get the Pitch key \
-            of their new direction (positive is up). One undo step.",
+            of their new direction (positive is up). With duplicate, rotated copies are made and the originals stay, \
+            like holding Shift during a rotation in the views; the copies become the selection. One undo step.",
         kind: ToolKind::Edit,
         schema: || {
             object(
@@ -249,6 +254,7 @@ pub const EDITOR_TOOLS: &[ToolSpec] = &[
                     "axis": { "type": "string", "enum": ["x", "y", "z"], "description": "Rotation axis (default z)." },
                     "degrees": { "type": "number", "minimum": -360, "maximum": 360, "description": "Angle, counterclockwise seen from the positive axis." },
                     "pivot": vec3("Pivot [x, y, z] (optional)."),
+                    "duplicate": { "type": "boolean", "description": "Rotate copies and keep the originals (default false)." },
                 }),
                 &["degrees"],
             )

@@ -73,6 +73,7 @@ struct Harness {
     time: f64,
     modifiers: Modifiers,
     last_output: Option<egui::PlatformOutput>,
+    unfocused: bool,
 }
 
 impl Harness {
@@ -86,6 +87,7 @@ impl Harness {
             time: 0.0,
             modifiers: Modifiers::NONE,
             last_output: None,
+            unfocused: false,
         };
         h.frame(vec![]);
         h.frame(vec![]);
@@ -101,7 +103,7 @@ impl Harness {
             screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, vec2(1600.0, 900.0))),
             time: Some(self.time),
             events,
-            focused: true,
+            focused: !self.unfocused,
             ..Default::default()
         };
         let mut out = self.ctx.run_ui(input, |ui| {
@@ -321,6 +323,30 @@ fn space_drag_pans_2d() {
     h.button(p + vec2(-30.0, 0.0), PointerButton::Primary, false);
     h.key(Key::Space, None, false);
     assert!(h.tool.inputs.iter().all(|(_, nav, _)| !nav));
+}
+
+#[test]
+fn losing_the_window_mid_drag_gives_the_keyboard_back() {
+    let mut h = Harness::new();
+    let p = h.rect(0).center();
+    h.move_to(p);
+    h.button(p, PointerButton::Secondary, true);
+    assert!(h.vp.captures_keyboard(), "holding the right button flies");
+    h.unfocused = true;
+    h.frame(vec![Event::WindowFocused(false)]);
+    assert!(!h.vp.captures_keyboard(), "the release is lost while another window has the focus");
+    h.unfocused = false;
+    h.frame(vec![Event::WindowFocused(true)]);
+    for _ in 0..5 {
+        h.move_to(p + vec2(40.0, 10.0));
+    }
+    assert!(!h.vp.captures_keyboard(), "the stale button state does not start flying again");
+    assert_eq!(h.vp.keyboard_capture_reason(), None);
+    h.button(p + vec2(40.0, 10.0), PointerButton::Secondary, false);
+    assert!(!h.vp.is_context_menu_open(), "the late release does not open the menu");
+    h.button(p, PointerButton::Secondary, true);
+    assert_eq!(h.vp.keyboard_capture_reason(), Some("a mouse button is held in the 3D view (fly mode)"));
+    h.button(p, PointerButton::Secondary, false);
 }
 
 #[test]

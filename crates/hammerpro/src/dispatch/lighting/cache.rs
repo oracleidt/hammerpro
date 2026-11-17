@@ -87,8 +87,10 @@ fn settings_fingerprint(state: &AppState, lit: bool) -> u64 {
             hdr,
             state.settings.compile.static_prop_shadows,
             state.settings.compile.static_prop_lighting,
+            state.settings.compile.no_skybox_recurse(),
             physical_options(state.doc.light_plus()),
             state.assets.lighting_generation(),
+            super::rad_stamp(state),
         ),
     );
     if let Some(fs) = state.assets.fs() {

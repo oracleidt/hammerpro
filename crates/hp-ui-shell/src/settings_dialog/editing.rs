@@ -110,6 +110,9 @@ pub(super) fn page(ui: &mut Ui, state: &mut AppState) {
             sync = true;
         }
         ui.end_row();
+        ui.label(t!("shell.edit.rename_refs")).on_hover_text(t!("shell.edit.rename_refs_tip"));
+        changed |= ui.checkbox(&mut e.rename_updates_references, "").changed();
+        ui.end_row();
         ui.label(t!("shell.edit.arrow_nudge")).on_hover_text(t!("shell.edit.arrow_nudge_tip"));
         changed |= ui.checkbox(&mut e.arrow_key_nudge, "").changed();
         ui.end_row();
@@ -147,6 +150,7 @@ pub(super) fn reset(state: &mut AppState) {
     e.undo_restores_selection = d.undo_restores_selection;
     e.new_brush_color = d.new_brush_color;
     e.keep_displacements_on_cut = d.keep_displacements_on_cut;
+    e.rename_updates_references = d.rename_updates_references;
     sync_edit_options(state);
 }
 
@@ -196,6 +200,12 @@ pub(crate) const TR: TrTable = &[
         "shell.edit.paste_offset_tip",
         "Pasted objects are moved by one grid step so they do not overlap",
         "Les objets collés sont décalés d'un pas de grille pour ne pas se superposer",
+    ),
+    ("shell.edit.rename_refs", "Update references when renaming", "Mettre à jour les références en renommant"),
+    (
+        "shell.edit.rename_refs_tip",
+        "Changing an entity name also changes the outputs, parent, filter and other name keys of every entity that use the old name, in one undo step. Off: only the entity changes, like in Hammer. Right click > Rename and update references does it once while this is off",
+        "Changer le nom d'une entité change aussi les sorties, le parent, le filtre et les autres clés de nom de toutes les entités qui utilisent l'ancien nom, en une seule étape d'annulation. Décoché : seule l'entité change, comme dans Hammer. Clic droit > Renommer et mettre à jour les références le fait une fois quand c'est décoché",
     ),
     ("shell.edit.undo_selection", "Undo restores the selection", "Annuler restaure la sélection"),
     (

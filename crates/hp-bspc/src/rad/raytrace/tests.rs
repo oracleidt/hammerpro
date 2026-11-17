@@ -416,7 +416,10 @@ fn sprites_in(bsp: &[u8], lo: DVec3, hi: DVec3) -> usize {
     src.entities()
         .unwrap()
         .iter()
-        .filter(|e| e.classname() == "env_sprite_oriented")
+        .filter(|e| {
+            e.classname() == "prop_dynamic"
+                && e.get("model").is_some_and(|m| m.starts_with("models/hammerpro/raytrace/vol_"))
+        })
         .filter_map(|e| e.origin().map(DVec3::from_array))
         .filter(|p| p.cmpge(lo).all() && p.cmple(hi).all())
         .count()
@@ -447,7 +450,9 @@ fn sunlight_and_spots_make_light_shafts_in_rooms() {
     assert!(window > 0, "no shaft in the window room: {log:?}");
     let suns: usize = log
         .iter()
-        .find_map(|l| l.split(" light shafts (").nth(1).and_then(|r| r.split(' ').next()).and_then(|n| n.parse().ok()))
+        .find_map(|l| {
+            l.split(" volumetric light beams (").nth(1).and_then(|r| r.split(' ').next()).and_then(|n| n.parse().ok())
+        })
         .unwrap_or(0);
     assert!(suns >= 2, "the skylight and the window each make a sun shaft: {log:?}");
 }
@@ -497,4 +502,139 @@ fn preview_pacing_measure() {
             longest
         );
     }
+}
+
+fn face_sizes(bsp: &[u8]) -> Vec<(i16, i32, i32)> {
+    let b = hp_bsp::Bsp::from_vec(bsp.to_vec()).expect("bsp");
+    let faces = b.lump(crate::emit::lump::FACES).expect("faces").into_owned();
+    faces
+        .chunks_exact(56)
+        .map(|r| {
+            let at = |o: usize| i32::from_le_bytes([r[o], r[o + 1], r[o + 2], r[o + 3]]);
+            (i16::from_le_bytes([r[10], r[11]]), at(36), at(40))
+        })
+        .collect()
+}
+
+#[test]
+fn final_refines_lightmaps_within_the_limits_and_stays_correct() {
+    let bsp = compile_vmf(&room("DEV/DEV_MEASUREGENERIC01B", &light_entity(500, "64 128 128", "")));
+    let opts = |detail: Option<f32>| RadOptions {
+        raytracing: Some(RayTracing {
+            device: DevicePreference::Cpu,
+            min_samples: Some(32),
+            max_samples: Some(64),
+            luxel_detail: detail,
+            effects: Effects::none(),
+            ..RayTracing::with_quality(Quality::Draft)
+        }),
+        ..quick()
+    };
+    let mut lines = Vec::new();
+    let fine = light_bsp(&bsp, &opts(Some(2.0)), &mut |l| lines.push(l.to_owned())).expect("fine");
+    let coarse = light_bsp(&bsp, &opts(None), &mut |_| {}).expect("coarse");
+    assert!(crate::validate::validate(&fine).is_empty(), "{:?}", crate::validate::validate(&fine));
+    assert!(check_lighting(&fine).is_empty(), "{:?}", check_lighting(&fine));
+    assert!(lines.iter().any(|l| l.contains("finer lightmaps, luxel detail x2.00")), "{lines:?}");
+    let (a, b) = (face_sizes(&coarse), face_sizes(&fine));
+    assert_eq!(a.len(), b.len());
+    let limit = hp_bsp::limits::LIGHTMAP_EXTENT.max_in(quick().limits) as i32;
+    let mut grown = 0;
+    for ((_, w0, h0), (_, w1, h1)) in a.iter().zip(&b) {
+        assert!(*w1 < limit && *h1 < limit, "{w1}x{h1} over {limit}");
+        if (w1 + 1) * (h1 + 1) > (w0 + 1) * (h0 + 1) * 3 {
+            grown += 1;
+        }
+    }
+    assert!(grown > 0, "no face got finer lightmaps");
+    let (x, y) = (floor(&fine, 64.0, 128.0), floor(&coarse, 64.0, 128.0));
+    assert!((x - y).abs() < y * 0.15, "same exposure under the light: {x} vs {y}");
+}
+
+#[test]
+fn final_area_lights_are_soft_and_fit_their_room() {
+    let n = hp_raytrace::Params::of(Quality::Normal);
+    let f = hp_raytrace::Params::of(Quality::Final);
+    assert!(f.light_radius > n.light_radius * 2.0 && f.sun_soft_angle > 0.0 && f.luxel_detail > 1.0);
+    assert_eq!((n.luxel_detail, n.sun_soft_angle), (1.0, 0.0));
+    let tris = [hp_light::bvh::Triangle {
+        p: [Vec3A::new(-512.0, -512.0, 4.0), Vec3A::new(512.0, -512.0, 4.0), Vec3A::new(0.0, 512.0, 4.0)],
+        payload: 0,
+    }];
+    let bvh = hp_light::bvh::Bvh::new(&tris);
+    let mut light = hp_raytrace::Light { kind: hp_raytrace::LightKind::Point, size: 8.0, ..Default::default() };
+    super::bake::fit_light_size(&mut light, &bvh, 1.0, false);
+    assert!(light.size <= 3.01 && light.size >= 2.0, "a light 4 units under a ceiling: {}", light.size);
+    let mut open = hp_raytrace::Light {
+        kind: hp_raytrace::LightKind::Point,
+        size: 8.0,
+        position: [0.0, 0.0, -200.0],
+        ..Default::default()
+    };
+    super::bake::fit_light_size(&mut open, &bvh, 1.0, false);
+    assert_eq!(open.size, 8.0);
+}
+
+#[test]
+fn final_contact_shadows_reach_the_direct_light() {
+    let cine = |q: Quality| hp_raytrace::Params::of(q).cinematic;
+    assert!(!cine(Quality::Normal) && !cine(Quality::Draft) && cine(Quality::Final) && cine(Quality::Optimal));
+    assert_eq!(super::contact_strengths(false, 0.5), (0.0, 0.5));
+    let (d, i) = super::contact_strengths(true, 0.5);
+    assert!(d > 0.3 && d <= 0.6 && i == 1.0, "{d} {i}");
+    assert_eq!(super::contact_strengths(true, 0.0), (0.0, 0.0));
+    assert_eq!(super::contact_strengths(true, 1.0).1, 1.0);
+    let classic = RayTracing { look: Some(super::Look::Classic), ..RayTracing::with_quality(Quality::Final) };
+    assert!(!classic.params().cinematic && !classic.params().contact_ao);
+}
+
+#[test]
+fn cinematic_lights_make_pools_and_fixtures_shine_down() {
+    let fifty = hp_raytrace::Light {
+        kind: hp_raytrace::LightKind::Point,
+        intensity: [[100.0; 3]; 2],
+        constant: 1.0,
+        linear: 0.0,
+        quadratic: 1.0 / (200.0 * 200.0),
+        cap: 1.0e22,
+        fade: (0.0, -1.0),
+        reach: 800.0,
+        size: 8.0,
+        ..Default::default()
+    };
+    let none = hp_light::bvh::Bvh::new(&[]);
+    let mut pool = fifty;
+    assert!(!super::bake::cinematic_light(&mut pool, &none), "no ceiling above");
+    let dir = Vec3A::NEG_Z;
+    let at = |l: &hp_raytrace::Light, d: f32| l.falloff(dir, d) * l.intensity[0][0];
+    let dref = super::bake::reference_distance(&fifty);
+    assert!((dref - 200.0).abs() < 2.0, "{dref}");
+    assert!(at(&pool, 40.0) > at(&fifty, 40.0) * 1.5, "bright pool near the lamp");
+    assert!(at(&pool, 40.0) < at(&fifty, 40.0) * 4.5, "no blown highlight");
+    assert!((at(&pool, 200.0) / at(&fifty, 200.0) - 1.3).abs() < 0.05, "same brightness at the reference distance");
+    assert!(at(&pool, 600.0) <= at(&fifty, 600.0) * 1.01, "darker far away");
+    assert_eq!(at(&pool, 801.0), 0.0);
+    let ceiling = [hp_light::bvh::Triangle {
+        p: [Vec3A::new(-512.0, -512.0, 6.0), Vec3A::new(512.0, -512.0, 6.0), Vec3A::new(0.0, 512.0, 6.0)],
+        payload: 0,
+    }];
+    let bvh = hp_light::bvh::Bvh::new(&ceiling);
+    let mut fixture = fifty;
+    assert!(super::bake::cinematic_light(&mut fixture, &bvh));
+    assert!(fixture.falloff(Vec3A::Z, 100.0) > 0.0 && fixture.falloff(Vec3A::NEG_Z, 100.0) == 0.0);
+    let mut flat = hp_raytrace::Light { quadratic: 0.0, ..fifty };
+    assert!(!super::bake::cinematic_light(&mut flat, &bvh));
+    assert_eq!(flat.constant, 1.0, "lights without falloff are kept");
+    let mut kneed = vec![pool];
+    super::bake::knee_lights(&mut kneed, std::slice::from_ref(&fifty));
+    for k in 0..60 {
+        let d = 1.0 + k as f32 * 4.0;
+        assert!(
+            at(&kneed[0], d) <= at(&fifty, d).max(at(&fifty, 200.0) * 0.25) * super::bake::KNEE * 1.02,
+            "hot spot at {d}"
+        );
+    }
+    let warm = super::bake::richer_bounce([0.6, 0.4, 0.2]);
+    let lum = |c: [f32; 3]| 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    assert!((lum(warm) - lum([0.6, 0.4, 0.2])).abs() < 1e-4 && warm[0] > 0.6 && warm[2] < 0.2);
 }

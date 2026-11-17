@@ -43,6 +43,7 @@ mod sky_layers;
 mod sprite_layers;
 mod static_lines;
 mod sun_glow;
+mod surface_light;
 mod tangents;
 mod textures;
 pub mod types;
@@ -199,7 +200,8 @@ struct ViewState {
     cluster_gen: u64,
     cluster_key: Option<ClusterKey>,
     bind_group: Option<wgpu::BindGroup>,
-    bind_key: (u64, u64),
+    bind_key: (u64, u64, u64),
+    surface: Option<surface_light::SurfaceTarget>,
     sky_pass: Option<(wgpu::Buffer, wgpu::BindGroup, (u64, u64))>,
     draws: u32,
     triangles: u64,
@@ -312,6 +314,7 @@ pub struct Renderer {
     shadow: Option<shadow::ShadowGpu>,
     control_shadow: Option<control_shadow::ControlShadow>,
     shadow_dummy_array: wgpu::TextureView,
+    surface_dummy: wgpu::TextureView,
     sky_layers: [shadow::SkyAnalysis; 2],
     sky_signature: (u64, u64),
     shadow_sampler: wgpu::Sampler,
@@ -703,6 +706,7 @@ fn unique_edges(verts: &[gpu::GpuVertex], indices: &[u32]) -> Vec<u32> {
 
 const OPT_WALKABLE: u32 = 1;
 const OPT_FOG: u32 = 2;
+const OPT_DECAL_LIGHT: u32 = 4;
 const OPT_GRID_3D: u32 = 8;
 const OPT_SKY_PASS: u32 = 16;
 const OPT_MODEL_FADE: u32 = 32;
@@ -1089,6 +1093,7 @@ impl Renderer {
             shadow: None,
             control_shadow: None,
             shadow_dummy_array: shadow_dummy,
+            surface_dummy: surface_light::dummy(&device),
             sky_layers: [None, None],
             sky_signature: (0, 0),
             shadow_sampler,
@@ -2461,7 +2466,8 @@ impl Renderer {
             cluster_gen: 1,
             cluster_key: None,
             bind_group: None,
-            bind_key: (0, 0),
+            bind_key: (0, 0, 0),
+            surface: None,
             sky_pass: None,
             draws: 0,
             triangles: 0,
@@ -2572,18 +2578,49 @@ impl Renderer {
 
     fn ensure_view_bind_group(&mut self, id: u32) {
         let Some(view) = self.views.get(&id) else { return };
-        let key = (self.scene_gen, view.cluster_gen);
+        let key = (self.scene_gen, view.cluster_gen, view.surface.as_ref().map_or(0, |s| s.generation));
         if view.bind_group.is_some() && view.bind_key == key {
             return;
         }
-        let bg = self.view_bind_group_with(&view.uniform, view);
+        let bg = self.view_bind_group_with(&view.uniform, view, true);
         if let Some(view) = self.views.get_mut(&id) {
             view.bind_group = Some(bg);
             view.bind_key = key;
         }
     }
 
-    fn view_bind_group_with(&self, uniform: &wgpu::Buffer, view: &ViewState) -> wgpu::BindGroup {
+    fn ensure_surface_light(&mut self, id: u32, wanted: bool) -> bool {
+        let Some(view) = self.views.get(&id) else { return false };
+        if !wanted {
+            if view.surface.is_some()
+                && let Some(view) = self.views.get_mut(&id)
+            {
+                view.surface = None;
+            }
+            return false;
+        }
+        if view.surface.as_ref().is_none_or(|s| s.size != view.size) {
+            let generation = self.next_generation;
+            self.next_generation += 1;
+            let target = surface_light::SurfaceTarget::new(&self.device, view.size, generation);
+            if let Some(view) = self.views.get_mut(&id) {
+                view.surface = Some(target);
+            }
+        }
+        let Some(view) = self.views.get(&id) else { return false };
+        let key = (self.scene_gen, view.cluster_gen);
+        if view.surface.as_ref().is_some_and(|s| s.pass_bind.as_ref().is_some_and(|(_, k)| *k == key)) {
+            return true;
+        }
+        let bg = self.view_bind_group_with(&view.uniform, view, false);
+        if let Some(target) = self.views.get_mut(&id).and_then(|v| v.surface.as_mut()) {
+            target.pass_bind = Some((bg, key));
+        }
+        true
+    }
+
+    fn view_bind_group_with(&self, uniform: &wgpu::Buffer, view: &ViewState, surface: bool) -> wgpu::BindGroup {
+        let surface_view = view.surface.as_ref().filter(|_| surface).map_or(&self.surface_dummy, |s| &s.view);
         self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("hp-render view"),
             layout: &self.shared.view_bgl,
@@ -2653,6 +2690,7 @@ impl Renderer {
                         self.projector_shadow_view().unwrap_or(&self.shadow_dummy_array),
                     ),
                 },
+                wgpu::BindGroupEntry { binding: 23, resource: wgpu::BindingResource::TextureView(surface_view) },
             ],
         })
     }
@@ -2946,6 +2984,15 @@ impl Renderer {
         };
         let shadow_prep_ms = lap.take();
         let mut uniform = self.view_uniform(&cam, &params, &opts, grid, shadow.as_ref().map(|s| &s.0), false, tone);
+        let compiled_drawn = !cam.is_ortho
+            && opts.compiled_lighting
+            && self.compiled.present
+            && compiled_light::textured_mode(params.mode);
+        let surface_on = self.surface_light_wanted(cam.is_ortho, compiled_drawn, reflecting.is_some());
+        let surface_on = self.ensure_surface_light(view_id, surface_on);
+        if surface_on {
+            uniform.opts[0] |= OPT_DECAL_LIGHT;
+        }
         if let (Some((fit, _)), Some(config)) = (&control, opts.shadow_control) {
             uniform.control_vp = fit.view_proj.to_cols_array_2d();
             uniform.control_params = [1.0, fit.depth_range, config.distance, (fit.texel_world * 0.5).max(0.05)];
@@ -3108,6 +3155,9 @@ impl Renderer {
             };
             for h in hooks.iter_mut() {
                 h.prepare(&hook_cx, &mut enc);
+            }
+            if let Some(target) = view.surface.as_ref().filter(|_| surface_on) {
+                self.record_surface_light(&hook_cx, target, &mut enc);
             }
             let bg = if uniform.opts[0] & OPT_FOG != 0 && shaded_3d {
                 [0, 1, 2].map(|i| f64::from(uniform.fog_b[i]))
@@ -3495,7 +3545,7 @@ impl Renderer {
                 mapped_at_creation: false,
             }),
         };
-        let bg = self.view_bind_group_with(&buffer, view);
+        let bg = self.view_bind_group_with(&buffer, view, false);
         if let Some(view) = self.views.get_mut(&id) {
             view.sky_pass = Some((buffer, bg, key));
         }
@@ -3792,7 +3842,8 @@ impl Renderer {
                 + v.overlay.size
                 + v.clusters.size
                 + v.light_indices.size
-                + v.cull.as_ref().map_or(0, light_cull::CullView::bytes);
+                + v.cull.as_ref().map_or(0, light_cull::CullView::bytes)
+                + v.surface.as_ref().map_or(0, surface_light::SurfaceTarget::bytes);
         }
         s.retained_overlay_bytes = self.retained.values().map(|r| r.size).sum();
         s.static_lines = self.static_lines.values().map(|l| u64::from(l.count)).sum();

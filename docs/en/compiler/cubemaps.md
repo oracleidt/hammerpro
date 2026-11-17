@@ -18,7 +18,9 @@ During the geometry step:
 
 ## Building the real cubemaps
 
-There are three ways:
+There are four ways:
+
+0. **At compile time, ray traced**: with ray tracing (`-raytracing`) at the Final or Optimal quality, or **Ray traced reflections** set to **Always** (`-rtreflections`), the lighting step renders every cubemap with the path tracer from the lit map and writes them where `buildcubemaps` would, see [Compile options](compile-options.md). The map has correct reflections the first time it loads.
 
 1. **In game, by hand**: load the map and run `buildcubemaps` in the console. The game writes them into the BSP in its `maps` folder.
 2. **During a release**: in the [Build and save as content](../features/build-content-release.md) window, **Build cubemaps and navigation in game** starts Garry's Mod (after a confirmation), builds the cubemaps (LDR and HDR) and the navigation mesh, then closes it. The checklist shows how many are built. Off by default.
@@ -46,7 +48,7 @@ Like Mapbase's VBSP: give an `env_cubemap` a `parallaxobb` key naming a `paralla
 
 ## FAQ
 
-**My reflections are black in game.** The placeholders are black until the cubemaps are built: run `buildcubemaps`, use the release game session, or write them from the editor. An `env_cubemap` inside a solid brush also gives a black cubemap ([Check for problems](../features/check-problems.md) reports it).
+**My reflections are black in game.** The placeholders are black until the cubemaps are built: compile with ray traced reflections, run `buildcubemaps`, use the release game session, or write them from the editor. An `env_cubemap` inside a solid brush also gives a black cubemap ([Check for problems](../features/check-problems.md) reports it).
 
 **I built the cubemaps in game, then recompiled, and they are gone.** Only `env_cubemap` entities that kept their origin and size keep their cubemap, and only through the copy to the maps folder (or the release option).
 

@@ -7,3 +7,4 @@ pub mod lights;
 pub mod pack;
 pub mod probes;
 pub mod rad;
+pub mod rad_doc;

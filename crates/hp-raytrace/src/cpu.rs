@@ -91,6 +91,7 @@ pub(crate) fn tuning(b: &Baker) -> Tuning {
         sky_samples: b.settings.params.sky_samples,
         style_bounce: b.settings.style_bounce,
         ao_radius: b.settings.ao_radius,
+        contact_ao: b.settings.params.contact_ao,
         clamp: b.state.clamp,
     }
 }

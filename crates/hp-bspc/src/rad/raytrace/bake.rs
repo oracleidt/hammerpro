@@ -18,6 +18,7 @@ const BOUNCE_STYLE_REACH: f32 = 1.5;
 pub(crate) struct Built {
     pub scene: rts::Scene,
     pub face_normals: Vec<usize>,
+    pub exposure: f32,
 }
 
 pub(crate) struct MaterialInfo {
@@ -206,6 +207,7 @@ pub(crate) fn build(
                 Some(f) => f.reflectivity.to_array(),
                 None => td.and_then(|t| map.reflectivity.get(t)).copied().unwrap_or([0.0; 3]),
             };
+            let refl = if params.cinematic { richer_bounce(refl) } else { refl };
             let see_through = clear.get(fi).copied().unwrap_or(false);
             let minfo = td.and_then(|t| materials.get(t));
             let translucent = see_through || minfo.is_some_and(|m| m.translucent && m.alpha.is_none());
@@ -283,7 +285,20 @@ pub(crate) fn build(
         };
         add(&mut scene, t.p.map(|v| v.to_array()), uv, [[0.0; 2]; 3], material, NONE);
     }
-    scene.lights = ctx.lights.list.iter().map(|l| engine_light(l, ctx.lights.sun_extent, &params)).collect();
+    let pairs: Vec<(rts::Light, rts::Light)> = ctx
+        .lights
+        .list
+        .par_iter()
+        .map(|l| {
+            let mut e = engine_light(l, ctx.lights.sun_extent, &params);
+            let original = e;
+            let fixture = params.cinematic && cinematic_light(&mut e, ctx.shadow);
+            fit_light_size(&mut e, ctx.shadow, params.light_size_scale, fixture);
+            (original, e)
+        })
+        .collect();
+    let (originals, lights): (Vec<rts::Light>, Vec<rts::Light>) = pairs.into_iter().unzip();
+    scene.lights = lights;
     scene.sky_cameras =
         ctx.cameras.iter().map(|(o, inv)| rts::SkyCamera { origin: o.to_array(), inv_scale: *inv }).collect();
     let total_luxels: usize = faces.iter().map(LitFace::luxels).sum();
@@ -316,7 +331,87 @@ pub(crate) fn build(
             minlight: job.minlight,
         });
     }
-    Built { scene, face_normals }
+    let exposure = if params.cinematic {
+        let first = exposure_match(&mut scene, &originals);
+        knee_lights(&mut scene.lights, &originals);
+        let second = exposure_match(&mut scene, &originals);
+        knee_lights(&mut scene.lights, &originals);
+        first * second
+    } else {
+        1.0
+    };
+    Built { scene, face_normals, exposure }
+}
+
+const MATCH_LUXELS: usize = 16;
+
+pub(crate) fn exposure_match(scene: &mut rts::Scene, originals: &[rts::Light]) -> f32 {
+    let changed: Vec<bool> = scene
+        .lights
+        .iter()
+        .zip(originals)
+        .map(|(a, b)| a.constant != b.constant || a.quadratic != b.quadratic || a.kind != b.kind)
+        .collect();
+    if !changed.iter().any(|c| *c) {
+        return 1.0;
+    }
+    let lum = |i: [f32; 3]| 0.2126 * i[0] + 0.7152 * i[1] + 0.0722 * i[2];
+    let reach = |l: &rts::Light, pos: Vec3A, n: Vec3A| -> f32 {
+        let to = Vec3A::from_array(l.position) - pos;
+        let dist = to.length();
+        if dist.is_nan() || dist <= 1e-3 || dist > l.reach {
+            return 0.0;
+        }
+        let dir = to / dist;
+        let c = dir.dot(n);
+        if c <= 0.0 { 0.0 } else { lum(l.intensity[0]) * l.falloff(dir, dist) * c }
+    };
+    let scene_ref = &*scene;
+    let mut ratios: Vec<f32> = scene_ref
+        .surfaces
+        .par_iter()
+        .filter_map(|s| {
+            let lux = s.luxels();
+            if lux == 0 || s.lights.1 == 0 {
+                return None;
+            }
+            let step = lux.div_ceil(MATCH_LUXELS).max(1);
+            let (mut now, mut before) = (0.0f64, 0.0f64);
+            for i in (0..lux).step_by(step) {
+                let l = &scene_ref.luxels[s.first_luxel as usize + i];
+                if l.points == 0 {
+                    continue;
+                }
+                let p = &scene_ref.points[l.first_point as usize];
+                let (pos, n) = (Vec3A::from_array(p.pos), Vec3A::from_array(p.normals[0]));
+                for j in 0..s.lights.1 {
+                    let li = scene_ref.light_lists[(s.lights.0 + j) as usize] as usize;
+                    if !changed[li] {
+                        continue;
+                    }
+                    now += f64::from(reach(&scene_ref.lights[li], pos, n));
+                    before += f64::from(reach(&originals[li], pos, n));
+                }
+            }
+            (before > 1e-3).then(|| (now / before) as f32)
+        })
+        .collect();
+    if ratios.is_empty() {
+        return 1.0;
+    }
+    let mid = ratios.len() / 2;
+    ratios.select_nth_unstable_by(mid, f32::total_cmp);
+    let k = (1.0 / ratios[mid].max(1e-3)).clamp(0.67, 1.35);
+    for (l, c) in scene.lights.iter_mut().zip(&changed) {
+        if *c {
+            for i in &mut l.intensity {
+                for v in i.iter_mut() {
+                    *v *= k;
+                }
+            }
+        }
+    }
+    k
 }
 
 pub(crate) const MAX_SAMPLE_POINTS: usize = 24_000_000;
@@ -350,14 +445,17 @@ pub(crate) fn engine_light(
         intensity[p] = i.to_array();
     }
     let (kind, size) = match l.kind {
-        Kind::Point => (rts::LightKind::Point, DEFAULT_LIGHT_SIZE * scale),
+        Kind::Point => (rts::LightKind::Point, params.light_radius * scale),
         Kind::Spot { stopdot, stopdot2, exponent } => {
-            (rts::LightKind::Spot { stopdot, stopdot2, exponent }, DEFAULT_LIGHT_SIZE * scale)
+            (rts::LightKind::Spot { stopdot, stopdot2, exponent }, params.light_radius * scale)
         }
         Kind::Surface => (rts::LightKind::Surface, 0.0),
         Kind::Sun => match params.sun_angle {
             Some(deg) => (rts::LightKind::Sun, deg.to_radians().sin().max(0.0)),
-            None => (rts::LightKind::Sun, (sun_extent.max(0.0) * scale.max(0.0)).min(0.7)),
+            None => {
+                let soft = params.sun_soft_angle.to_radians().sin().max(0.0) * scale.max(0.0);
+                (rts::LightKind::Sun, (sun_extent.max(0.0) * scale.max(0.0)).max(soft).min(0.7))
+            }
         },
         Kind::SkyAmbient => (rts::LightKind::SkyAmbient, 0.0),
     };
@@ -375,6 +473,211 @@ pub(crate) fn engine_light(
         reach: l.reach,
         size,
     }
+}
+
+const CLEARANCE_SHARE: f32 = 0.75;
+
+pub(crate) fn clearance(shadow: &hp_light::bvh::Bvh, at: Vec3A, reach: f32, below_only: bool) -> f32 {
+    let mut best = reach;
+    for x in -1i32..=1 {
+        for y in -1i32..=1 {
+            for z in -1i32..=1 {
+                if (x == 0 && y == 0 && z == 0) || (below_only && z > 0) {
+                    continue;
+                }
+                let d = Vec3A::new(x as f32, y as f32, z as f32).normalize();
+                if let Some(h) = shadow.closest(at, d, best, |_| true) {
+                    best = best.min(h.t);
+                }
+            }
+        }
+    }
+    best
+}
+
+pub(crate) fn fit_light_size(light: &mut rts::Light, shadow: &hp_light::bvh::Bvh, scale: f32, fixture: bool) {
+    if !matches!(light.kind, rts::LightKind::Point | rts::LightKind::Spot { .. }) {
+        return;
+    }
+    if fixture {
+        light.size *= FIXTURE_SIZE;
+    }
+    let floor = (DEFAULT_LIGHT_SIZE * scale.max(0.0)).min(light.size);
+    if light.size <= floor {
+        return;
+    }
+    let room = clearance(shadow, Vec3A::from_array(light.position), light.size / CLEARANCE_SHARE, fixture);
+    light.size = light.size.min(room * CLEARANCE_SHARE).max(floor);
+}
+
+pub(crate) const FIXTURE_SIZE: f32 = 1.5;
+pub(crate) const CEILING_REACH: f32 = 32.0;
+pub(crate) const FIXTURE_GAIN: f32 = 2.0;
+const POOL_SOFTNESS: f32 = 0.5;
+const POOL_GAIN: f32 = 1.3;
+const POOL_FADE: f32 = 0.75;
+const BLEED: f32 = 1.35;
+
+fn base_falloff(l: &rts::Light, d: f32) -> f32 {
+    let e = d.max(1.0).min(l.cap);
+    let denom = l.constant + e * (l.linear + e * l.quadratic);
+    if denom > 0.0 { 1.0 / denom } else { 0.0 }
+}
+
+pub(crate) fn reference_distance(l: &rts::Light) -> f32 {
+    let half = base_falloff(l, 1.0) * 0.5;
+    let (mut lo, mut hi) = (1.0f32, 8192.0f32);
+    if base_falloff(l, hi) > half {
+        return hi;
+    }
+    for _ in 0..40 {
+        let mid = 0.5 * (lo + hi);
+        if base_falloff(l, mid) > half {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    hi
+}
+
+pub(crate) fn cinematic_light(light: &mut rts::Light, shadow: &hp_light::bvh::Bvh) -> bool {
+    if !matches!(light.kind, rts::LightKind::Point | rts::LightKind::Spot { .. }) {
+        return false;
+    }
+    if light.quadratic <= 0.0 && light.linear <= 0.0 {
+        return false;
+    }
+    let dref = reference_distance(light).clamp(64.0, 512.0);
+    let soft = (POOL_SOFTNESS * dref).max(light.size);
+    let gain = base_falloff(light, dref) * (dref * dref + soft * soft) * POOL_GAIN;
+    if !(gain.is_finite() && gain > 0.0) {
+        return false;
+    }
+    let reach = light.reach.min(1.0e6);
+    let (start, end) = light.fade;
+    let end = if end > start && end < reach { end } else { reach };
+    let end = end.min(tail_distance(light, dref, end));
+    light.constant = soft * soft;
+    light.linear = 0.0;
+    light.quadratic = 1.0;
+    light.cap = 1.0e22;
+    light.fade = (POOL_FADE * end, end);
+    for i in &mut light.intensity {
+        for c in i.iter_mut() {
+            *c *= gain;
+        }
+    }
+    let at = Vec3A::from_array(light.position);
+    let ceiling =
+        light.kind == rts::LightKind::Point && shadow.closest(at, Vec3A::Z, CEILING_REACH, |_| true).is_some();
+    if ceiling {
+        light.kind = rts::LightKind::Spot { stopdot: 0.0, stopdot2: 0.0, exponent: 1.0 };
+        light.direction = [0.0, 0.0, -1.0];
+        for i in &mut light.intensity {
+            for c in i.iter_mut() {
+                *c *= FIXTURE_GAIN;
+            }
+        }
+    }
+    ceiling
+}
+
+pub(crate) const KNEE: f32 = 1.6;
+pub(crate) const FIXTURE_KNEE: f32 = 1.4;
+pub(crate) const MIN_POOL_SOFTNESS: f32 = 14.0;
+const KNEE_SAMPLES: usize = 64;
+const SOFT_STEPS: usize = 24;
+const TAIL: f32 = 0.01;
+const KNEE_FLOOR: f32 = 0.25;
+
+fn tail_distance(l: &rts::Light, dref: f32, limit: f32) -> f32 {
+    let floor = base_falloff(l, dref) * TAIL;
+    let (mut lo, mut hi) = (dref, limit.max(dref));
+    if base_falloff(l, hi) > floor {
+        return hi;
+    }
+    for _ in 0..40 {
+        let mid = 0.5 * (lo + hi);
+        if base_falloff(l, mid) > floor {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    hi
+}
+
+fn luminance3(c: [f32; 3]) -> f32 {
+    0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+}
+
+pub(crate) fn pool_peak(light: &rts::Light, original: &rts::Light, dref: f32) -> f32 {
+    let axis = -Vec3A::from_array(light.direction).normalize_or(Vec3A::NEG_Z);
+    let axis_before = -Vec3A::from_array(original.direction).normalize_or(Vec3A::NEG_Z);
+    let (i_now, i_before) = (luminance3(light.intensity[0]), luminance3(original.intensity[0]));
+    let floor = original.falloff(axis_before, dref) * i_before * KNEE_FLOOR;
+    let end = light.fade.1.max(dref);
+    let mut peak = 0.0f32;
+    for k in 0..KNEE_SAMPLES {
+        let d = end.powf(k as f32 / (KNEE_SAMPLES - 1) as f32).max(1.0);
+        let before = (original.falloff(axis_before, d) * i_before).max(floor);
+        if before <= 0.0 {
+            continue;
+        }
+        peak = peak.max(light.falloff(axis, d) * i_now / before);
+    }
+    peak
+}
+
+pub(crate) fn knee_lights(lights: &mut [rts::Light], originals: &[rts::Light]) {
+    lights.par_iter_mut().zip(originals.par_iter()).for_each(|(light, original)| {
+        if light.quadratic != 1.0 || light.linear != 0.0 || original.constant == light.constant {
+            return;
+        }
+        let dref = reference_distance(original).clamp(64.0, 512.0);
+        let reshape = |light: &mut rts::Light, soft: f32| {
+            let now = light.constant.max(0.0);
+            let scale = (dref * dref + soft * soft) / (dref * dref + now);
+            light.constant = soft * soft;
+            for i in &mut light.intensity {
+                for c in i.iter_mut() {
+                    *c *= scale;
+                }
+            }
+        };
+        let lo = light.constant.max(0.0).sqrt().max(MIN_POOL_SOFTNESS);
+        let hi = (4.0 * dref).max(lo);
+        let mut best = (f32::INFINITY, lo);
+        for k in 0..SOFT_STEPS {
+            let soft = lo * (hi / lo).powf(k as f32 / (SOFT_STEPS - 1) as f32);
+            reshape(light, soft);
+            let peak = pool_peak(light, original, dref);
+            if peak < best.0 {
+                best = (peak, soft);
+            }
+        }
+        reshape(light, best.1);
+        let peak = best.0;
+        let fixture = original.kind == rts::LightKind::Point && light.kind != rts::LightKind::Point;
+        let limit = if fixture { KNEE * FIXTURE_KNEE } else { KNEE };
+        let scale = if peak > limit { limit / peak } else { 1.0 };
+        for i in &mut light.intensity {
+            for c in i.iter_mut() {
+                *c *= scale;
+            }
+        }
+    });
+}
+
+pub(crate) fn richer_bounce(refl: [f32; 3]) -> [f32; 3] {
+    let lum = 0.2126 * refl[0] + 0.7152 * refl[1] + 0.0722 * refl[2];
+    let mut out = refl.map(|c| (lum + (c - lum) * BLEED).max(0.0));
+    let now = 0.2126 * out[0] + 0.7152 * out[1] + 0.0722 * out[2];
+    if now > 1e-4 {
+        out = out.map(|c| c * lum / now);
+    }
+    out.map(|c| c.min(0.9))
 }
 
 struct FaceJob {
@@ -505,9 +808,36 @@ pub(crate) fn to_face_lights(
     out: &hp_raytrace::Output,
     built: &Built,
     passes: usize,
-    ao_strength: f32,
+    ao_strength: (f32, f32),
 ) -> Vec<FaceLight> {
     out.surfaces.par_iter().enumerate().map(|(si, so)| face_light(so, built, si, passes, ao_strength)).collect()
+}
+
+pub(crate) fn contact_exposure(out: &hp_raytrace::Output, built: &Built, strength: f32) -> f32 {
+    if strength <= 0.0 {
+        return 1.0;
+    }
+    let mut factors: Vec<f32> = Vec::new();
+    for (si, so) in out.surfaces.iter().enumerate() {
+        let s = &built.scene.surfaces[si];
+        let (mut sum, mut n) = (0.0f32, 0u32);
+        for (i, ao) in so.ao.iter().enumerate().take(s.luxels()) {
+            if built.scene.luxels[s.first_luxel as usize + i].points > 0 {
+                sum += (1.0 - strength * (1.0 - ao)).max(0.0);
+                n += 1;
+            }
+        }
+        if n > 0 {
+            factors.push(sum / n as f32);
+        }
+    }
+    if factors.is_empty() {
+        return 1.0;
+    }
+    let mid = factors.len() / 2;
+    factors.select_nth_unstable_by(mid, f32::total_cmp);
+    let m = factors[mid];
+    if m > 0.05 { (1.0 / m).min(1.5) } else { 1.0 }
 }
 
 pub(crate) fn face_light(
@@ -515,7 +845,7 @@ pub(crate) fn face_light(
     built: &Built,
     si: usize,
     passes: usize,
-    ao_strength: f32,
+    ao_strength: (f32, f32),
 ) -> FaceLight {
     let s = &built.scene.surfaces[si];
     let onn = built.face_normals[si];
@@ -529,7 +859,7 @@ pub(crate) fn face_light(
         let d = Vec3A::from_array(so.direct[k]);
         let ind = Vec3A::from_array(so.indirect[k]);
         let ao = so.ao.get(i).copied().unwrap_or(1.0);
-        d + ind * (1.0 - ao_strength * (1.0 - ao))
+        d * (1.0 - ao_strength.0 * (1.0 - ao)).max(0.0) + ind * (1.0 - ao_strength.1 * (1.0 - ao)).max(0.0)
     };
     let keep: Vec<usize> = (0..ns)
         .filter(|&slot| {

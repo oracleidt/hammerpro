@@ -60,6 +60,7 @@ pub fn budget_color(fraction: f64) -> egui::Color32 {
 pub struct LightingTab {
     cc_edit: [Option<String>; 4],
     vrad: bool,
+    rad_editor: crate::rad_editor::RadEditor,
 }
 
 impl LightingTab {
@@ -255,6 +256,17 @@ impl LightingTab {
         ui.checkbox(&mut options.no_style_bounce, t!("lighting.vrad_no_style_bounce"))
             .on_hover_text(t!("lighting.vrad_no_style_bounce_tip"));
         ui.checkbox(&mut options.fast_ambient, t!("lighting.vrad_fast_ambient"));
+        ui.separator();
+        ui.label(egui::RichText::new(t!("compile.rad_row")).strong());
+        let map = state.doc.path().map(std::path::Path::to_path_buf);
+        if crate::compile::rad_file_ui(ui, &mut state.settings.compile, map.as_deref()) {
+            state.settings_dirty = true;
+        }
+        if state.settings.compile.rad_file_enabled {
+            egui::CollapsingHeader::new(t!("lighting.radedit_heading")).id_salt("hp_rad_editor").show(ui, |ui| {
+                self.rad_editor.ui(ui, state);
+            });
+        }
         ui.separator();
         ui.label(egui::RichText::new(t!("lighting.vrad_entities")).strong());
         let mut entities: Vec<_> = state

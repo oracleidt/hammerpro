@@ -179,7 +179,7 @@
 
 - Заголовок вкладки «Выходы» становится выделенным, когда с выходом возникает проблема: обратите внимание на красные ячейки.
 - Используйте **Упорядочить** один раз на импортированной карте, затем переместите нужные узлы: остальные будут следовать автоматическому расположению.
-- Через MCP: `list_connections`, `add_connection`, `edit_connection`, `remove_connections`, `get_io_graph`, `list_targetnames`, `rename_targetname`, `check_entity`, `get_logical_graph` (узлы, значки и края логического представления с его фильтром) и `get_views` (квадрант вида `logical`). См. [Справочник по инструменту MCP] (../../MCP.md).
+- Через MCP: `list_connections`, `add_connection`, `edit_connection`, `remove_connections`, `get_io_graph`, `list_targetnames`, `rename_targetname` (переименовывает имя и все ссылки на него, см. [Переименование и ссылки](entity-properties.md#переименование-и-ссылки)), `check_entity`, `get_logical_graph` (узлы, значки и края логического представления с его фильтром) и `get_views` (квадрант вида `logical`). См. [Справочник по инструменту MCP] (../../MCP.md).
 
 <a id="faq"></a>
 ## Частые вопросы

@@ -20,7 +20,9 @@ Les matériaux de ciel LDR, HDR et HDR compressé sont reconnus, y compris les f
 
 Une cubemap de réflexion manquante ne coupe pas l'éclairage des surfaces. Une passe d'éclairage entièrement noire produit son propre avertissement : vérifiez les lumières, `light_environment`, les ouvertures vers le ciel et les intensités HDR.
 
-Trois façons :
+Quatre façons :
+
+0. **À la compilation, en ray tracing** : avec le ray tracing (`-raytracing`) en qualité Final ou Optimal, ou **Reflets ray tracés** réglé sur **Toujours** (`-rtreflections`), l'étape d'éclairage rend chaque cubemap avec le path tracer à partir de la map éclairée et les écrit là où `buildcubemaps` le ferait, voir [Options de compilation](compile-options.md). La map a des reflets justes dès son premier chargement.
 
 1. **En jeu, à la main** : chargez la map et tapez `buildcubemaps` dans la console. Le jeu les écrit dans le BSP de son dossier `maps`.
 2. **Pendant une sortie** : dans la fenêtre [Construire et enregistrer en contenu](../features/build-content-release.md), **Construire les cubemaps et la navigation en jeu** lance Garry's Mod (après confirmation), construit les cubemaps (LDR et HDR) et le maillage de navigation, puis le ferme. La liste de vérification indique combien sont construites. Désactivé par défaut.

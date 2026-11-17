@@ -9,7 +9,7 @@ use hp_bspc::rad::session::{Control, FaceOut, Phase, Session, Stop};
 use super::super::{bsp, child, style_maps};
 use super::{
     CostEntry, FaceTexels, Layer, LightOptions, LitStats, Mounts, PHASE_BOUNCE, PHASE_COMPILE, PHASE_DIRECT,
-    PHASE_MODELS, PHASE_OUTPUT, PHASE_SCENE, Reply, Request,
+    PHASE_MODELS, PHASE_OUTPUT, PHASE_SCENE, Reply, Request, SkyboxShadeStat,
 };
 
 pub(crate) type Shared = Arc<dyn Fn(Reply, Vec<u8>) + Send + Sync>;
@@ -26,6 +26,7 @@ pub(super) struct Geometry {
 struct Warm {
     key: u64,
     session: Session,
+    skybox: Option<SkyboxShadeStat>,
 }
 
 #[derive(Default)]
@@ -396,13 +397,21 @@ impl Engine {
                 .first()
                 .and_then(|w| w.get("_lightsrad").map(str::trim).filter(|v| !v.is_empty()).map(str::to_owned))
         });
-        if self.light_files.as_ref().is_none_or(|(w, _)| *w != world) {
-            let game: Option<PathBuf> = self.fs.as_ref().and_then(|fs| fs.game_dir().map(std::path::Path::to_path_buf));
-            let files = crate::bspc_cli::light_files(game.as_deref(), None, None, world.as_deref(), None, &mut |l| {
+        let game: Option<PathBuf> = self.fs.as_ref().and_then(|fs| fs.game_dir().map(std::path::Path::to_path_buf));
+        let map = o.rad.map.as_deref().map(std::path::Path::new);
+        let files = crate::bspc_cli::light_files(
+            game.as_deref(),
+            None,
+            o.rad.lights.as_deref(),
+            world.as_deref(),
+            map,
+            &mut |l| {
                 log::debug!("lighting host: {l}");
-            });
-            self.light_files = Some((world, files));
-        }
+            },
+        );
+        self.light_files = Some((world, files));
+        opts.texlights.map_name =
+            map.and_then(std::path::Path::file_stem).map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         opts.texlights.files = self.light_files.as_ref().map(|(_, f)| f.clone()).unwrap_or_default();
         opts
     }
@@ -454,12 +463,15 @@ impl Engine {
             let mut session = Session::new(geometry.bsp.clone(), &opts, &models, &mut |l| say(out, l), &ctl)?;
             session.accept_carry(self.carry.take());
             scene_seconds = t.elapsed().as_secs_f32();
-            self.warm = Some(Warm { key: geometry.key, session });
+            self.warm = Some(Warm { key: geometry.key, session, skybox: None });
         }
         let warm = self.warm.as_mut().ok_or_else(|| Stop::Failed("no lighting session".into()))?;
         let mut relit = warm.session.relight(&geometry.entities, &opts, focus, &ctl, &mut |l| say(out, l))?;
         if all && !relit.full {
             relit.faces = warm.session.output_all();
+        }
+        if relit.full || relit.changed_lights > 0 || !reuse {
+            warm.skybox = warm.session.skybox_shade().map(|s| super::skybox_stat(&s));
         }
         let styled = warm.session.styled_entities().map(<[hp_bsp::Entity]>::to_vec).unwrap_or_default();
         let converted = convert(&relit.faces, &styled, hdr);
@@ -477,6 +489,7 @@ impl Engine {
             seconds: started.elapsed().as_secs_f32(),
             session_mb: mb(warm.session.bytes()),
             process_mb: super::super::memory::of_self().map_or(0, |u| u.working_set >> 20),
+            skybox: warm.skybox,
         };
         out(Reply::Lit { job, stats }, super::encode_faces(&converted));
         Ok(())

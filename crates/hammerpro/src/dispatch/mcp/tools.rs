@@ -162,6 +162,7 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_fgd::DOMAIN,
     &super::tools_games::DOMAIN,
     &super::tools_discord::DOMAIN,
+    &super::tools_rad::DOMAIN,
     &super::tools_update::DOMAIN,
     &super::tools_team::DOMAIN,
     &super::tools_crash::DOMAIN,
@@ -811,7 +812,7 @@ pub(super) fn fmt_num(x: f64) -> String {
 }
 
 fn set_entity_keyvalues(state: &mut AppState, v: &Value) -> R<ToolResult> {
-    let a = args(v, &["id", "set", "remove"])?;
+    let a = args(v, &["id", "set", "remove", "update_references"])?;
     let id = a.id("id")?;
     let set = a.keyvalues("set")?;
     let remove = a.strings("remove", 1000)?;
@@ -840,9 +841,20 @@ fn set_entity_keyvalues(state: &mut AppState, v: &Value) -> R<ToolResult> {
                 && hp_app::runtime::helpers::brush_entity_needs_origin(state.assets.fgd(), v)
         })
         && !remove.iter().any(|k| k.eq_ignore_ascii_case("origin"));
-    edit(state, "set_entity_keyvalues", |doc| {
+    let refs = a.opt_bool("update_references")?.unwrap_or(state.settings.edit.rename_updates_references);
+    let rename = set
+        .iter()
+        .find(|(k, val)| !is_world && k.eq_ignore_ascii_case("targetname") && !val.trim().is_empty())
+        .map(|(_, val)| val.clone());
+    if let Some(name) = &rename {
+        super::tools_entities::check_name(name)?;
+    }
+    let mut report = None;
+    super::tools_entities::rename_edit(state, "set_entity_keyvalues", |doc, fgd| {
         for (k, val) in &set {
-            if is_world {
+            if rename.is_some() && k.eq_ignore_ascii_case("targetname") {
+                report = Some(hp_ui_entities::rename::rename_ids(doc, fgd, &[id], val, refs, true)?);
+            } else if is_world {
                 doc.set_world_key(k, val)?;
             } else if k.eq_ignore_ascii_case("classname") {
                 check_class(val).map_err(hp_editor::EditError::Invalid)?;
@@ -866,7 +878,11 @@ fn set_entity_keyvalues(state: &mut AppState, v: &Value) -> R<ToolResult> {
     let scene = state.doc.scene();
     let e = if is_world { scene.world() } else { &scene.entity(id).ok_or("the entity is gone")?.entity };
     let kv: Map<String, Value> = e.props.iter().map(|(k, v)| (k.clone(), Value::String(v.clone()))).collect();
-    Ok(ToolResult::json(json!({ "id": id, "classname": e.classname, "keyvalues": kv })))
+    let mut out = json!({ "id": id, "classname": e.classname, "keyvalues": kv });
+    if let Some(r) = &report {
+        out["rename"] = super::tools_entities::report_json(r);
+    }
+    Ok(ToolResult::json(out))
 }
 
 fn delete_objects(state: &mut AppState, v: &Value) -> R<ToolResult> {
@@ -1025,7 +1041,7 @@ fn move_objects(state: &mut AppState, v: &Value) -> R<ToolResult> {
 }
 
 fn rotate_objects(state: &mut AppState, v: &Value) -> R<ToolResult> {
-    let a = args(v, &["ids", "solid_ids", "axis", "degrees", "pivot"])?;
+    let a = args(v, &["ids", "solid_ids", "axis", "degrees", "pivot", "duplicate"])?;
     let objs = objects(&state.doc, &a)?;
     if objs.is_empty() {
         return Err("give ids or solid_ids".to_owned());
@@ -1046,9 +1062,34 @@ fn rotate_objects(state: &mut AppState, v: &Value) -> R<ToolResult> {
             .map(|b| b.center())
             .ok_or("the objects have no bounds: give a pivot")?,
     };
+    if a.opt_bool("duplicate")?.unwrap_or(false) {
+        return rotate_copies(state, &objs, pivot, axis, degrees);
+    }
     edit(state, "rotate_objects", |doc| doc.rotate_axis(&objs, pivot, axis, degrees))?;
     let b = state.doc.scene().objects_bounds(&objs, &entity_bounds(state));
     Ok(ToolResult::json(json!({ "rotated": objs.len(), "pivot": v3(pivot), "bounds": bounds_json(b) })))
+}
+
+fn rotate_copies(state: &mut AppState, objs: &[ObjRef], pivot: DVec3, axis: DVec3, degrees: f64) -> R<ToolResult> {
+    let q = glam::DQuat::from_axis_angle(axis, degrees.to_radians());
+    let m = glam::DMat4::from_translation(pivot) * glam::DMat4::from_quat(q) * glam::DMat4::from_translation(-pivot);
+    let keep = state.settings.selection.clone_keeps_visgroups;
+    let AppState { doc, assets, .. } = state;
+    if doc.in_transaction() {
+        return Err("Hammer Pro is in the middle of another edit (a drag in a view?); try again".to_owned());
+    }
+    let fgd = assets.fgd().filter(|f| !f.is_empty());
+    let targets = |class: &str, key: &str| fgd.and_then(|f| hp_app::runtime::helpers::fgd_target_key(f, class, key));
+    let copies = doc
+        .transaction(undo_label("rotate_objects"), |doc| {
+            doc.duplicate_transformed_with(objs, m, pivot, keep, Some(&targets))
+        })
+        .map_err(|e| e.to_string())?;
+    let b = state.doc.scene().objects_bounds(&copies, &entity_bounds(state));
+    let ids: Vec<Value> = copies.iter().map(|o| obj_json(*o)).collect();
+    Ok(ToolResult::json(
+        json!({ "rotated": copies.len(), "copies": ids, "pivot": v3(pivot), "bounds": bounds_json(b) }),
+    ))
 }
 
 fn select_objects(state: &mut AppState, v: &Value) -> R<ToolResult> {
@@ -1371,6 +1412,18 @@ mod tests {
         assert_eq!(b.min.x, 16.0);
         ok(&mut state, "rotate_objects", json!({ "ids": [solid], "axis": "z", "degrees": 90 }));
         assert_eq!(state.doc.undo_label(), Some("MCP: rotate_objects"));
+        let before = state.doc.scene().solid_bounds(solid).unwrap();
+        let undo_len = state.doc.history_len().0;
+        let dup =
+            ok(&mut state, "rotate_objects", json!({ "ids": [solid], "axis": "x", "degrees": -90, "duplicate": true }));
+        assert_eq!(dup["rotated"], 1);
+        assert_eq!(state.doc.undo_label(), Some("MCP: rotate_objects"));
+        assert_eq!(state.doc.history_len().0, undo_len + 1, "copy and rotation are one undo step");
+        assert_eq!(state.doc.scene().solid_bounds(solid).unwrap(), before, "the original stays");
+        let copy = dup["copies"][0]["id"].as_u64().unwrap();
+        let cb = state.doc.scene().solid_bounds(copy as hp_editor::Id).unwrap();
+        assert!((cb.size().y - before.size().z).abs() < 1e-6 && (cb.size().z - before.size().y).abs() < 1e-6);
+        assert!(state.doc.undo());
 
         ok(
             &mut state,

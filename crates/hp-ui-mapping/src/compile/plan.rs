@@ -101,6 +101,7 @@ pub(crate) fn threads_of(s: &CompileSettings) -> Option<u32> {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct PlanExtras {
+    pub map: Option<PathBuf>,
     pub modes: Option<StepModes>,
     pub deferred_pack: Option<DeferredFiles>,
     pub launch_flags: Vec<&'static str>,
@@ -186,6 +187,7 @@ pub(crate) fn plan_options(
         rad_flags: super::options_ui::flag_choices(&s.rad_flag_choices),
         static_prop_lighting: s.static_prop_lighting,
         static_prop_shadows: s.static_prop_shadows,
+        lights_file: s.chosen_rad_file().map(PathBuf::from),
         target,
         raytracing: super::raytrace_ui::plan_options(s),
     }
@@ -226,6 +228,8 @@ pub(crate) fn build_plan_with(
     }
     opts.deferred_pack = extras.deferred_pack;
     opts.content_args = extras.content_args;
+    opts.lights_file =
+        s.chosen_rad_file().and_then(|f| hp_app::settings::resolve_rad_path(f, extras.map.as_deref().or(Some(vmf))));
     let mut plan = CompilePlan::preset(preset_of(s.preset), tools, vmf, &opts)?;
     pass_model_compiler(&mut plan, s);
     Ok(plan)

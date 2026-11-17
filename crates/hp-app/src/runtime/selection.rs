@@ -22,6 +22,7 @@ pub struct DragTransform {
 #[derive(Debug, Default)]
 pub struct SelectionRuntime {
     pub modal_transform: bool,
+    pub typing_angle: bool,
     pub drag: Option<DragTransform>,
     pub edges: Vec<EdgeRef>,
     pub vertices: Vec<(Id, DVec3)>,

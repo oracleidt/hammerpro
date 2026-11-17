@@ -33,6 +33,14 @@ pub(crate) struct LightOptions {
     pub threads: usize,
     #[serde(default)]
     pub raytracing: Option<RayOptions>,
+    #[serde(default)]
+    pub rad: RadFiles,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub(crate) struct RadFiles {
+    pub lights: Option<String>,
+    pub map: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -69,6 +77,18 @@ pub(crate) struct LitStats {
     pub seconds: f32,
     pub session_mb: u64,
     pub process_mb: u64,
+    pub skybox: Option<SkyboxShadeStat>,
+}
+
+pub(crate) type SkyboxShadeStat = hp_app::runtime::SkyboxShadeStatus;
+
+pub(crate) fn skybox_stat(s: &hp_bspc::rad::SkyboxShade) -> SkyboxShadeStat {
+    SkyboxShadeStat {
+        sunlit: s.sunlit,
+        shaded: s.shaded,
+        camera: s.cameras.first().map_or([0.0; 3], |c| [c.x, c.y, c.z]),
+        cameras: s.cameras.len() as u32,
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -448,6 +468,7 @@ mod tests {
                 tuning: "6,40,0,1,0,0,0,0".into(),
                 threads: 4,
                 raytracing: Some(RayOptions { args: vec!["-raytracing".into(), "-rtbounces".into(), "9".into()] }),
+                rad: RadFiles { lights: Some("E:/x/my.rad".into()), map: Some("E:/x/map.vmf".into()) },
             },
             focus: Some([1.0, 2.0, 3.0]),
             stream: true,

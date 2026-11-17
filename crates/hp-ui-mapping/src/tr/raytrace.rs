@@ -95,6 +95,20 @@ pub const TR: TrTable = &[
         "Scale of the size of every light (-rtlightsize): bigger lights give softer shadows, 0 gives sharp point light shadows.",
         "Échelle de la taille de chaque lumière (-rtlightsize) : des lumières plus grandes donnent des ombres plus douces, 0 donne les ombres nettes d'une lumière ponctuelle.",
     ),
+    ("raytrace.look", "Look", "Rendu"),
+    (
+        "raytrace.look_tip",
+        "Look of the ray traced lighting (-rtlook). Cinematic (automatic in Final and Optimal): lamps light with a true inverse square falloff from an area source, keeping their brightness at their reference distance, so you get a bright pool under each lamp and smooth gradients; ceiling lamps shine downward and leave the ceiling above them darker; bounced light keeps more of the surface colours; deep contact shadows in corners and under props. Classic keeps the authored falloff of every light like VRAD.",
+        "Rendu de l'éclairage en ray tracing (-rtlook). Cinématique (automatique en Final et Optimal) : les lampes éclairent avec une vraie décroissance en inverse du carré depuis une source de surface, en gardant leur luminosité à leur distance de référence, d'où une flaque de lumière sous chaque lampe et des dégradés doux ; les plafonniers éclairent vers le bas et laissent le plafond au dessus plus sombre ; la lumière rebondie garde plus les couleurs des surfaces ; ombres de contact profondes dans les coins et sous les props. Classique garde la décroissance réglée de chaque lumière comme VRAD.",
+    ),
+    ("raytrace.look.classic", "Classic (like VRAD)", "Classique (comme VRAD)"),
+    ("raytrace.look.cinematic", "Cinematic", "Cinématique"),
+    ("raytrace.luxel_detail", "Lightmap detail", "Détail des lightmaps"),
+    (
+        "raytrace.luxel_detail_tip",
+        "Finer lightmaps for the ray traced bake (-rtluxels, 1 to 4): 2 puts twice as many luxels along each side of a face (lightmap scale divided by 2), for sharp contact shadows and smooth soft penumbras. Faces stay within the engine lightmap size limit and the lightmaps within a 32 MB per pass budget; automatic: x2 in Final, x1 otherwise.",
+        "Lightmaps plus fines pour le calcul en ray tracing (-rtluxels, 1 à 4) : 2 met deux fois plus de luxels sur chaque côté d'une face (échelle de lightmap divisée par 2), pour des ombres de contact nettes et des pénombres douces. Les faces restent dans la limite de taille de lightmap du moteur et les lightmaps dans un budget de 32 Mo par passe ; automatique : x2 en Final, x1 sinon.",
+    ),
     ("raytrace.sun_angle", "Sun angular size", "Taille angulaire du soleil"),
     (
         "raytrace.sun_angle_tip",
@@ -280,6 +294,15 @@ pub const TR: TrTable = &[
         "Places env_cubemap entities with sizes that match the new lighting, only when the map has no env_cubemap of its own (-rtnocubemaps turns it off).",
         "Place des entités env_cubemap de tailles adaptées au nouvel éclairage, seulement quand la map n'a pas d'env_cubemap à elle (-rtnocubemaps le désactive).",
     ),
+    ("raytrace.reflections", "Ray traced reflections", "Reflets ray tracés"),
+    (
+        "raytrace.reflections_tip",
+        "Renders every env_cubemap (placed or automatic) and the default cubemap with the ray tracer from the lit map and writes them into the BSP like buildcubemaps, so reflections are right the first time the map loads. Auto: on with the Final and Optimal qualities (-rtreflections forces it on, -rtnoreflections off).",
+        "Rend chaque env_cubemap (placé ou automatique) et la cubemap par défaut avec le ray tracer à partir de la map éclairée et les écrit dans le BSP comme buildcubemaps, pour des reflets justes dès le premier chargement de la map. Auto : activé avec les qualités Final et Optimal (-rtreflections force l'activation, -rtnoreflections désactive).",
+    ),
+    ("raytrace.reflections.auto", "Auto (Final and Optimal)", "Auto (Final et Optimal)"),
+    ("raytrace.reflections.on", "Always", "Toujours"),
+    ("raytrace.reflections.off", "Off (run buildcubemaps in game)", "Désactivé (buildcubemaps en jeu)"),
     ("raytrace.tonemap", "Tonemap hints", "Réglages de tonemap"),
     (
         "raytrace.tonemap_tip",

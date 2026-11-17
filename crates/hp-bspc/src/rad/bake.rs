@@ -36,6 +36,25 @@ const SUN_PROBES: usize = 6;
 const SUN_STRIDE: usize = 7;
 const MAX_STYLES: usize = 4;
 const MAX_CANDIDATE_STYLES: usize = 16;
+const SKYBOX_SHADE_SAMPLES: usize = 4096;
+const SKYBOX_SHADE_AREA: f64 = 64.0 * 64.0;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SkyboxShade {
+    pub sunlit: u32,
+    pub shaded: u32,
+    pub cameras: Vec<Vec3A>,
+}
+
+impl SkyboxShade {
+    pub fn fraction(&self) -> f32 {
+        if self.sunlit == 0 { 0.0 } else { self.shaded as f32 / self.sunlit as f32 }
+    }
+
+    pub fn worth_a_warning(&self) -> bool {
+        self.sunlit >= 16 && self.fraction() >= 0.25
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Params {
@@ -264,12 +283,71 @@ impl Ctx<'_> {
     }
 
     pub fn sees_sky_skip(&self, from: Vec3A, dir: Vec3A, skip: u32) -> f32 {
-        let mut occlusion = 1.0 - self.props.sky_visible(self.shadow, from, dir, skip);
+        let occlusion = 1.0 - self.props.sky_visible(self.shadow, from, dir, skip);
         if occlusion >= 1.0 {
             return 0.0;
         }
+        (1.0 - occlusion - self.skybox_occlusion(from, dir, skip)).clamp(0.0, 1.0)
+    }
+
+    pub fn skybox_shade(&self) -> Option<SkyboxShade> {
         if self.cameras.is_empty() {
-            return 1.0 - occlusion;
+            return None;
+        }
+        let sun = self.lights.list.iter().find(|l| l.kind == Kind::Sun)?;
+        let dir = -sun.normal;
+        let mut points: Vec<Vec3A> = Vec::new();
+        for f in self.faces {
+            if let Some(d) = &f.disp {
+                for (p, n) in d.pos.iter().zip(&d.normals) {
+                    if n.as_vec3a().dot(dir) > 0.05 {
+                        points.push((*p + *n * 2.0).as_vec3a());
+                    }
+                }
+                continue;
+            }
+            if f.normal.as_vec3a().dot(dir) <= 0.05 || f.poly.len() < 3 {
+                continue;
+            }
+            let lift = f.normal * 2.0;
+            let a = f.poly[0];
+            for w in f.poly[1..].windows(2) {
+                let (b, c) = (w[0], w[1]);
+                let area = (b - a).cross(c - a).length() * 0.5;
+                let n = ((area / SKYBOX_SHADE_AREA).ceil() as usize).clamp(1, 64);
+                let side = (n as f64).sqrt().ceil() as usize;
+                for k in 0..n {
+                    let (i, j) = ((k % side) as f64 + 0.5, (k / side) as f64 + 0.5);
+                    let (mut u, mut v) = (i / side as f64, j / side as f64);
+                    if u + v > 1.0 {
+                        (u, v) = (1.0 - u, 1.0 - v);
+                    }
+                    points.push((a + (b - a) * u + (c - a) * v + lift).as_vec3a());
+                }
+            }
+        }
+        let step = (points.len() / SKYBOX_SHADE_SAMPLES).max(1);
+        let (lit, shaded) = points
+            .par_iter()
+            .step_by(step)
+            .map(|p| {
+                let Some(occlusion) = self.skybox_occlusion_at(*p, dir, super::props::NO_PROP) else { return (0, 0) };
+                if self.props.sky_visible(self.shadow, *p, dir, super::props::NO_PROP) < 0.5 {
+                    return (0u32, 0u32);
+                }
+                (1, u32::from(occlusion >= 0.5))
+            })
+            .reduce(|| (0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
+        (lit > 0).then(|| SkyboxShade { sunlit: lit, shaded, cameras: self.cameras.iter().map(|c| c.0).collect() })
+    }
+
+    fn skybox_occlusion(&self, from: Vec3A, dir: Vec3A, skip: u32) -> f32 {
+        self.skybox_occlusion_at(from, dir, skip).unwrap_or(0.0)
+    }
+
+    fn skybox_occlusion_at(&self, from: Vec3A, dir: Vec3A, skip: u32) -> Option<f32> {
+        if self.cameras.is_empty() {
+            return None;
         }
         thread_local! {
             static AREA: std::cell::Cell<([u32; 3], Option<usize>)> = const { std::cell::Cell::new(([u32::MAX; 3], None)) };
@@ -284,12 +362,14 @@ impl Ctx<'_> {
             }
         };
         if area.is_none_or(|a| self.camera_areas.get(a).copied().unwrap_or(false)) {
-            return 1.0 - occlusion;
+            return None;
         }
-        for (origin, to_sky) in &self.cameras {
-            occlusion += 1.0 - self.props.sky_visible(self.shadow, *origin + from * *to_sky, dir, skip);
-        }
-        (1.0 - occlusion).clamp(0.0, 1.0)
+        Some(
+            self.cameras
+                .iter()
+                .map(|(origin, to_sky)| 1.0 - self.props.sky_visible(self.shadow, *origin + from * *to_sky, dir, skip))
+                .sum(),
+        )
     }
 
     pub fn trace_surface(&self, from: Vec3A, dir: Vec3A) -> SurfHit {

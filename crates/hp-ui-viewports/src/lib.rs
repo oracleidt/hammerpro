@@ -364,6 +364,18 @@ impl Viewports {
         self.mouselook.is_some() || self.gesture.is_some_and(|g| g.flies()) || self.player_view.is_some()
     }
 
+    pub fn keyboard_capture_reason(&self) -> Option<&'static str> {
+        if self.player_view.is_some() {
+            Some("the player view has the keyboard")
+        } else if self.mouselook.is_some() {
+            Some("the 3D view is in mouselook")
+        } else if self.gesture.is_some_and(|g| g.flies()) {
+            Some("a mouse button is held in the 3D view (fly mode)")
+        } else {
+            None
+        }
+    }
+
     pub fn is_navigating(&self) -> bool {
         self.mouselook.is_some()
             || self.gesture.is_some_and(|g| !matches!(g, Gesture::Hold { .. }))
@@ -1087,6 +1099,11 @@ impl Viewports {
         }
 
         let mut ended = None;
+        if !input.focused
+            && let Some(gesture) = self.gesture.take()
+        {
+            ended = Some(gesture.view());
+        }
         match self.gesture {
             Some(Gesture::Look {
                 view,
@@ -1474,6 +1491,7 @@ impl Viewports {
             && let Some(zoom) = camera::preset_zoom(digit)
             && key_unbound(&state.keys, digit_key(digit))
             && typed_unbound
+            && !state.runtime.selection.typing_angle
         {
             if state.settings.workflow.link_2d_zoom {
                 set_zoom_2d(state, zoom, None);

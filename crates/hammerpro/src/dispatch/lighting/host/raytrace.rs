@@ -286,6 +286,7 @@ impl Engine {
             seconds: started.elapsed().as_secs_f32(),
             session_mb: 0,
             process_mb: super::super::memory::of_self().map_or(0, |u| u.working_set >> 20),
+            skybox: None,
         };
         out(Reply::Lit { job, stats }, super::encode_faces(&converted));
         Ok(())

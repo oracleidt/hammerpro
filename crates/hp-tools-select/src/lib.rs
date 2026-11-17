@@ -236,13 +236,13 @@ pub const TR: hp_app::i18n::TrTable = &[
     ),
     (
         "seltool.hint.rotate",
-        "Rotate by {0}°. {1}: free rotation, Shift: clone, Esc: cancel.",
-        "Rotation de {0}°. {1} : rotation libre, Maj : cloner, Échap : annuler.",
+        "Rotate by {0}°. Type a number for an exact angle in degrees, {1}: free rotation, Shift: clone, Esc: cancel.",
+        "Rotation de {0}°. Tapez un nombre pour un angle exact en degrés, {1} : rotation libre, Maj : cloner, Échap : annuler.",
     ),
     (
         "seltool.hint.rotate_clone",
-        "Clone rotated by {0}°. {1}: free rotation, release to place the copy, Esc: cancel.",
-        "Clone pivoté de {0}°. {1} : rotation libre, relâchez pour placer la copie, Échap : annuler.",
+        "Clone rotated by {0}°. Type a number for an exact angle in degrees, {1}: free rotation, release to place the copy, Esc: cancel.",
+        "Clone pivoté de {0}°. Tapez un nombre pour un angle exact en degrés, {1} : rotation libre, relâchez pour placer la copie, Échap : annuler.",
     ),
     (
         "seltool.hint.skew",
@@ -256,18 +256,18 @@ pub const TR: hp_app::i18n::TrTable = &[
     ),
     (
         "seltool.hint.modal_move",
-        "Move {0}. X, Y, Z: lock an axis (Shift: a plane), Alt: no snap, click or Enter: apply, Esc: cancel.",
-        "Déplacement {0}. X, Y, Z : bloquer un axe (Maj : un plan), Alt : sans magnétisme, clic ou Entrée : appliquer, Échap : annuler.",
+        "Move {0}. X, Y, Z: lock an axis (Shift: a plane), Alt: no snap, hold Shift: duplicate, click or Enter: apply, Esc: cancel.",
+        "Déplacement {0}. X, Y, Z : bloquer un axe (Maj : un plan), Alt : sans magnétisme, Maj enfoncée : dupliquer, clic ou Entrée : appliquer, Échap : annuler.",
     ),
     (
         "seltool.hint.modal_rotate",
-        "Rotate {0}. X, Y, Z: rotate around an axis, Shift: free rotation, click or Enter: apply, Esc: cancel.",
-        "Rotation {0}. X, Y, Z : tourner autour d'un axe, Maj : rotation libre, clic ou Entrée : appliquer, Échap : annuler.",
+        "Rotate {0}. X, Y, Z: rotate around an axis, type a number for an exact angle in degrees (minus: the other way), Backspace: erase, {1}: free rotation, hold Shift: duplicate, click or Enter: apply, Esc: cancel.",
+        "Rotation {0}. X, Y, Z : tourner autour d'un axe, tapez un nombre pour un angle exact en degrés (moins : l'autre sens), Retour arrière : effacer, {1} : rotation libre, Maj enfoncée : dupliquer, clic ou Entrée : appliquer, Échap : annuler.",
     ),
     (
         "seltool.hint.modal_scale",
-        "Scale {0}. X, Y, Z: one axis (Shift: a plane), Alt: no snap, click or Enter: apply, Esc: cancel.",
-        "Mise à l'échelle {0}. X, Y, Z : un seul axe (Maj : un plan), Alt : sans magnétisme, clic ou Entrée : appliquer, Échap : annuler.",
+        "Scale {0}. X, Y, Z: one axis (Shift: a plane), Alt: no snap, hold Shift: duplicate, click or Enter: apply, Esc: cancel.",
+        "Mise à l'échelle {0}. X, Y, Z : un seul axe (Maj : un plan), Alt : sans magnétisme, Maj enfoncée : dupliquer, clic ou Entrée : appliquer, Échap : annuler.",
     ),
     (
         "seltool.hint.helper",

@@ -53,7 +53,7 @@ The summary line gives the cubemap count and their memory, the reflective faces 
 
 Suggestions show as **ghosts** in the 2D and 3D views (cyan for new cubemaps, yellow for sides changes); **Go to** highlights one and draws lines to the faces it adds to its sides. New cubemaps are suggested at the size most cubemaps of the map already use (default 128x128 on a map without any); **Size of new cubemaps** keeps that (**As suggested**) or forces default, 32x32, 64x64, 128x128 or 256x256. A `sides` fix only uses a cubemap of the face's own room less than 2048 units away.
 
-**Accept** applies one suggestion, **Accept all** applies them all; each press is **one undo step** (*Place cubemaps*). **Dismiss** hides a suggestion until the next analysis. Accepting places entities, it does not build the pictures: **Map > Lighting > Rebuild cubemaps** draws them in the 3D view, and after a compile `buildcubemaps` in game or **Map > Lighting > Write cubemaps into the compiled map** builds the real ones (see [Cubemaps in the compiler](../compiler/cubemaps.md)).
+**Accept** applies one suggestion, **Accept all** applies them all; each press is **one undo step** (*Place cubemaps*). **Dismiss** hides a suggestion until the next analysis. Accepting places entities, it does not build the pictures: **Map > Lighting > Rebuild cubemaps** draws them in the 3D view, and a ray traced compile (Final or Optimal quality, or **Ray traced reflections** on Always) renders the real ones into the BSP, otherwise after a compile `buildcubemaps` in game or **Map > Lighting > Write cubemaps into the compiled map** builds them (see [Cubemaps in the compiler](../compiler/cubemaps.md)).
 
 ## Cubemap assignment view
 

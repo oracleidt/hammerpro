@@ -360,6 +360,18 @@ pub const FLAGS: &[FlagInfo] = &[
     ),
     info(
         StepKind::Rad,
+        "-rtluxels",
+        true,
+        "Ray tracing: lightmap detail, 1 to 4: luxels per face side multiplied, within the engine lightmap limit and 32 MB per pass (default from the quality: 1, 1, 2).",
+    ),
+    info(
+        StepKind::Rad,
+        "-rtlook",
+        true,
+        "Ray tracing: look, classic (authored falloff like VRAD) or cinematic (inverse square light pools, ceiling lamps shining down, richer bounce, contact shadows; default in final and optimal).",
+    ),
+    info(
+        StepKind::Rad,
         "-rtlang",
         true,
         "Ray tracing: language of the messages in the log (en, fr, ru). Hammer Pro passes the language of the editor.",
@@ -404,6 +416,18 @@ pub const FLAGS: &[FlagInfo] = &[
         "-rtgpushare",
         true,
         "Ray tracing: share of the graphics card the ray traced editor preview keeps, auto or 0.1 to 1 (auto: 0.6). A compile ignores it and uses the whole graphics card.",
+    ),
+    info(
+        StepKind::Rad,
+        "-rtreflections",
+        false,
+        "Ray tracing: render every env_cubemap and the default cubemap with the ray tracer and write them into the BSP like buildcubemaps, at every quality (by default on with Final and Optimal).",
+    ),
+    info(
+        StepKind::Rad,
+        "-rtnoreflections",
+        false,
+        "Ray tracing: no ray traced cubemaps (the cubemaps stay placeholders until buildcubemaps runs in game).",
     ),
     info(
         StepKind::Rad,
@@ -824,6 +848,7 @@ pub fn rad_lighting(mode: RadMode, chosen: Lighting) -> Lighting {
 
 pub const STATIC_PROP_LIGHTING: &str = "-StaticPropLighting";
 pub const NO_STATIC_PROP_SHADOWS: &str = "-nostaticpropshadows";
+pub const LIGHTS: &str = "-lights";
 
 pub fn rad_flags(mode: RadMode) -> Vec<&'static str> {
     match mode {

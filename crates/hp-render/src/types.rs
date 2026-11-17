@@ -215,6 +215,7 @@ bitflags_u32! {
         NO_SHADOW = 1 << 17;
         HULL_SHADOW = 1 << 18;
         NO_BAKED_SHADOW = 1 << 19;
+        SURFACE_DECAL = 1 << 20;
     }
 }
 
@@ -765,6 +766,17 @@ pub struct WorldBeam {
     pub srgb_color: bool,
     pub hdr_scale: f32,
     pub halo_scale: f32,
+    pub glow: Option<LightGlowShape>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LightGlowShape {
+    pub size: [f32; 2],
+    pub min_dist: f32,
+    pub max_dist: f32,
+    pub outer_max_dist: f32,
+    pub one_sided: bool,
+    pub proxy: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

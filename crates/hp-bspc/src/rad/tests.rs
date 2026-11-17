@@ -1886,3 +1886,51 @@ fn switchable_bounce_can_follow_vrad() {
     let ours = light_bsp(&bsp, &RadOptions { ldr: true, hdr: false, ..quick() }, &mut |_| {}).expect("light");
     assert!(style_luxel_at(&ours, ceiling, DVec3::NEG_Z, 32).unwrap().max_element() > 0.1);
 }
+
+fn skybox_yard() -> Vec<u8> {
+    let mut id = 1;
+    let (w, sky) = ("DEV/DEV_MEASUREGENERIC01B", "TOOLS/TOOLSSKYBOX");
+    let b = |id: &mut u32, lo: [f64; 3], hi: [f64; 3], m: &str| {
+        block(id, DVec3::from_array(lo), DVec3::from_array(hi), m, m)
+    };
+    let mut s = String::new();
+    s += &b(&mut id, [-528.0, -528.0, -16.0], [528.0, 528.0, 0.0], w);
+    s += &b(&mut id, [-528.0, -528.0, 512.0], [528.0, 528.0, 528.0], sky);
+    s += &b(&mut id, [-528.0, -528.0, 0.0], [-512.0, 528.0, 512.0], sky);
+    s += &b(&mut id, [512.0, -528.0, 0.0], [528.0, 528.0, 512.0], sky);
+    s += &b(&mut id, [-512.0, -528.0, 0.0], [512.0, -512.0, 512.0], sky);
+    s += &b(&mut id, [-512.0, 512.0, 0.0], [512.0, 528.0, 512.0], sky);
+    let (z0, z1) = (1000.0, 1200.0);
+    s += &b(&mut id, [-272.0, -272.0, z0 - 16.0], [272.0, 272.0, z0], w);
+    s += &b(&mut id, [-272.0, -272.0, z1], [272.0, 272.0, z1 + 16.0], sky);
+    s += &b(&mut id, [-272.0, -272.0, z0], [-256.0, 272.0, z1], sky);
+    s += &b(&mut id, [256.0, -272.0, z0], [272.0, 272.0, z1], sky);
+    s += &b(&mut id, [-256.0, -272.0, z0], [256.0, -256.0, z1], sky);
+    s += &b(&mut id, [-256.0, 256.0, z0], [256.0, 272.0, z1], sky);
+    s += &b(&mut id, [-100.0, -100.0, z0 + 30.0], [100.0, 100.0, z0 + 40.0], w);
+    let text = format!(
+        "versioninfo\n{{\n\t\"editorversion\" \"400\"\n}}\nworld\n{{\n\t\"id\" \"1\"\n\t\"classname\" \"worldspawn\"\n\t\"skyname\" \"sky_day01_01\"\n{s}}}\n\
+         entity\n{{\n\t\"id\" \"600\"\n\t\"classname\" \"light_environment\"\n\t\"origin\" \"200 200 200\"\n\t\"_light\" \"255 255 255 300\"\n\t\"_ambient\" \"0 0 0 0\"\n\t\"pitch\" \"-60\"\n}}\n\
+         entity\n{{\n\t\"id\" \"601\"\n\t\"classname\" \"info_player_start\"\n\t\"origin\" \"256 256 16\"\n}}\n\
+         entity\n{{\n\t\"id\" \"602\"\n\t\"classname\" \"sky_camera\"\n\t\"origin\" \"0 0 1010\"\n\t\"scale\" \"16\"\n}}\n\
+         entity\n{{\n\t\"id\" \"603\"\n\t\"classname\" \"info_target\"\n\t\"origin\" \"200 0 1100\"\n}}\n"
+    );
+    compile_vmf(&text)
+}
+
+#[test]
+fn a_skybox_that_hides_the_sun_from_the_map_is_reported_and_noskyboxrecurse_lights_it() {
+    let bsp = skybox_yard();
+    let run = |no_recurse: bool| {
+        let mut lines = Vec::new();
+        let opts = RadOptions { bounces: 0, no_skybox_recurse: no_recurse, ..quick() };
+        let out = light_bsp(&bsp, &opts, &mut |l| lines.push(l.to_owned())).expect("light");
+        (out, lines)
+    };
+    let (shaded, log) = run(false);
+    let warning = log.iter().find(|l| l.contains("3D skybox hides the sun")).expect("skybox warning");
+    assert!(warning.contains("(0 0 1010)") && warning.contains("-noskyboxrecurse"), "{warning}");
+    let (lit, log) = run(true);
+    assert!(!log.iter().any(|l| l.contains("3D skybox hides the sun")));
+    assert_ne!(shaded, lit, "-noskyboxrecurse lets the sun reach the map again");
+}

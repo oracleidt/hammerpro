@@ -49,6 +49,7 @@ pub const ENTRIES: &[MenuEntry] = &[
     MenuEntry::CreateHere,
     MenuEntry::PingHere,
     MenuEntry::Separator,
+    MenuEntry::Action(Action::RenameUpdateReferences),
     MenuEntry::Action(Action::Properties),
 ];
 

@@ -1,3 +1,4 @@
+use hp_editor::rename_refs::RenameReport;
 use hp_editor::{Document, EditError, EditResult, Id, ObjRef};
 use hp_fgd::ResolvedFgd;
 use hp_vmf::Connection;
@@ -103,6 +104,7 @@ pub enum Applied {
     Nothing,
     Changed,
     Created(Id),
+    Renamed(RenameReport),
 }
 
 fn label(target: &Target) -> &'static str {
@@ -177,7 +179,7 @@ pub fn apply(doc: &mut Document, fgd: Option<&ResolvedFgd>, op: Op) -> EditResul
             None => remove_key_raw(doc, &target, &key).map(changed),
         },
         Op::Targetname { target, value, update_references } => {
-            set_targetname(doc, &target, &value, update_references).map(changed)
+            set_targetname(doc, fgd, &target, &value, update_references)
         }
         Op::SetFlag { ids, key, bit, on } => set_flag(doc, &ids, &key, bit, on).map(changed),
         Op::ChangeClass { ids, class } => change_class(doc, fgd, &ids, &class).map(changed),
@@ -323,28 +325,23 @@ fn rename_key(doc: &mut Document, target: &Target, old: &str, new: &str) -> Edit
     }
 }
 
-fn set_targetname(doc: &mut Document, target: &Target, value: &str, update_references: bool) -> EditResult<bool> {
+fn set_targetname(
+    doc: &mut Document,
+    fgd: Option<&ResolvedFgd>,
+    target: &Target,
+    value: &str,
+    update_references: bool,
+) -> EditResult<Applied> {
     let ids = match target {
-        Target::World => return set_key_raw(doc, target, "targetname", value),
+        Target::World => return set_key_raw(doc, target, "targetname", value).map(changed),
         Target::Entities(ids) => ids,
     };
-    let value = value.trim();
-    let old: Option<String> = {
-        let scene = doc.scene();
-        let mut names = ids.iter().filter_map(|id| scene.entity(*id)).map(|n| n.entity.get("targetname"));
-        match names.next() {
-            Some(Some(first)) if names.all(|n| n == Some(first)) => Some(first.to_owned()),
-            _ => None,
-        }
-    };
-    if let Some(old) = old.filter(|o| !o.trim().is_empty() && !value.is_empty() && update_references) {
-        let named = doc.entities_named(&old);
-        let only_selected = named.iter().all(|id| ids.contains(id)) && named.len() == ids.len();
-        if only_selected && !doc.outputs_targeting(&old).is_empty() {
-            return Ok(doc.rename_targetname(&old, value, true)? > 0);
-        }
+    if !update_references || value.trim().is_empty() {
+        return Ok(changed(doc.set_entity_key(ids, "targetname", value.trim())? > 0));
     }
-    Ok(doc.set_entity_key(ids, "targetname", value)? > 0)
+    let report = crate::rename::rename_ids(doc, fgd, ids, value, true, true)?;
+    let touched = report.renamed > 0 || report.references > 0;
+    Ok(if touched || report.kept.is_some() { Applied::Renamed(report) } else { Applied::Nothing })
 }
 
 fn set_flag(doc: &mut Document, ids: &[Id], key: &str, bit: u32, on: bool) -> EditResult<bool> {
@@ -619,6 +616,31 @@ mod tests {
         assert_eq!(doc.scene().entity(6).unwrap().entity.connections[0].target, "lamp");
         apply(doc, None, Op::Targetname { target, value: "bulb".into(), update_references: false }).unwrap();
         assert_eq!(doc.scene().entity(6).unwrap().entity.connections[0].target, "lamp");
+    }
+
+    #[test]
+    fn multi_edit_renames_each_old_name_in_one_step() {
+        let mut s = state();
+        let doc = &mut s.doc;
+        doc.set_entity_key(&[4], "targetname", "doora").unwrap();
+        doc.set_entity_key(&[5], "targetname", "doorb").unwrap();
+        let out = |t: &str| Connection::parse("OnTrigger", &format!("{t},Open,,0,-1"));
+        doc.set_connections(6, vec![out("doora"), out("doorb"), out("door*")]).unwrap();
+        let steps = doc.history_len().0;
+        let target = Target::Entities(vec![4, 5]);
+        let r = apply(doc, None, Op::Targetname { target, value: "gate".into(), update_references: true }).unwrap();
+        let Applied::Renamed(report) = r else { panic!("expected a rename report") };
+        assert_eq!((report.renamed, report.references, report.wildcards), (2, 2, 1));
+        assert_eq!(doc.history_len().0, steps + 1);
+        let conns = &doc.scene().entity(6).unwrap().entity.connections;
+        assert_eq!(
+            [conns[0].target.as_str(), conns[1].target.as_str(), conns[2].target.as_str()],
+            ["gate", "gate", "door*"]
+        );
+        let text = crate::rename::report_text(&report).unwrap().1;
+        assert!(text.contains('2') && text.contains('1'), "{text}");
+        assert!(doc.undo());
+        assert_eq!(doc.scene().entity(6).unwrap().entity.connections[0].target, "doora");
     }
 
     #[test]

@@ -68,6 +68,7 @@ pub(super) struct Upload {
 }
 
 pub(super) struct Preview {
+    pub skybox_noticed: Option<[i32; 4]>,
     pub animations: Vec<style_maps::AnimatedFace>,
     pub baseline: Option<Arc<hp_render::BakedLightBaseline>>,
     pub rendered_scene: Option<(u64, bool)>,
@@ -328,6 +329,7 @@ impl Preview {
         let ctx = ctx.clone();
         let worker = bake::Worker::start(Box::new(move || ctx.request_repaint())).ok()?;
         Some(Self {
+            skybox_noticed: None,
             animations: Vec::new(),
             baseline: None,
             rendered_scene: None,
@@ -630,7 +632,8 @@ impl Preview {
         };
         let id = self.next_id;
         self.next_id += 1;
-        let tuning = if quick { child::Tuning::of(&options).quick() } else { child::Tuning::of(&options) };
+        let base = child::Tuning::of(&options).skybox_recurse(&state.settings.compile);
+        let tuning = if quick { base.quick() } else { base };
         let cam = state.cameras.cam3d.pos;
         let stream = !relight && !lit && !background && !self.has_bake;
         self.worker.submit(bake::Job {
@@ -664,6 +667,7 @@ impl Preview {
             quiet: background,
             priority,
             raytracing: raytracing.clone(),
+            rad: super::rad_files(state),
         });
         if raytracing.is_some() {
             let rt = &mut state.runtime.lighting.raytracing;
@@ -729,7 +733,8 @@ impl Preview {
         self.costs_job = Some(id);
         let options = state.doc.light_plus();
         let quick = self.host_quick.unwrap_or(true);
-        let tuning = if quick { child::Tuning::of(&options).quick() } else { child::Tuning::of(&options) };
+        let base = child::Tuning::of(&options).skybox_recurse(&state.settings.compile);
+        let tuning = if quick { base.quick() } else { base };
         let s = state.settings.lighting.sanitized();
         self.worker.costs(
             id,
@@ -742,6 +747,7 @@ impl Preview {
                 tuning: tuning.arg(),
                 threads: super::bake_threads(s.threads).1,
                 raytracing: None,
+                rad: super::rad_files(state),
             },
         );
     }
@@ -871,6 +877,32 @@ impl Preview {
         }
     }
 
+    fn skybox_shade(&mut self, state: &mut AppState, shade: Option<hp_app::runtime::SkyboxShadeStatus>, quiet: bool) {
+        state.runtime.lighting.skybox_shade = shade;
+        let Some(shade) = shade.filter(hp_app::runtime::SkyboxShadeStatus::worth_a_warning) else {
+            self.skybox_noticed = None;
+            return;
+        };
+        let key =
+            [shade.camera[0] as i32, shade.camera[1] as i32, shade.camera[2] as i32, (shade.fraction() * 10.0) as i32];
+        log::info!(
+            "lighting preview: the 3D skybox hides the sun from {:.0}% of the sunlit surfaces (sky_camera at {:.0} {:.0} {:.0})",
+            shade.fraction() * 100.0,
+            shade.camera[0],
+            shade.camera[1],
+            shade.camera[2]
+        );
+        if quiet || self.skybox_noticed == Some(key) {
+            return;
+        }
+        self.skybox_noticed = Some(key);
+        let at = format!("{:.0} {:.0} {:.0}", shade.camera[0], shade.camera[1], shade.camera[2]);
+        state.notify(
+            Severity::Warning,
+            tf!("app.lighting.skybox_shade", format!("{:.0}", shade.fraction() * 100.0), at),
+        );
+    }
+
     pub(super) fn done(&mut self, state: &mut AppState, r: Running, outcome: bake::Outcome) {
         match outcome {
             bake::Outcome::Baked(baked) => {
@@ -917,6 +949,7 @@ impl Preview {
                     stats.bounce_seconds,
                     if baked.leaked { ", the map leaks" } else { "" },
                 );
+                self.skybox_shade(state, stats.skybox, r.background);
                 if !baked.warnings.is_empty() && !baked.patch {
                     log::warn!("lighting preview: {}", baked.warnings.join("; "));
                     if !r.background {
@@ -1107,6 +1140,7 @@ impl Preview {
         if !up.started {
             up.started = true;
             if up.baked.patch {
+                r.set_lightmap_ldr(!up.baked.hdr);
                 let ids: HashSet<u32> = up.baked.faces.iter().map(|f| f.id).collect();
                 self.animations.retain(|a| !ids.contains(&a.face_id()));
             } else {

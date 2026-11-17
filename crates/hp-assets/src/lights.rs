@@ -511,9 +511,62 @@ pub(crate) fn producers() -> Vec<Box<dyn DerivedProducer>> {
 const TEXLIGHT_BUDGET: Duration = Duration::from_millis(3);
 const TEXLIGHT_SLICE: usize = 256;
 
+static DESIGNER_RAD: std::sync::RwLock<Option<std::path::PathBuf>> = std::sync::RwLock::new(None);
+
+pub fn set_designer_rad(path: Option<std::path::PathBuf>) {
+    let same = DESIGNER_RAD.read().is_ok_and(|g| *g == path);
+    if !same && let Ok(mut g) = DESIGNER_RAD.write() {
+        *g = path;
+    }
+}
+
+static FORCED_MODELS: std::sync::RwLock<Vec<String>> = std::sync::RwLock::new(Vec::new());
+static FORCED_CHANGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn clean_model(name: &str) -> String {
+    let m = name.trim().replace('\\', "/").to_ascii_lowercase();
+    let m = m.strip_prefix("models/").unwrap_or(&m);
+    m.split('.').next().unwrap_or(m).to_owned()
+}
+
+pub(crate) fn texture_shadow_forced(model: &str) -> bool {
+    let clean = clean_model(model);
+    FORCED_MODELS.read().is_ok_and(|list| list.contains(&clean))
+}
+
+pub(crate) fn take_forced_changed() -> bool {
+    FORCED_CHANGED.swap(false, std::sync::atomic::Ordering::AcqRel)
+}
+
+fn set_forced_models(texts: &[String]) {
+    let mut list: Vec<String> = texts
+        .iter()
+        .flat_map(|t| hp_light::rad_doc::RadDoc::parse(t).force_texture_shadow())
+        .map(|m| clean_model(&m))
+        .collect();
+    list.sort_unstable();
+    list.dedup();
+    if let Ok(mut g) = FORCED_MODELS.write()
+        && *g != list
+    {
+        *g = list;
+        FORCED_CHANGED.store(true, std::sync::atomic::Ordering::Release);
+    }
+}
+
+fn designer_rad() -> Option<std::path::PathBuf> {
+    DESIGNER_RAD.read().ok().and_then(|g| g.clone())
+}
+
+type RadStamp = Vec<(std::path::PathBuf, Option<(u64, Option<std::time::SystemTime>)>)>;
+
+fn rad_stamp(files: &[std::path::PathBuf]) -> RadStamp {
+    files.iter().map(|p| (p.clone(), std::fs::metadata(p).ok().map(|m| (m.len(), m.modified().ok())))).collect()
+}
+
 #[derive(Default)]
 struct TexlightProducer {
-    rad: Option<(u64, Vec<std::path::PathBuf>, Arc<TexLights>)>,
+    rad: Option<(u64, RadStamp, Arc<TexLights>)>,
     values: AHashMap<String, Option<glam::Vec3>>,
     by_solid: AHashMap<Id, Vec<PreviewLight>>,
     queue: Vec<Id>,
@@ -524,7 +577,8 @@ struct TexlightProducer {
 
 fn rad_files(doc: &Document) -> Vec<std::path::PathBuf> {
     let map = doc.path();
-    let mut files: Vec<std::path::PathBuf> = map.map(|p| p.with_extension("rad")).into_iter().collect();
+    let mut files: Vec<std::path::PathBuf> = designer_rad().into_iter().collect();
+    files.extend(map.map(|p| p.with_extension("rad")));
     let custom = doc.light_plus().texlight;
     let custom = custom.trim();
     if !custom.is_empty() {
@@ -562,7 +616,7 @@ impl DerivedProducer for TexlightProducer {
             }
             return self.changed;
         }
-        let files = rad_files(cx.doc);
+        let files = rad_stamp(&rad_files(cx.doc));
         let stale = self.rad.as_ref().is_none_or(|(g, f, _)| *g != cx.assets.generation || *f != files);
         if !self.on || ch.full || stale {
             self.on = true;
@@ -588,7 +642,22 @@ impl DerivedProducer for TexlightProducer {
             let extra: Vec<std::path::PathBuf> = files.iter().filter(|p| p.is_file()).cloned().collect();
             let fs = cx.assets.fs.as_ref();
             let rad = hp_light::rad::load(fs, fs.and_then(hp_fs::GameFs::game_dir), &extra);
-            self.rad = Some((cx.assets.generation, files, Arc::new(rad)));
+            let game_rad =
+                fs.and_then(|f| f.read_with("lights.rad", |b| String::from_utf8_lossy(b).into_owned())).or_else(|| {
+                    let dir = fs.and_then(hp_fs::GameFs::game_dir)?;
+                    std::fs::read(dir.join("lights.rad")).ok().map(|b| String::from_utf8_lossy(&b).into_owned())
+                });
+            let texts: Vec<String> = game_rad
+                .into_iter()
+                .chain(
+                    extra
+                        .iter()
+                        .filter_map(|p| std::fs::read(p).ok())
+                        .map(|b| String::from_utf8_lossy(&b).into_owned()),
+                )
+                .collect();
+            set_forced_models(&texts);
+            self.rad = Some((cx.assets.generation, rad_stamp(&files), Arc::new(rad)));
         }
         if let Some((_, _, rad)) = self.rad.clone()
             && self.on

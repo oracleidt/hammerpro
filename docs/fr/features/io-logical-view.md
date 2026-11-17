@@ -160,7 +160,7 @@ Glisser depuis un port de sortie vers un autre nœud ouvre **Nouvelle sortie** :
 
 - Le titre de l'onglet Sorties est mis en évidence quand une sortie pose problème : cherchez les cellules rouges.
 - Lancez **Organiser** une fois sur une map importée, puis déplacez les nœuds qui vous intéressent : les autres suivent la disposition automatique.
-- Par MCP : `list_connections`, `add_connection`, `edit_connection`, `remove_connections`, `get_io_graph`, `list_targetnames`, `rename_targetname`, `check_entity`, `get_logical_graph` (les nœuds, icônes et liens de la vue logique, avec son filtre), et `get_views` (un quart de type `logical`). Voir la [référence des outils MCP](../../MCP.md) (en anglais).
+- Par MCP : `list_connections`, `add_connection`, `edit_connection`, `remove_connections`, `get_io_graph`, `list_targetnames`, `rename_targetname` (renomme un nom et toutes ses références, voir [Renommer et références](entity-properties.md#renommer-et-références)), `check_entity`, `get_logical_graph` (les nœuds, icônes et liens de la vue logique, avec son filtre), et `get_views` (un quart de type `logical`). Voir la [référence des outils MCP](../../MCP.md) (en anglais).
 
 ## FAQ
 
