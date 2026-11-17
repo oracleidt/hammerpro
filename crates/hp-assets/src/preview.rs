@@ -3,7 +3,7 @@ use std::sync::Arc;
 use ahash::{AHashMap, AHashSet};
 use glam::Vec3;
 use hp_app::state::{Gfx, PreviewCamera};
-use hp_mdl::{AnimClip, Bone, BoneWeight, ModelVertex, SkinMatrix};
+use hp_mdl::{AnimClip, BoneWeight, ModelVertex, SkinMatrix};
 use hp_render::{
     GridParams, MaterialId, ModelId, ModelInstance, ModelPart, ObjectMesh, Overlay, RenderMode, Renderer, Vertex,
     ViewKind, ViewParams,
@@ -46,9 +46,8 @@ struct AnimBase {
     path: String,
     skin: u32,
     sequence: usize,
-    mdl: Arc<Vec<u8>>,
-    ani: Option<Arc<Vec<u8>>>,
-    bones: Vec<Bone>,
+    set: Arc<hp_mdl::AnimSet>,
+    anim: Option<hp_mdl::AnimRef>,
     parts: Vec<AnimPart>,
     clip: Option<AnimClip>,
     posed: Option<(usize, u32)>,
@@ -120,14 +119,9 @@ impl Preview {
         if base.posed == Some((frame, frac.to_bits())) && self.anim_id.is_some() {
             return true;
         }
-        let Some(matrices) = hp_mdl::skin_matrices_with(
-            &base.mdl,
-            base.ani.as_deref().map(Vec::as_slice),
-            &base.bones,
-            base.sequence,
-            frame,
-            frac,
-        ) else {
+        let Some(matrices) = base.anim.as_ref().and_then(|anim| {
+            base.set.skin_layered(anim, frame, frac, time_s).or_else(|| base.set.skin(anim, frame, frac))
+        }) else {
             return false;
         };
         let parts: Vec<ModelPart> = base
@@ -526,14 +520,15 @@ impl AssetManager {
             let Some(fs) = self.fs.as_ref() else { return false };
             let Ok(model) = hp_mdl::load_from(key, |p| fs.read(p), &opts) else { return false };
             let Some(mdl) = fs.read(key) else { return false };
-            let ani = hp_mdl::animation_block_path(&mdl).and_then(|p| fs.read(&p)).map(Arc::new);
-            (model, mdl, ani)
+            let Some(set) = hp_mdl::AnimSet::load(&mdl, |p| fs.read(p)) else { return false };
+            (model, set)
         };
-        let (model, mdl, ani) = loaded;
+        let (model, set) = loaded;
         if model.bones.is_empty() {
             return false;
         }
-        let clip = hp_mdl::animation_clip(&mdl, seq);
+        let anim = set.sequence_at(seq, &[]);
+        let clip = anim.map(|a| a.clip);
         let mut parts = Vec::with_capacity(model.meshes.len());
         for mesh in &model.meshes {
             if mesh.indices.is_empty() || mesh.bone_weights.len() != mesh.vertices.len() {
@@ -551,17 +546,8 @@ impl AssetManager {
         if parts.is_empty() {
             return false;
         }
-        let base = AnimBase {
-            path: key.to_owned(),
-            skin,
-            sequence: seq,
-            mdl: Arc::new(mdl),
-            ani,
-            bones: model.bones,
-            parts,
-            clip,
-            posed: None,
-        };
+        let base =
+            AnimBase { path: key.to_owned(), skin, sequence: seq, set: Arc::new(set), anim, parts, clip, posed: None };
         if let Some(p) = self.preview.as_mut() {
             p.renderer.remove_object(WIRE_OBJECT);
             p.anim = Some(base);

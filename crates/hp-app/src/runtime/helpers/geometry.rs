@@ -372,6 +372,12 @@ pub fn class_has_helpers(class: Option<&ResolvedClass>, classname: &str) -> bool
     })
 }
 
+pub fn live_quad(doc: &Document, id: Id) -> Option<hp_editor::quadbounds::Quad> {
+    let scene = doc.scene();
+    let nodes: Vec<_> = scene.entity_solid_ids(id).into_iter().filter_map(|s| scene.solid(s)).collect();
+    hp_editor::quadbounds::compute(nodes.iter().map(|n| (&n.solid, n.geom.as_ref())))
+}
+
 pub fn entity_helpers(cx: &HelperContext<'_>, id: Id, out: &mut HelperGeometry) {
     let Some(node) = cx.doc.scene().entity(id) else { return };
     let e = &node.entity;
@@ -437,8 +443,9 @@ pub fn entity_helpers(cx: &HelperContext<'_>, id: Id, out: &mut HelperGeometry) 
                     }
                 }
                 "quadbounds" => {
-                    let pts: Option<Vec<DVec3>> =
-                        ["lowerleft", "upperleft", "upperright", "lowerright"].iter().map(|k| key_vec(e, k)).collect();
+                    let pts: Option<Vec<DVec3>> = live_quad(cx.doc, id).map(|q| q.corners().to_vec()).or_else(|| {
+                        ["lowerleft", "upperleft", "upperright", "lowerright"].iter().map(|k| key_vec(e, k)).collect()
+                    });
                     if let Some(pts) = pts {
                         out.polyline(&pts, true, color);
                     }

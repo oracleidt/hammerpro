@@ -412,6 +412,7 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `map_tonemap` | `true` | L'`env_tonemap_controller` de la map règle la plage d'exposition et l'échelle du bloom (`SetAutoExposureMin`, `SetAutoExposureMax`, `SetBloomScale` depuis son `logic_auto`), comme en jeu. |
 | `prop_shadows` | `"Auto"` | Ce avec quoi les `prop_static` projettent leurs ombres en mode éclairé : `Auto` suit la compilation (triangles du modèle avec `-StaticPropPolys`, modèle de collision sinon, aucune avec `-nostaticpropshadows`), `Mesh` les triangles du modèle, `Collision` le modèle de collision. |
 | `animate_materials` | `true` | Matériaux animés et sprites en mouvement. |
+| `animate_models` | `true` | Les entités à modèle jouent leur animation dans les vues 3D (DefaultAnim, sinon la première séquence ou la séquence idle). |
 | `model_fade` | `false` | Les props disparaissent progressivement entre leurs distances de fondu. |
 | `force_opaque` | `false` | Matériaux translucides dessinés opaques. |
 | `walkable` | `false` | Teinte les surfaces trop pentues pour marcher. |

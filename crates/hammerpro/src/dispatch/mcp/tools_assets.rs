@@ -40,8 +40,9 @@ domain! { "assets";
         (translucent, alpha test, water, blend, self illumination...).",
         { "material": string("Material name.") }, ["material"];
     get_model_info: Read, "Model information",
-        "A model's bounds, skins, body groups, sequences, materials, triangles, surface property and whether it can \
-        be a prop_static, plus shape: the exact size of its real mesh at angles 0 (bounds, how far the lowest point is \
+        "A model's bounds, skins, body groups, sequences (with those of its $includemodel files) and their frame \
+        counts, whether it is animated (the 3D view plays it), materials, triangles, surface property and whether it \
+        can be a prop_static, plus shape: the exact size of its real mesh at angles 0 (bounds, how far the lowest point is \
         below the origin, footprint rectangle, collision mesh bounds, attachments). get_object_shape and \
         render_shape tell more. Models load in the background: call again while loading is true.",
         { "model": string("Model path (models/....mdl).") }, ["model"];
@@ -599,6 +600,8 @@ fn get_model_info(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
                 "static_prop": m.is_static_prop,
                 "surface_prop": m.surface_prop,
                 "sequences": m.sequences.iter().take(500).collect::<Vec<_>>(),
+                "sequence_frames": m.sequence_frames.iter().take(500).collect::<Vec<_>>(),
+                "animated": !m.is_static_prop && m.sequence_frames.iter().any(|f| *f > 1),
             }),
         ))),
     }

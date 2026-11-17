@@ -178,7 +178,13 @@ impl Document {
             out.push_str(&hp_vmf::write_solid(s));
         }
         for e in &frag.entities {
-            out.push_str(&hp_vmf::write_entity(e));
+            if crate::quadbounds::is_breakable_surf(&e.classname) {
+                let mut e = e.clone();
+                crate::quadbounds::apply_own_solids(&mut e);
+                out.push_str(&hp_vmf::write_entity(&e));
+            } else {
+                out.push_str(&hp_vmf::write_entity(e));
+            }
         }
         out
     }

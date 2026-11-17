@@ -208,7 +208,8 @@ fn texlights_light_the_lit_mode(gfx: &mut Gfx) {
         dir.join("lit.rad"),
         "// test
 lights/white001 255 255 255 400
-hdr:lights/white001 1 1 1 1
+hdr:lights/white001 255 255 255 200
+hdr:lights/dark 1 1 1 1
 ",
     )
     .expect("rad");

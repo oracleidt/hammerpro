@@ -86,7 +86,7 @@ When a selected prop uses another model, **Replace all uses (N)** gives the mode
 
 **Body groups (N)**: one dropdown per body group that has a choice. It starts from the `body` value of the first selected prop using this model. **Value of the body key** shows the resulting number, and **Apply to selected props (N)** writes it into their `body` key.
 
-**Sequences (N)**: the sequences with their frame count. Click one to play it in the preview; `▶` / `⏸` plays or pauses, `↺` restarts. Double click a sequence, or click **Set as default animation of selected props (N)**, to write it into their `DefaultAnim` key.
+**Sequences (N)**: the sequences with their frame count. Click one to play it in the preview; `▶` / `⏸` plays or pauses, `↺` restarts. Double click a sequence, or click **Set as default animation of selected props (N)**, to write it into their `DefaultAnim` key. The list includes the sequences of the model's `$includemodel` files (the animations of NPC models), and the preview plays them with their autoplay and delta layers. Placed in the map, the props play their animation in the 3D view (see [Animated models](render-modes-display.md#animated-models)).
 
 ## Inspector ("Crowbar lite")
 

@@ -59,6 +59,7 @@ Directly in the **View** menu:
 | **Show model collisions** | The 3D view shows the collision models instead of the models (a model without one shows its box in orange). | Off |
 | **Fog preview** | Submenu: **Off**, or the fog of one `env_fog_controller` of the map (by default the one the game uses: the last **Master** one, else the first; a controller with **Fog Enable** at No is marked). Also a toolbar button. See [Map fog](#map-fog). | On |
 | **Animated materials** | Animated materials and sprites play. | On |
+| **Animate models** | Props, NPCs and other model entities play their animation like in game (see [Animated models](#animated-models)). | On |
 | **Model fade** | Props fade between their fade distances, like in game. | Off |
 | **Opaque materials** | Translucent materials drawn opaque. | Off |
 | **Walkable slopes** | Tints the surfaces too steep for players to stand on. | Off |
@@ -222,3 +223,15 @@ The images are stored in the map (`bgimages_plus` block of the VMF), so they tra
 ## A blue grid instead of the sky
 
 In the textured views, a blue grid on a sky face is the `tools/toolsskybox` editor texture when **See the sky through toolsskybox** is disabled. Enable that option in **Settings > Rendering** (`render.sky_see_through`) to see the sky through those faces. The Lit mode (Alt+5) and the baked preview show sky openings automatically, so sky faces are never lit or shadowed like a wall.
+
+## Animated models
+
+Model entities play their animation in the 3D view like in game, in every mode (Textured, Lit, Baked, Ray traced, Player view), while **View > Display options > Animate models** is on (the default; setting `render.animate_models`, action `toggle_animated_models`, also in Settings > Rendering):
+
+- The sequence played is the entity's `DefaultAnim`, else the first sequence of the model when it moves, else its `ACT_IDLE` or idle sequence. NPC classes (`npc_*`, `monster_*`, `generic_*`) try the idle sequence first, like the game AI. The models of FGD `studio()` helpers animate the same way.
+- Sequences of `$includemodel` files (NPC animation models) and external `.ani` animation blocks are read, with RLE compressed values, section frames and up to 3 bone weights per vertex. Frames are interpolated, so the motion stays smooth.
+- Looping sequences play forever. The others play once when the prop appears, then hold their last frame, like a prop that spawned with the map.
+- The `playbackrate` key sets the speed (0 freezes it, negative plays backwards) and `cycle` the starting point (0 to 1).
+- `prop_static`, `prop_detail` and `prop_ragdoll` stay still, as in game,, and so do the models compiled as static props.
+
+Only the models inside a 3D view are animated; the far ones update less often and a per frame budget keeps many animated props smooth. Props sharing the same model, skin, body group and animation share one posed mesh. The animation follows **Animations** frames per second and pauses with the other animations. Off, models show the first frame of their `DefaultAnim` (or first sequence) as before. The model browser preview plays any sequence of the model, see [Model browser](model-browser.md).

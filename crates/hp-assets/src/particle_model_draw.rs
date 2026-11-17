@@ -11,6 +11,7 @@ use crate::models::{ModelEntry, PreparedModel, model_data_key};
 pub(crate) const ANIMATION_KEY: &str = "@hp-particle-bind";
 
 pub(crate) struct AnimationSource {
+    pub set: Option<Arc<hp_mdl::AnimSet>>,
     pub mdl: Arc<Vec<u8>>,
     pub ani: Option<Arc<Vec<u8>>>,
     pub bones: Vec<hp_mdl::Bone>,

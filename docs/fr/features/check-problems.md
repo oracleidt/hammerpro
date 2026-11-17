@@ -40,6 +40,7 @@ Des messages en haut indiquent quand la map est en cours de vérification, quand
 | Contenu | matériau manquant, modèle manquant, son manquant, système de particules manquant, mauvais nom de matériau |
 | Displacements et overlays | displacement cassé (face sans exactement 4 coins, ou puissance hors de 1 à 4, ou bloc dispinfo que Hammer Pro ne sait pas lire et garde tel quel pour Hammer, donc la brush compilée reste entière ; la correction le retire : le compilateur et le jeu suppriment toute la brush, donc la vue joueur la cache et la laisse traverser aussi), displacement sur une entité de brush, faces d'overlay manquantes, overlay sur trop de faces (64 au maximum) |
 | Éclairage et ciel | ciel sans soleil (faces de ciel mais pas de `light_environment`), trop de lumières nommées, plusieurs sky_camera, mauvaise échelle de sky_camera, changement de skybox sans sky_camera, skybox par joueur |
+| Verre cassable | verre cassable à plusieurs faces, verre cassable non quadrilatère, verre cassable trop petit, verre sans matériau brisé (voir [Verre cassable](#verre-cassable)) |
 | Areaportals | brushes d'areaportal (un seul permis), areaportal sans porte, areaportal et porte désaccordés, areaportal à travers l'eau, areaportal à travers un occluder |
 | Objets redondants | brush en double, brush dans un brush, entité empilée en double (voir [Objets redondants](#objets-redondants)) |
 | Placement | objet flottant, objet enfoncé, objets qui se chevauchent (sur demande), mesurés sur les vrais maillages des props (voir [Placement sur les formes réelles](real-shape-placement.md#vérifier-les-problèmes)) |
@@ -64,12 +65,27 @@ Des messages en haut indiquent quand la map est en cours de vérification, quand
 | brush d'origine dans le monde | Supprimer les brushes d'origine du monde |
 | candidat func_detail | Les lier à un func_detail (une seule étape d'annulation) |
 | areaportal et porte désaccordés | Faire démarrer l'areaportal comme sa porte |
+| verre cassable à plusieurs faces | Mettre du nodraw sur toutes les faces sauf celle du verre (la plus grande) |
+| verre sans matériau brisé | Utiliser le matériau de verre cassable standard `glass/glasswindowbreak070b` |
 | brush en double, brush dans un brush, entité empilée en double | Supprimer les copies redondantes et garder les originaux |
 | objet flottant | Descendre le prop sur la surface en dessous (les props empilés bougent ensemble avec **Tout corriger**) |
 | objet enfoncé | Remonter le prop pour qu'il repose sur la surface (16 unités au plus) |
 | objets qui se chevauchent | Sortir le prop de l'autre objet par le chemin le plus court (16 unités au plus) |
 
 Chaque correction est une étape d'annulation : `Ctrl+Z` remet la map comme avant.
+
+## Verre cassable
+
+Un `func_breakable_surf` se brise en petits morceaux et garde des trous seulement si le jeu connaît les quatre coins de sa face de verre. Comme Hammer, Hammer Pro les écrit pour vous : à chaque sauvegarde, sauvegarde automatique, export ou compilation, les clés `upperleft`, `upperright`, `lowerleft`, `lowerright` et `error` sont calculées à partir du brush (la seule face qui n'est pas `tools/toolsnodraw`, coins ordonnés selon ses axes de texture). Une fenêtre déplacée, redimensionnée ou collée a donc toujours les bons coins, avec le compilateur de Hammer Pro comme avec celui de Valve ou de Hammer++. Le contour quadbounds dessiné dans les vues suit le brush en direct. Les maps sauvegardées par les anciennes versions reçoivent les clés à leur prochaine sauvegarde.
+
+Les vérifications signalent ce qui fait encore casser la vitre d'un seul bloc :
+
+| Problème | Pourquoi | Correction |
+| --- | --- | --- |
+| **verre cassable à plusieurs faces** (erreur) | Plus d'une face n'est pas en nodraw (ou aucune) : le jeu supprime l'entité (error 1, comme Hammer) ou ne peut pas créer ses panneaux. | Met du nodraw sur toutes les faces sauf la plus grande face de verre |
+| **verre cassable non quadrilatère** (erreur) | La face de verre n'a pas exactement quatre coins (error 2). | Aucune : reprenez la forme du brush |
+| **verre cassable trop petit** (avertissement) | Un côté de la face de verre fait moins d'un panneau de 12 unités : toute la vitre casse au premier tir. | Aucune : agrandissez la fenêtre |
+| **verre sans matériau brisé** (avertissement) | Le matériau n'a pas de `$crackmaterial` et n'est pas un matériau de verre brisé (shader `ShatteredGlass` ou proxy `BreakableSurface`, comme `glass/glasswindowbreak070b`) : le jeu ne peut pas dessiner la vitre brisée. Les surfaces en carrelage ne sont pas vérifiées. | Met `glass/glasswindowbreak070b` sur la face de verre |
 
 ## Objets redondants
 

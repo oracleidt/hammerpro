@@ -158,6 +158,10 @@ pub(crate) fn describe(p: &Problem, doc: &Document) -> String {
             };
             tf!(key, a(0), a(1))
         }
+        "breakable_surf_faces" => tf!("problems.breakable_surf_faces", a(0), a(1), a(2)),
+        "breakable_surf_not_quad" => tf!("problems.breakable_surf_not_quad", a(0), a(1), a(2)),
+        "breakable_surf_size" => tf!("problems.breakable_surf_size", a(0), a(1), a(2), a(3)),
+        "breakable_surf_crack" => tf!("problems.breakable_surf_crack", a(0), a(1), a(2)),
         "sky_without_sun" => t!("problems.sky_without_sun").to_owned(),
         "sky_camera_multiple" => tf!("problems.sky_camera_multiple", a(0), a(1)),
         "sky_camera_bad_scale" => tf!("problems.sky_camera_bad_scale", a(0), a(1)),
@@ -205,6 +209,8 @@ pub(crate) fn fix_hint(code: &str) -> &'static str {
         "origin_brush_in_world" => t!("problems.fix.origin_brush_in_world"),
         "detail_candidate" => t!("problems.fix.detail_candidate"),
         "areaportal_door_state" => t!("problems.fix.areaportal_door_state"),
+        "breakable_surf_faces" => t!("problems.fix.breakable_surf_faces"),
+        "breakable_surf_crack" => t!("problems.fix.breakable_surf_crack"),
         "duplicate_brush" | "contained_brush" | "duplicate_entity" => t!("problems.fix.redundant"),
         "floating_object" => t!("problems.fix.floating_object"),
         "sunk_object" => t!("problems.fix.sunk_object"),

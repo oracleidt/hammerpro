@@ -564,20 +564,30 @@ fn rad_stamp(files: &[std::path::PathBuf]) -> RadStamp {
     files.iter().map(|p| (p.clone(), std::fs::metadata(p).ok().map(|m| (m.len(), m.modified().ok())))).collect()
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct TexValue {
+    ldr: Option<glam::Vec3>,
+    hdr: Option<glam::Vec3>,
+    texture_area: f32,
+}
+
+const TEXLIGHT_MISSING_SIZE: f32 = 128.0;
+
 #[derive(Default)]
 struct TexlightProducer {
     rad: Option<(u64, RadStamp, Arc<TexLights>)>,
-    values: AHashMap<String, Option<glam::Vec3>>,
-    by_solid: AHashMap<Id, Vec<PreviewLight>>,
+    values: AHashMap<String, Option<TexValue>>,
+    by_solid: AHashMap<Id, Vec<SceneLight>>,
     queue: Vec<Id>,
     queued: AHashSet<Id>,
     on: bool,
     changed: bool,
 }
 
-fn rad_files(doc: &Document) -> Vec<std::path::PathBuf> {
+fn rad_files(doc: &Document, game: Option<&std::path::Path>) -> Vec<std::path::PathBuf> {
     let map = doc.path();
     let mut files: Vec<std::path::PathBuf> = designer_rad().into_iter().collect();
+    files.extend(world_rad(doc, game));
     files.extend(map.map(|p| p.with_extension("rad")));
     let custom = doc.light_plus().texlight;
     let custom = custom.trim();
@@ -590,6 +600,34 @@ fn rad_files(doc: &Document) -> Vec<std::path::PathBuf> {
         }
     }
     files
+}
+
+fn texlight_texture_size(fs: Option<&hp_fs::GameFs>, name: &str) -> (f32, f32) {
+    let missing = (TEXLIGHT_MISSING_SIZE, TEXLIGHT_MISSING_SIZE);
+    let Some(mat) = fs.and_then(|fs| fs.material(name)) else { return missing };
+    let mat = mat.resolve_fallbacks(hp_vmt::DEFAULT_DX_LEVEL, false);
+    let texture = mat
+        .get("%tooltexture")
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(str::to_owned)
+        .or_else(|| mat.base_texture())
+        .or_else(|| ["$envmapmask", "$bumpmap", "$dudvmap", "$normalmap"].iter().find_map(|k| mat.texture(k)));
+    let info = texture.and_then(|t| fs.and_then(|fs| fs.texture_info(&t)));
+    info.filter(|i| i.width > 0 && i.height > 0).map_or(missing, |i| (i.width as f32, i.height as f32))
+}
+
+fn world_rad(doc: &Document, game: Option<&std::path::Path>) -> Option<std::path::PathBuf> {
+    let name = doc.scene().world().get("_lightsrad")?.trim().replace('\\', "/");
+    if name.is_empty() {
+        return None;
+    }
+    let p = std::path::Path::new(&name);
+    if p.is_absolute() {
+        return Some(p.to_path_buf());
+    }
+    let places = [game.map(|g| g.join(p)), doc.path().and_then(|m| m.parent()).map(|d| d.join(p))];
+    places.into_iter().flatten().find(|c| c.is_file())
 }
 
 impl TexlightProducer {
@@ -616,7 +654,8 @@ impl DerivedProducer for TexlightProducer {
             }
             return self.changed;
         }
-        let files = rad_stamp(&rad_files(cx.doc));
+        let game = cx.assets.fs.as_ref().and_then(hp_fs::GameFs::game_dir).map(std::path::Path::to_path_buf);
+        let files = rad_stamp(&rad_files(cx.doc, game.as_deref()));
         let stale = self.rad.as_ref().is_none_or(|(g, f, _)| *g != cx.assets.generation || *f != files);
         if !self.on || ch.full || stale {
             self.on = true;
@@ -638,7 +677,8 @@ impl DerivedProducer for TexlightProducer {
     fn build(&mut self, cx: &mut ProducerCx<'_>) -> DerivedBuild {
         let mut out = DerivedBuild::default();
         if self.on && self.rad.is_none() {
-            let files = rad_files(cx.doc);
+            let game = cx.assets.fs.as_ref().and_then(hp_fs::GameFs::game_dir).map(std::path::Path::to_path_buf);
+            let files = rad_files(cx.doc, game.as_deref());
             let extra: Vec<std::path::PathBuf> = files.iter().filter(|p| p.is_file()).cloned().collect();
             let fs = cx.assets.fs.as_ref();
             let rad = hp_light::rad::load(fs, fs.and_then(hp_fs::GameFs::game_dir), &extra);
@@ -664,6 +704,7 @@ impl DerivedProducer for TexlightProducer {
         {
             let start = Instant::now();
             let scene = cx.doc.scene();
+            let fs = cx.assets.fs.clone();
             while !self.queue.is_empty() {
                 let n = self.queue.len().saturating_sub(TEXLIGHT_SLICE);
                 for id in self.queue.split_off(n) {
@@ -672,7 +713,12 @@ impl DerivedProducer for TexlightProducer {
                     let mut value = |name: &str| match values.get(name) {
                         Some(v) => *v,
                         None => {
-                            let v = rad.get(&hp_light::rad::normalize_material(name));
+                            let key = hp_light::rad::normalize_material(name);
+                            let (ldr, hdr) = (rad.get(&key), rad.get_hdr(&key));
+                            let v = (ldr.is_some() || hdr.is_some()).then(|| {
+                                let (w, h) = texlight_texture_size(fs.as_ref(), name);
+                                TexValue { ldr, hdr, texture_area: w * h }
+                            });
                             values.insert(name.to_owned(), v);
                             v
                         }
@@ -694,14 +740,13 @@ impl DerivedProducer for TexlightProducer {
             self.changed = false;
             let mut ids: Vec<&Id> = self.by_solid.keys().collect();
             ids.sort_unstable();
-            out.lights =
-                Some(ids.into_iter().flat_map(|id| self.by_solid[id].iter().copied().map(SceneLight::same)).collect());
+            out.lights = Some(ids.into_iter().flat_map(|id| self.by_solid[id].iter().copied()).collect());
         }
         out
     }
 }
 
-fn solid_texlights(node: &SolidNode, value: &mut impl FnMut(&str) -> Option<glam::Vec3>) -> Vec<PreviewLight> {
+fn solid_texlights(node: &SolidNode, value: &mut impl FnMut(&str) -> Option<TexValue>) -> Vec<SceneLight> {
     if node.disp.iter().any(Option::is_some) {
         return Vec::new();
     }
@@ -709,13 +754,28 @@ fn solid_texlights(node: &SolidNode, value: &mut impl FnMut(&str) -> Option<glam
     for face in &node.geom.faces {
         let Some(side) = node.solid.sides.get(face.side_index) else { continue };
         let Some(v) = value(&side.material) else { continue };
-        let Some(light) = face_light(&face.vertices, face.normal(), v) else { continue };
-        out.push(light);
+        let texels = texels_per_unit(side.uaxis.scale, side.vaxis.scale);
+        let light = |rgb: Option<glam::Vec3>| face_light(&face.vertices, face.normal(), rgb?, texels, v.texture_area);
+        let (ldr, hdr) = (light(v.ldr), light(v.hdr));
+        if ldr.is_some() || hdr.is_some() {
+            out.push(SceneLight { ldr, hdr, sun: None });
+        }
     }
     out
 }
 
-fn face_light(vertices: &[DVec3], normal: DVec3, value: glam::Vec3) -> Option<PreviewLight> {
+fn texels_per_unit(u: f64, v: f64) -> f32 {
+    let scale = |s: f64| if s.is_finite() && s.abs() > 1e-6 { 1.0 / s.abs() } else { 1.0 / 0.25 };
+    (scale(u) * scale(v)) as f32
+}
+
+fn face_light(
+    vertices: &[DVec3],
+    normal: DVec3,
+    value: glam::Vec3,
+    texels_per_unit: f32,
+    texture_area: f32,
+) -> Option<PreviewLight> {
     if vertices.len() < 3 || !normal.is_finite() {
         return None;
     }
@@ -730,19 +790,20 @@ fn face_light(vertices: &[DVec3], normal: DVec3, value: glam::Vec3) -> Option<Pr
     }
     let n = Vec3A::from(normal.as_vec3());
     let origin = Vec3A::from(center.as_vec3()) + n;
-    let vrad = hp_light::lights::surface_light(origin, n, Vec3A::from(value), area, 1.0);
+    let power = hp_light::lights::texlight_intensity(Vec3A::from(value), area, texels_per_unit, texture_area);
+    let vrad = hp_light::lights::surface_light(origin, n, power, 1.0);
     let strength = vrad.intensity.max_element();
     if !strength.is_finite() || strength <= 0.0 {
         return None;
     }
     Some(PreviewLight {
-        kind: LightKind::Spot { dir: n.to_array(), inner_deg: 0.0, outer_deg: 90.0 },
+        kind: LightKind::Spot { dir: n.to_array(), inner_deg: 90.0, outer_deg: 90.0 },
         pos: origin.to_array(),
         color: (vrad.intensity / strength).to_array(),
         intensity: strength / 255.0,
         range: vrad.reach.clamp(MIN_RANGE, MAX_RANGE),
         falloff: Some(LightFalloff {
-            constant: vrad.constant,
+            constant: vrad.constant + area / std::f32::consts::PI,
             linear: vrad.linear,
             quadratic: vrad.quadratic,
             cap: vrad.cap,
@@ -757,6 +818,34 @@ fn face_light(vertices: &[DVec3], normal: DVec3, value: glam::Vec3) -> Option<Pr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn texture_lights_follow_vrad_power_and_lambert() {
+        let quad = [
+            DVec3::new(-48.0, -24.0, 0.0),
+            DVec3::new(48.0, -24.0, 0.0),
+            DVec3::new(48.0, 24.0, 0.0),
+            DVec3::new(-48.0, 24.0, 0.0),
+        ];
+        let value = glam::Vec3::new(100.0, 50.0, 25.0);
+        let texels = texels_per_unit(0.25, 0.25);
+        assert_eq!(texels, 16.0);
+        let l = face_light(&quad, DVec3::NEG_Z, value, texels, 64.0 * 64.0).expect("light");
+        let power = 100.0 * 96.0 * 48.0 * 16.0 / 4096.0 * 10_000.0;
+        assert!((l.intensity * 255.0 * l.color[0] - power).abs() / power < 1e-4, "{l:?}");
+        match l.kind {
+            LightKind::Spot { inner_deg, outer_deg, .. } => assert!(inner_deg == 90.0 && outer_deg == 90.0),
+            k => panic!("{k:?}"),
+        }
+        let small = face_light(&quad, DVec3::NEG_Z, value, texels, 256.0 * 256.0).expect("light");
+        assert!((l.intensity / small.intensity - 16.0).abs() < 1e-3, "a bigger texture tile gives less light");
+        let coarse = face_light(&quad, DVec3::NEG_Z, value, texels_per_unit(0.5, 0.5), 4096.0).expect("light");
+        assert!((l.intensity / coarse.intensity - 4.0).abs() < 1e-3, "a larger texture scale gives less light");
+        let f = l.falloff.expect("falloff");
+        assert!((f.constant - 96.0 * 48.0 / std::f32::consts::PI).abs() < 1e-2, "a disc of the same area up close");
+        assert_eq!(f.quadratic, 1.0);
+        assert!(face_light(&quad, DVec3::NEG_Z, glam::Vec3::splat(0.01), texels, 4096.0).is_none());
+    }
 
     #[test]
     fn lights_parented_to_a_train_move_and_turn_with_it() {
@@ -1094,19 +1183,20 @@ mod tests {
     #[test]
     fn texlight_faces_become_preview_lights() {
         let square = [DVec3::ZERO, DVec3::new(64.0, 0.0, 0.0), DVec3::new(64.0, 64.0, 0.0), DVec3::new(0.0, 64.0, 0.0)];
-        let l = face_light(&square, DVec3::Z, glam::Vec3::new(200.0, 100.0, 50.0)).expect("light");
+        let at = |v: &[DVec3], n: DVec3, rgb: glam::Vec3| face_light(v, n, rgb, 16.0, 64.0 * 64.0);
+        let l = at(&square, DVec3::Z, glam::Vec3::new(200.0, 100.0, 50.0)).expect("light");
         assert_eq!(l.pos, [32.0, 32.0, 1.0]);
         assert!(matches!(l.kind, LightKind::Spot { dir: [0.0, 0.0, 1.0], .. }));
         assert_eq!(l.color, [1.0, 0.5, 0.25]);
-        let expected = 200.0 * 64.0 * 64.0 / std::f32::consts::PI / 255.0;
+        let expected = 200.0 * 64.0 * 64.0 * 16.0 / 4096.0 * 10_000.0 / 255.0;
         assert!((l.intensity - expected).abs() < expected * 1e-4, "{}", l.intensity);
-        assert!(l.falloff.is_some_and(|f| f.quadratic == 1.0 && f.constant == 0.0));
+        assert!(l.falloff.is_some_and(|f| f.quadratic == 1.0 && f.constant > 0.0));
         assert!(l.range >= MIN_RANGE && l.range <= MAX_RANGE);
-        assert!(face_light(&square[..2], DVec3::Z, glam::Vec3::ONE).is_none());
-        assert!(face_light(&[DVec3::ZERO; 4], DVec3::Z, glam::Vec3::ONE).is_none());
-        assert!(face_light(&square, DVec3::NAN, glam::Vec3::ONE).is_none());
-        assert!(face_light(&square, DVec3::Z, glam::Vec3::ZERO).is_none());
-        assert!(face_light(&square, DVec3::Z, glam::Vec3::splat(f32::NAN)).is_none());
+        assert!(at(&square[..2], DVec3::Z, glam::Vec3::ONE).is_none());
+        assert!(at(&[DVec3::ZERO; 4], DVec3::Z, glam::Vec3::ONE).is_none());
+        assert!(at(&square, DVec3::NAN, glam::Vec3::ONE).is_none());
+        assert!(at(&square, DVec3::Z, glam::Vec3::ZERO).is_none());
+        assert!(at(&square, DVec3::Z, glam::Vec3::splat(f32::NAN)).is_none());
     }
 
     #[test]

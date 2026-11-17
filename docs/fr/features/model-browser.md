@@ -86,7 +86,7 @@ Quand un prop sélectionné utilise un autre modèle, **Remplacer partout (N)** 
 
 **Groupes de corps (N)** : une liste par bodygroup qui offre un choix. Elle part de la valeur `body` du premier prop sélectionné qui utilise ce modèle. **Valeur de la clé body** affiche le nombre obtenu, et **Appliquer aux props sélectionnés (N)** l'écrit dans leur clé `body`.
 
-**Séquences (N)** : les séquences avec leur nombre d'images. Cliquez-en une pour la jouer dans l'aperçu ; `▶` / `⏸` lance ou met en pause, `↺` redémarre. Double-cliquez une séquence, ou cliquez **Définir comme animation par défaut des props sélectionnés (N)**, pour l'écrire dans leur clé `DefaultAnim`.
+**Séquences (N)** : les séquences avec leur nombre d'images. Cliquez-en une pour la jouer dans l'aperçu ; `▶` / `⏸` lance ou met en pause, `↺` redémarre. Double-cliquez une séquence, ou cliquez **Définir comme animation par défaut des props sélectionnés (N)**, pour l'écrire dans leur clé `DefaultAnim`. La liste comprend les séquences des fichiers `$includemodel` du modèle (les animations des modèles de PNJ), et l'aperçu les joue avec leurs couches automatiques et delta. Placés dans la map, les props jouent leur animation dans la vue 3D (voir [Modèles animés](render-modes-display.md#modèles-animés)).
 
 ## Inspecteur (« Crowbar lite »)
 

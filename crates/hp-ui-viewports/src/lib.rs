@@ -1726,6 +1726,9 @@ impl Viewports {
                 }
                 options.time = self.anim_time[i];
             }
+            if !view.is_2d() && state.assets.models_animating() {
+                state.runtime.render.request_animation_frame(ctx);
+            }
             if !view.is_2d() && state.runtime.render.animation.is_some() && state.assets.animated_lights() {
                 ctx.request_repaint_after(next_light_frame(ctx.input(|i| i.time)));
             }
@@ -1745,6 +1748,7 @@ impl Viewports {
                 options,
                 content: self.content_clock.content(&gfx.renderer),
                 lighting: if view.is_2d() { 0 } else { gfx.renderer.lighting_generation(i as u32) },
+                animation: if view.is_2d() { 0 } else { gfx.renderer.model_animation_generation() },
                 retained: self.content_clock.retained(i),
                 overlay: render_cache::overlay_hash(&self.overlay),
             };

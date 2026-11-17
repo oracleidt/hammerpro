@@ -605,3 +605,66 @@ fn bakes_stop_while_the_window_is_away() {
     assert!(away((false, true), Some((false, false))));
     assert!(!away((false, false), Some((true, false))));
 }
+
+fn compiled_mean(lit: &[u8]) -> f32 {
+    let file = hp_bsp::Bsp::from_vec(lit.to_vec()).expect("bsp");
+    let faces = file.lump(hp_bsp::lump::FACES_HDR).expect("faces").into_owned();
+    let light = file.lump(hp_bsp::lump::LIGHTING_HDR).expect("lighting").into_owned();
+    let int = |b: &[u8], at: usize| i32::from_le_bytes([b[at], b[at + 1], b[at + 2], b[at + 3]]);
+    let (mut sum, mut count) = (0.0f64, 0usize);
+    for face in faces.chunks_exact(56) {
+        let offset = int(face, 20);
+        if offset < 0 {
+            continue;
+        }
+        let n = ((int(face, 36) + 1) * (int(face, 40) + 1)) as usize;
+        for k in 0..n {
+            let at = offset as usize + k * 4;
+            let scale = 2f32.powi(i32::from(light[at + 3] as i8)) / 255.0;
+            let c = [light[at], light[at + 1], light[at + 2]].map(|v| f32::from(v) * scale);
+            sum += f64::from(0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]);
+            count += 1;
+        }
+    }
+    (sum / count.max(1) as f64) as f32
+}
+
+#[test]
+fn texture_lit_rooms_bake_like_the_compile() {
+    let dir = std::env::temp_dir().join(format!("hp_texlight_preview_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("dir");
+    let rad = dir.join("panel.rad");
+    std::fs::write(&rad, "ldr: lights/testpanel 255 255 255 100\nhdr: lights/testpanel 255 255 255 50\n").expect("rad");
+    let panel = solid(30, 300, [96.0, 96.0, 252.0], [160.0, 160.0, 256.0])
+        .replace("DEV/DEV_MEASUREGENERIC01B", "LIGHTS/TESTPANEL");
+    let (text, solids) = room_text("");
+    let world_end = text.find("entity {").and_then(|e| text[..e].rfind("}\n")).expect("world");
+    let text = format!("{}{panel}{}", &text[..world_end], &text[world_end..]);
+    let map = hp_vmf::parse(&text).expect("parse");
+    let mut preview = job(41, Some(map.clone()), solids);
+    preview.rad = host::RadFiles { lights: Some(rad.display().to_string()), map: None };
+    let mut h = Harness::new();
+    let baked = h.baked(preview);
+    let texels: Vec<u32> = texels_by_bsp(&baked).into_values().flatten().collect();
+    let shown = texels.iter().map(|t| lum(*t)).sum::<f32>() / texels.len().max(1) as f32;
+
+    let built = compile_map(&map, &hp_fs::GameFs::empty(), 2, &|| false, &mut |_| {}, false).ok().expect("compiled");
+    let files = vec![hp_bspc::rad::LightFile {
+        path: rad.display().to_string(),
+        text: std::fs::read_to_string(&rad).expect("rad text"),
+    }];
+    let opts = hp_bspc::rad::RadOptions {
+        hdr: true,
+        ldr: false,
+        bounces: 2,
+        quality: RadQuality::Draft,
+        threads: Some(2),
+        texlights: hp_bspc::rad::TexLightOptions { files, ..Default::default() },
+        ..Default::default()
+    };
+    let lit = hp_bspc::rad::light_bsp(&built.bsp, &opts, &mut |_| {}).expect("lit");
+    let compiled = compiled_mean(&lit);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(compiled > 0.05, "the panel lights the compiled room: {compiled}");
+    assert!((shown / compiled - 1.0).abs() < 0.2, "preview {shown} against the compile {compiled}");
+}

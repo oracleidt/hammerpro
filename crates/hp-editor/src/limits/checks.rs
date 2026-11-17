@@ -136,6 +136,9 @@ pub trait CheckKnowledge {
     fn model_exists(&self, _path: &str) -> Option<bool> {
         None
     }
+    fn material_has_crack(&self, _name: &str) -> Option<bool> {
+        None
+    }
     fn sound_exists(&self, _name: &str) -> Option<bool> {
         None
     }
@@ -404,6 +407,7 @@ pub fn check_snapshot(snap: &MapSnapshot, k: &dyn CheckKnowledge, opts: &CheckOp
     check_side_lists(snap, &mut out);
     check_assets(snap, k, &mut mats, &mut out);
     check_entity_rules(snap, k, opts, &mut mats, &mut out);
+    super::breakable::check_breakable_surfs(snap, k, &mut out);
     check_sky_cameras(snap, &mut out);
     check_redundant(snap, &mut mats, &mut out);
     out.sort_by_key(|p| std::cmp::Reverse(p.severity));

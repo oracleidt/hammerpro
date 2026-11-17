@@ -38,6 +38,7 @@ mod projector;
 mod reflection;
 mod scene;
 mod shadow;
+mod skinned;
 mod sky;
 mod sky_layers;
 mod sprite_layers;
@@ -333,6 +334,7 @@ pub struct Renderer {
     instance_pool: instance_cull::InstancePool,
     instances_dirty: bool,
     content_gen: u64,
+    model_anim_gen: u64,
     light_content_gen: u64,
     view_redraws: ahash::AHashMap<u32, u64>,
     last_submit: Option<wgpu::SubmissionIndex>,
@@ -1113,6 +1115,7 @@ impl Renderer {
             instance_pool: instance_cull::InstancePool::new(&device),
             instances_dirty: false,
             content_gen: 1,
+            model_anim_gen: 0,
             light_content_gen: 0,
             view_redraws: ahash::AHashMap::default(),
             last_submit: None,

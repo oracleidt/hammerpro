@@ -432,6 +432,7 @@
 | `map_tonemap` | `true` | `env_tonemap_controller` карты устанавливает диапазон экспозиции и масштаб цветения (`SetAutoExposureMin`, `SetAutoExposureMax`, `SetBloomScale` от `logic_auto`), как в игре. |
 | `prop_shadows` | `"Auto"` | Какие объекты `prop_static` отбрасывают тени в режиме освещения: `Auto` следует за компиляцией (модели треугольников с `-StaticPropPolys`, модель коллизий в противном случае, нет с `-nostaticpropshadows`), `Mesh` модель треугольников, `Collision` модель коллизий. |
 | `animate_materials` | `true` | Играют анимированные материалы и спрайты. |
+| `animate_models` | `true` | Сущности с моделью проигрывают анимацию в 3D-видах (DefaultAnim, иначе первая последовательность или idle). |
 | `model_fade` | `false` | Проп исчезает на расстоянии выцветания. |
 | `force_opaque` | `false` | Полупрозрачные материалы нарисованы непрозрачными. |
 | `walkable` | `false` | Тонируйте поверхности, слишком крутые, чтобы по ним можно было ходить. |

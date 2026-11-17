@@ -731,6 +731,17 @@ mod tests {
     }
 
     #[test]
+    fn animated_models_setting_is_reachable() {
+        let _lang = hp_app::testing::lang_lock();
+        let mut state = hp_app::testing::test_state();
+        let v = ok(&mut state, "get_settings", json!({ "path": "render.animate_models" }));
+        assert_eq!(v["value"], true, "models animate by default");
+        set(&mut state, "render.animate_models", json!(false));
+        assert!(!state.settings.render.animate_models);
+        assert!(read_only("render.animate_models").is_none());
+    }
+
+    #[test]
     fn scan_settings_are_reachable() {
         let _lang = hp_app::testing::lang_lock();
         let mut state = hp_app::testing::test_state();

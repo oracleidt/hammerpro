@@ -10,6 +10,7 @@ const MAX_ENTRIES: usize = 65_536;
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TexLights {
     map: HashMap<String, Vec3>,
+    hdr: HashMap<String, Vec3>,
 }
 
 pub fn normalize_material(name: &str) -> String {
@@ -32,19 +33,19 @@ impl TexLights {
         let text = text.get(..end).unwrap_or("");
         let mut plain: HashMap<String, Vec3> = HashMap::new();
         let mut ldr: HashMap<String, Vec3> = HashMap::new();
+        let mut hdr: HashMap<String, Vec3> = HashMap::new();
         for line in text.lines() {
             let line = line.split("//").next().unwrap_or("").trim();
             if line.is_empty() {
                 continue;
             }
             let (target, rest) = if let Some(r) = strip_prefix_ci(line, "ldr:") {
-                (Some(&mut ldr), r)
-            } else if strip_prefix_ci(line, "hdr:").is_some() {
-                (None, "")
+                (&mut ldr, r)
+            } else if let Some(r) = strip_prefix_ci(line, "hdr:") {
+                (&mut hdr, r)
             } else {
-                (Some(&mut plain), line)
+                (&mut plain, line)
             };
-            let Some(target) = target else { continue };
             let mut parts = rest.splitn(2, char::is_whitespace);
             let (Some(name), Some(value)) = (parts.next(), parts.next()) else { continue };
             let lower = name.to_ascii_lowercase();
@@ -56,14 +57,18 @@ impl TexLights {
                 target.insert(normalize_material(name), v);
             }
         }
+        let mut high = plain.clone();
+        high.extend(hdr);
         plain.extend(ldr);
-        Self { map: plain }
+        Self { map: plain, hdr: high }
     }
 
     pub fn merge(&mut self, other: TexLights) {
-        for (k, v) in other.map {
-            if self.map.len() < MAX_ENTRIES || self.map.contains_key(&k) {
-                self.map.insert(k, v);
+        for (mine, theirs) in [(&mut self.map, other.map), (&mut self.hdr, other.hdr)] {
+            for (k, v) in theirs {
+                if mine.len() < MAX_ENTRIES || mine.contains_key(&k) {
+                    mine.insert(k, v);
+                }
             }
         }
     }
@@ -72,12 +77,20 @@ impl TexLights {
         self.map.get(material).copied()
     }
 
+    pub fn get_hdr(&self, material: &str) -> Option<Vec3> {
+        self.hdr.get(material).copied()
+    }
+
+    pub fn value(&self, material: &str, hdr: bool) -> Option<Vec3> {
+        if hdr { self.get_hdr(material) } else { self.get(material) }
+    }
+
     pub fn len(&self) -> usize {
         self.map.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.map.is_empty()
+        self.map.is_empty() && self.hdr.is_empty()
     }
 }
 
@@ -138,6 +151,9 @@ mod tests {
         let t = TexLights::parse(text);
         assert_eq!(t.len(), 3);
         assert!((t.get("lights/white001").unwrap().x - 200.0).abs() < 1e-3, "hdr line ignored");
+        assert!((t.get_hdr("lights/white001").unwrap().x - 1000.0).abs() < 1e-3, "the hdr line wins in HDR");
+        assert!((t.value("lights/white002", true).unwrap().x - 255.0).abs() < 1e-3, "ldr lines are left out in HDR");
+        assert!(t.get_hdr("lights/fluorescentcool001a").is_some(), "plain lines count in HDR");
         assert!(t.get("lights/fluorescentcool001a").is_some(), "names are normalized");
         assert!(t.get("lights/white002").unwrap().x < 10.0);
         assert!(t.get("lights/bad").is_none());

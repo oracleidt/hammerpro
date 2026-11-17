@@ -63,6 +63,7 @@ const HANDLED: &[Action] = &[
     Action::ToggleCollisionModels,
     Action::ToggleCollisionOnly,
     Action::ToggleAnimatedMaterials,
+    Action::ToggleAnimatedModels,
     Action::BackgroundImages,
     Action::UseSkyCameraInGame,
     Action::ToggleDispMesh2d,
@@ -144,6 +145,7 @@ impl Package for Render {
             Action::ToggleCollisionModels => r.collision_models = !r.collision_models,
             Action::ToggleCollisionOnly => r.collision_only = !r.collision_only,
             Action::ToggleAnimatedMaterials => r.animate_materials = !r.animate_materials,
+            Action::ToggleAnimatedModels => r.animate_models = !r.animate_models,
             Action::BackgroundImages => {
                 app.pkg.render.bg.open = !app.pkg.render.bg.open;
                 return true;

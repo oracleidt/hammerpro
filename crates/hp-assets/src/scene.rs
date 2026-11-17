@@ -43,6 +43,7 @@ pub(crate) struct EntState {
     pub model: Option<ModelId>,
     pub sprite: Option<MaterialId>,
     pub stand_in: bool,
+    pub anim_wait: bool,
 }
 
 pub(crate) fn producers() -> Vec<Box<dyn DerivedProducer>> {
@@ -132,6 +133,10 @@ pub(crate) struct ParkedSync {
 }
 
 impl ParkedSync {
+    pub(crate) fn models(&self) -> impl Iterator<Item = ModelId> + '_ {
+        self.sync.ents.values().filter_map(|s| s.model)
+    }
+
     pub(crate) fn render_bytes(&self) -> u64 {
         self.render.gpu_bytes()
     }
@@ -519,7 +524,9 @@ impl AssetManager {
             None => (false, false),
         };
         if prev_display.is_some_and(|p| {
-            p.render_effects != display.render_effects || p.object_colors_3d != display.object_colors_3d
+            p.render_effects != display.render_effects
+                || p.object_colors_3d != display.object_colors_3d
+                || p.animate_models != display.animate_models
         }) {
             self.scene.force_entities = true;
         }
@@ -675,6 +682,7 @@ impl AssetManager {
             self.scene.derived.refresh_owner_flags(doc, renderer, &owners);
         }
         self.rebuild_instances(doc, renderer);
+        self.tick_animated_models(renderer, &display);
         self.rebuild_sprites(renderer);
         if opts.lighting_preview && (map_changed || self.scene.buried_pending || self.scene.lights_dirty) {
             self.update_buried_lights(doc);
@@ -1174,6 +1182,7 @@ impl AssetManager {
             desc.tint[3] = 1.0;
             desc.body = 0;
             desc.anim = None;
+            desc.animation = None;
         }
         let flags = point_entity_flags(doc, id, self.scene.env.room.as_ref(), display.prop_shadows);
         self.realize_entity(renderer, id, desc, flags, opts);
@@ -1189,9 +1198,26 @@ impl AssetManager {
     ) {
         let obj = entity_object(id);
         let game_look = self.scene.game_look;
+        let animate = self.scene.display.is_some_and(|d| d.animate_models);
+        let mut anim_wait = false;
         let model = match (&desc.model, opts.show_models) {
             (Some((path, _)), true) if game_look && path.starts_with("models/editor/") => None,
-            (Some((path, skin)), true) => self.render_model_for(renderer, path, *skin, desc.body, desc.anim.as_deref()),
+            (Some((path, skin)), true) => {
+                let animated = match desc.animation.as_ref().filter(|_| animate) {
+                    Some(spec) => self.animated_model(renderer, path, *skin, desc.body, spec),
+                    None => crate::animated::Animated::Still,
+                };
+                match animated {
+                    crate::animated::Animated::Model(id) => Some(id),
+                    crate::animated::Animated::Waiting => {
+                        anim_wait = true;
+                        self.render_model_for(renderer, path, *skin, desc.body, desc.anim.as_deref())
+                    }
+                    crate::animated::Animated::Still => {
+                        self.render_model_for(renderer, path, *skin, desc.body, desc.anim.as_deref())
+                    }
+                }
+            }
             _ => None,
         };
         let stand_in_for = match (&desc.model, model, opts.show_models) {
@@ -1234,7 +1260,7 @@ impl AssetManager {
             self.scene.selected.remove(&obj);
         }
         let lit = desc.light.is_some();
-        let old = self.scene.ents.insert(id, EntState { desc, model, sprite, stand_in });
+        let old = self.scene.ents.insert(id, EntState { desc, model, sprite, stand_in, anim_wait });
         let (old_model, old_sprite, old_lit) =
             old.map_or((false, false, false), |o| (o.model.is_some(), o.sprite.is_some(), o.desc.light.is_some()));
         self.scene.instances_dirty |= old_model || model.is_some();
@@ -1389,12 +1415,15 @@ impl AssetManager {
         if !opts.show_models {
             return;
         }
+        let anim_key = |p: &str| model_data_key(p, Some(crate::particle_model_draw::ANIMATION_KEY));
         let waits = |s: &EntState| {
-            (s.model.is_none() || s.stand_in)
+            ((s.model.is_none() || s.stand_in)
                 && s.desc
                     .model
                     .as_ref()
-                    .is_some_and(|(p, _)| ready.contains(&model_data_key(p, s.desc.anim.as_deref())))
+                    .is_some_and(|(p, _)| ready.contains(&model_data_key(p, s.desc.anim.as_deref()))))
+                || (s.anim_wait
+                    && s.desc.model.as_ref().is_some_and(|(p, _)| ready.contains(p) || ready.contains(&anim_key(p))))
         };
         let ids: Vec<Id> = self.scene.ents.iter().filter(|(_, s)| waits(s)).map(|(id, _)| *id).collect();
         let dirty_before = self.scene.instances_dirty;
@@ -1586,6 +1615,7 @@ impl AssetManager {
             .collect();
         self.play_model_lighting(renderer, &list, &origins);
         self.scene.placements.set_instances(&self.residency.models, &list);
+        self.place_animated_models(renderer, &list);
         renderer.set_model_instances(&list);
     }
 

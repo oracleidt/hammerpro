@@ -154,7 +154,7 @@ fn anim_values(r: &Reader<'_>, ptr: usize, frame: usize) -> Option<([f32; 3], [f
     Some((a, b))
 }
 
-fn quat_blend(p: [f32; 4], q: [f32; 4], t: f32) -> [f32; 4] {
+pub(crate) fn quat_blend(p: [f32; 4], q: [f32; 4], t: f32) -> [f32; 4] {
     let dot = p[0] * q[0] + p[1] * q[1] + p[2] * q[2] + p[3] * q[3];
     let q = if dot < 0.0 { [-q[0], -q[1], -q[2], -q[3]] } else { q };
     let u = 1.0 - t;
@@ -232,31 +232,48 @@ pub(crate) fn sequence_pose(
     r: &Reader<'_>,
     ani: Option<&Reader<'_>>,
     bones: &[Bone],
+    seq: (usize, usize),
+    frame: usize,
+    s: f32,
+) -> Option<Vec<([f32; 3], [f32; 4])>> {
+    decode_pose(r, ani, bones, seq, frame, s, false).map(|(pose, _)| pose)
+}
+
+pub(crate) type LocalPose = Vec<([f32; 3], [f32; 4])>;
+
+pub(crate) fn decode_pose(
+    r: &Reader<'_>,
+    ani: Option<&Reader<'_>>,
+    bones: &[Bone],
     (seq, blend): (usize, usize),
     mut frame: usize,
     mut s: f32,
-) -> Option<Vec<([f32; 3], [f32; 4])>> {
+    layered: bool,
+) -> Option<(LocalPose, bool)> {
     let (seq_at, desc) = seq_anim(r, seq, blend)?;
-    if r.u32(seq_at + 12).ok()? & STUDIO_DELTA != 0 {
+    let flags = r.u32(desc + 12).ok()?;
+    let is_delta = r.u32(seq_at + 12).ok()? & STUDIO_DELTA != 0 || flags & STUDIO_DELTA != 0;
+    if is_delta && !layered {
         return None;
     }
-    let flags = r.u32(desc + 12).ok()?;
     let frames = usize::try_from(r.i32(desc + 16).ok()?).ok()?.max(1);
     if frame + 1 >= frames {
         frame = frames.saturating_sub(1);
         s = 0.0;
     }
 
-    let mut pose: Vec<([f32; 3], [f32; 4])> = bones.iter().map(|b| (b.pos, b.quat)).collect();
-    if flags & STUDIO_DELTA != 0 {
-        return None;
-    }
+    let mut pose: LocalPose = if is_delta {
+        bones.iter().map(|_| ([0.0; 3], [0.0, 0.0, 0.0, 1.0])).collect()
+    } else {
+        bones.iter().map(|b| (b.pos, b.quat)).collect()
+    };
     if flags & STUDIO_ALLZEROS != 0 {
-        return Some(pose);
+        return Some((pose, is_delta));
     }
     let weights_rel = r.i32(seq_at + 156).ok()?;
     let animated = |bone: usize| -> bool {
-        weights_rel == 0
+        layered
+            || weights_rel == 0
             || r.rel(seq_at, weights_rel, "bone weights")
                 .ok()
                 .and_then(|w| r.f32(w + bone * 4).ok())
@@ -287,8 +304,10 @@ pub(crate) fn sequence_pose(
         && let Some(at) = ani_block_data(r, a, block, index)
     {
         (a, at)
+    } else if is_delta {
+        return None;
     } else {
-        return zero_frame(r, bones, desc, pose, animated);
+        return zero_frame(r, bones, desc, pose, animated).map(|p| (p, false));
     };
     for _ in 0..MAX_ANIM_RECORDS {
         let bone = usize::from(ar.u8(at).ok()?);
@@ -339,7 +358,7 @@ pub(crate) fn sequence_pose(
         } else {
             b.pos
         };
-        if delta {
+        if delta && !is_delta {
             return None;
         }
         if animated(bone)
@@ -348,7 +367,7 @@ pub(crate) fn sequence_pose(
             *slot = (pos, normalize_quat(quat));
         }
         if next <= 0 {
-            return Some(pose);
+            return Some((pose, is_delta));
         }
         at += next as usize;
     }

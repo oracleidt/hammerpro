@@ -412,6 +412,7 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `map_tonemap` | `true` | The `env_tonemap_controller` of the map sets the exposure range and the bloom scale (`SetAutoExposureMin`, `SetAutoExposureMax`, `SetBloomScale` from its `logic_auto`), like in game. |
 | `prop_shadows` | `"Auto"` | What `prop_static` entities cast shadows with in the Lit mode: `Auto` follows the compile (model triangles with `-StaticPropPolys`, collision model otherwise, none with `-nostaticpropshadows`), `Mesh` the model triangles, `Collision` the collision model. |
 | `animate_materials` | `true` | Animated materials and sprites play. |
+| `animate_models` | `true` | Model entities play their animation in the 3D views (DefaultAnim, else the first or idle sequence). |
 | `model_fade` | `false` | Props fade between their fade distances. |
 | `force_opaque` | `false` | Translucent materials drawn opaque. |
 | `walkable` | `false` | Tint surfaces too steep to walk on. |

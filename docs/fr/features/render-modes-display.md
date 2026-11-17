@@ -59,6 +59,7 @@ Directement dans le menu **Affichage** :
 | **Afficher les collisions des modèles** | La vue 3D montre les modèles de collision à la place des modèles (un modèle sans collision montre sa boîte en orange). | Désactivé |
 | **Aperçu du brouillard** | Sous-menu : **Désactivé**, ou le brouillard d'un `env_fog_controller` de la map (par défaut celui du jeu : le dernier marqué **Master**, sinon le premier ; un contrôleur avec **Fog Enable** à No est signalé). Aussi un bouton de la barre d'outils. Voir [Brouillard de la map](#brouillard-de-la-map). | Activé |
 | **Matériaux animés** | Les matériaux animés et les sprites s'animent. | Activé |
+| **Animer les modèles** | Les props, PNJ et autres entités à modèle jouent leur animation comme en jeu (voir [Modèles animés](#modèles-animés)). | Activé |
 | **Fondu des modèles** | Les props disparaissent entre leurs distances de fondu, comme en jeu. | Désactivé |
 | **Matériaux opaques** | Les matériaux translucides sont dessinés opaques. | Désactivé |
 | **Pentes praticables** | Teinte les surfaces trop pentues pour que les joueurs s'y tiennent. | Désactivé |
@@ -222,3 +223,15 @@ Les images sont enregistrées dans la map (bloc `bgimages_plus` du VMF) et voyag
 ## Une grille bleue à la place du ciel
 
 Dans les vues texturées, une grille bleue sur une face de ciel correspond à la texture d'édition `tools/toolsskybox` lorsque **Voir le ciel à travers toolsskybox** est désactivé. Activez cette option dans **Paramètres > Rendu** (`render.sky_see_through`) pour voir le ciel à travers ces faces. Le mode éclairé (Alt+5) et l'aperçu précalculé affichent automatiquement les ouvertures de ciel, pour que les faces de ciel ne soient jamais éclairées ni ombrées comme un mur.
+
+## Modèles animés
+
+Les entités à modèle jouent leur animation dans la vue 3D comme en jeu, dans tous les modes (Texturé, Éclairé, Pré-calculé, Ray tracing, Vue joueur), tant que **Affichage > Options d'affichage > Animer les modèles** est activé (par défaut ; réglage `render.animate_models`, action `toggle_animated_models`, aussi dans Paramètres > Rendu) :
+
+- La séquence jouée est le `DefaultAnim` de l'entité, sinon la première séquence du modèle si elle bouge, sinon sa séquence `ACT_IDLE` ou idle. Les classes de PNJ (`npc_*`, `monster_*`, `generic_*`) essaient d'abord la séquence idle, comme l'IA du jeu. Les modèles des helpers `studio()` du FGD s'animent de la même façon.
+- Les séquences des fichiers `$includemodel` (modèles d'animations des PNJ) et les blocs d'animation externes `.ani` sont lus, avec les valeurs compressées RLE, les sections d'images et jusqu'à 3 poids d'os par sommet. Les images sont interpolées : le mouvement reste fluide.
+- Les séquences en boucle tournent sans fin. Les autres se jouent une fois quand le prop apparaît puis restent sur leur dernière image, comme un prop apparu avec la map.
+- La clé `playbackrate` règle la vitesse (0 la fige, négative joue à l'envers) et `cycle` le point de départ (0 à 1).
+- `prop_static`, `prop_detail` et `prop_ragdoll` restent immobiles, comme en jeu, ainsi que les modèles compilés en props statiques.
+
+Seuls les modèles visibles dans une vue 3D sont animés ; les lointains sont mis à jour moins souvent et un budget par image garde fluides de nombreux props animés. Les props qui partagent le même modèle, skin, groupe de corps et animation partagent un seul maillage posé. L'animation suit **Animations** images par seconde et se met en pause avec les autres animations. Désactivé, les modèles montrent la première image de leur `DefaultAnim` (ou de leur première séquence) comme avant. L'aperçu du navigateur de modèles joue n'importe quelle séquence du modèle, voir [Navigateur de modèles](model-browser.md).

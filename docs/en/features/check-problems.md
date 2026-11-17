@@ -41,6 +41,7 @@ Messages at the top tell you when the map is being checked, when the leak check 
 | Displacements and overlays | broken displacement (face without exactly 4 corners, or a power outside 1 to 4, or a dispinfo block Hammer Pro cannot read and keeps as it is for Hammer, so the compiled brush stays whole; the fix removes it: the compiler and the game drop the whole brush, so the player view hides it and lets you walk through it too), displacement on a brush entity, overlay faces missing, overlay on too many faces (64 at most) |
 | Lighting and sky | sky without sun (sky faces but no `light_environment`), too many named lights, several sky cameras, bad sky camera scale, skybox switch without sky camera, per player skybox |
 | Areaportals | areaportal brushes (exactly one allowed), areaportal without a door, areaportal and door out of step, areaportal across water, areaportal across an occluder |
+| Breakable glass | breakable glass with several faces, breakable glass not a quad, breakable glass too small, glass without crack material (see [Breakable glass](#breakable-glass)) |
 | Redundant objects | duplicate brush, brush inside a brush, stacked duplicate entity (see [Redundant brushwork](#redundant-brushwork)) |
 | Placement | floating object, sunk object, overlapping objects (opt in), measured on the real meshes of the props (see [Placement on real shapes](real-shape-placement.md#check-for-problems)) |
 | Limits and leaks | limit close, limit exceeded (the compile will fail), edict budget, leak, leak check incomplete, func_detail candidate |
@@ -64,12 +65,27 @@ Messages at the top tell you when the map is being checked, when the leak check 
 | origin brush in the world | Delete the origin brushes of the world |
 | func_detail candidate | Tie them to one func_detail (one undo step) |
 | areaportal and door out of step | Start the areaportal like its door |
+| breakable glass with several faces | Put nodraw on every face but the glass one (the largest) |
+| glass without crack material | Use the stock breakable glass material `glass/glasswindowbreak070b` |
 | duplicate brush, brush inside a brush, stacked duplicate entity | Delete the redundant copies and keep the originals |
 | floating object | Drop the prop onto the surface below (stacked props move together with **Fix all**) |
 | sunk object | Lift the prop so it rests on the surface (16 units at most) |
 | overlapping objects | Push the prop out of the other object by the shortest way (16 units at most) |
 
 Every fix is an undo step: `Ctrl+Z` brings the map back.
+
+## Breakable glass
+
+A `func_breakable_surf` shatters into small pieces and keeps holes only when the game knows the four corners of its glass face. Like Hammer, Hammer Pro writes them for you: every time the map is saved, autosaved, exported or compiled, the keys `upperleft`, `upperright`, `lowerleft`, `lowerright` and `error` are computed from the brush (the one face that is not `tools/toolsnodraw`, corners ordered by its texture axes), so a moved, resized or pasted window always gets the right corners, with the Hammer Pro compiler as with the Valve or Hammer++ compilers. The quadbounds outline drawn in the views follows the brush live. Maps saved by older versions get the keys at their next save.
+
+The checks report what still makes the glass break in one piece:
+
+| Problem | Why | Fix |
+| --- | --- | --- |
+| **breakable glass with several faces** (error) | More than one face is not nodraw (or none is): the game removes the entity (error 1, like Hammer) or cannot build its panels. | Puts nodraw on every face but the largest glass face |
+| **breakable glass not a quad** (error) | The glass face does not have exactly four corners (error 2). | None: reshape the brush |
+| **breakable glass too small** (warning) | A side of the glass face is shorter than one 12 unit panel: the whole pane breaks at the first shot. | None: make the window larger |
+| **glass without crack material** (warning) | The glass material has no `$crackmaterial` and is not a shattered glass material (`ShatteredGlass` shader or `BreakableSurface` proxy, like `glass/glasswindowbreak070b`), so the game cannot draw the broken pane. Tile surfaces are not checked. | Uses `glass/glasswindowbreak070b` on the glass face |
 
 ## Redundant brushwork
 

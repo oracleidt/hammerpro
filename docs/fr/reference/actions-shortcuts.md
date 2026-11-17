@@ -192,6 +192,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Options d'affichage > Modèles de collision | `toggle_collision_models` |  |  |  |
 | Options d'affichage > Aperçu du brouillard | `toggle_fog_preview` |  |  |  |
 | Options d'affichage > Matériaux animés | `toggle_animated_materials` |  |  |  |
+| Options d'affichage > Animer les modèles | `toggle_animated_models` |  |  |  |
 | Options d'affichage > Fondu des modèles | `toggle_model_fade` |  |  |  |
 | Options d'affichage > Matériaux opaques | `toggle_opaque_materials` |  |  |  |
 | Options d'affichage > Pentes praticables | `toggle_walkable` |  |  |  |

@@ -16,6 +16,7 @@ action_list! { render_actions {
     ToggleCollisionModels => "toggle_collision_models", View, ViewDiagnostics, None, Ready;
     ToggleFogPreview => "toggle_fog_preview", View, ViewFog, None, Ready;
     ToggleAnimatedMaterials => "toggle_animated_materials", View, ViewEffects, None, Ready;
+    ToggleAnimatedModels => "toggle_animated_models", View, ViewEffects, None, Ready;
     ToggleModelFade => "toggle_model_fade", View, ViewEffects, None, Ready;
     ToggleOpaqueMaterials => "toggle_opaque_materials", View, ViewEffects, None, Ready;
     ToggleWalkable => "toggle_walkable", View, ViewDiagnostics, None, Ready;
@@ -76,6 +77,7 @@ pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
         Action::ToggleFishPreview => Check::Toggle(r.fish_preview),
         Action::ToggleFishSwim => Check::Toggle(r.fish_swim),
         Action::ToggleAnimatedMaterials => Check::Toggle(r.animate_materials),
+        Action::ToggleAnimatedModels => Check::Toggle(r.animate_models),
         Action::ToggleModelFade => Check::Toggle(r.model_fade),
         Action::ToggleOpaqueMaterials => Check::Toggle(r.force_opaque),
         Action::ToggleWalkable => Check::Toggle(r.walkable),
@@ -134,6 +136,7 @@ pub(super) const TR: TrTable = &[
     ("action.toggle_fish_preview", "Fish preview", "Aperçu des poissons"),
     ("action.toggle_fish_swim", "Swimming fish", "Poissons qui nagent"),
     ("action.toggle_animated_materials", "Animated materials", "Matériaux animés"),
+    ("action.toggle_animated_models", "Animate models", "Animer les modèles"),
     ("action.toggle_model_fade", "Model fade", "Fondu des modèles"),
     ("action.toggle_opaque_materials", "Opaque materials", "Matériaux opaques"),
     ("action.toggle_walkable", "Walkable slopes", "Pentes praticables"),

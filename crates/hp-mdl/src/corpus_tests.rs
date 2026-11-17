@@ -352,3 +352,50 @@ fn profile_phases() {
     let model = load(&m, &v, &x, &LoadOptions::default()).expect("load");
     eprintln!("{} meshes, {} vertices, {} tris", model.meshes.len(), model.vertex_count(), model.triangle_count());
 }
+
+#[test]
+fn layered_poses_agree_with_plain_poses_and_animate() {
+    let root = Path::new(GMOD_MODELS);
+    if !root.is_dir() {
+        eprintln!("skipping: {GMOD_MODELS} not found");
+        return;
+    }
+    let mut files = Vec::new();
+    collect_mdls(root, &mut files);
+    let read = |p: &str| std::fs::read(root.parent()?.join(p)).ok();
+    let (mut compared, mut agree, mut moving) = (0usize, 0usize, 0usize);
+    for path in &files {
+        if compared >= 300 {
+            break;
+        }
+        let Ok(bytes) = std::fs::read(path) else { continue };
+        let Some(set) = crate::AnimSet::load(&bytes, read) else { continue };
+        for index in 0..set.sequence_count().min(8) {
+            let Some(anim) = set.sequence_at(index, &[]) else { continue };
+            if anim.clip.frames < 3 {
+                continue;
+            }
+            let (Some(a), Some(b)) =
+                (set.skin_layered(&anim, 0, 0.0, 0.0), set.skin_layered(&anim, anim.clip.frames / 2, 0.5, 0.0))
+            else {
+                continue;
+            };
+            assert!(a.iter().chain(&b).flatten().flatten().all(|v| v.is_finite()), "{}", path.display());
+            if a != b {
+                moving += 1;
+            }
+            if let Some(plain) = set.skin(&anim, 0, 0.0) {
+                compared += 1;
+                let close = plain
+                    .iter()
+                    .flatten()
+                    .flatten()
+                    .zip(a.iter().flatten().flatten())
+                    .all(|(x, y)| (x - y).abs() < 0.05);
+                agree += usize::from(close);
+            }
+        }
+    }
+    eprintln!("layered poses: {compared} compared, {agree} agree with the plain pose, {moving} moving");
+    assert!(compared < 20 || agree * 10 >= compared * 8, "{agree} of {compared}");
+}

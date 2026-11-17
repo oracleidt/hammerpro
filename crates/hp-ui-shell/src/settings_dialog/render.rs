@@ -238,6 +238,8 @@ impl SettingsPage for RenderPage {
             t!("shell.render.player_lighting_tip"),
         );
         changed |= check(ui, &mut r.render_effects, t!("shell.render.effects"), t!("shell.render.effects_tip"));
+        changed |=
+            check(ui, &mut r.animate_models, t!("shell.render.animate_models"), t!("shell.render.animate_models_tip"));
         changed |= check(ui, &mut r.model_fade, t!("shell.render.model_fade"), t!("shell.render.model_fade_tip"));
         changed |= check(ui, &mut r.force_opaque, t!("shell.render.opaque"), t!("shell.render.opaque_tip"));
         changed |= check(ui, &mut r.walkable, t!("shell.render.walkable"), t!("shell.render.walkable_tip"));
@@ -948,6 +950,12 @@ pub(crate) const TR: TrTable = &[
         "La vue joueur éclaire la map compilée avec ses lightmaps et les props avec leur éclairage pré-calculé, comme Garry's Mod (L dans la vue)",
     ),
     ("shell.render.effects", "Render effects", "Effets de rendu"),
+    ("shell.render.animate_models", "Animate models", "Animer les modèles"),
+    (
+        "shell.render.animate_models_tip",
+        "Props, NPCs and other model entities play their animation in the 3D view like in game: DefaultAnim,          or the idle or first sequence of the model, with playbackrate and cycle. prop_static stays still. Only          the models in view are animated.",
+        "Les props, PNJ et autres entités à modèle jouent leur animation dans la vue 3D comme en jeu :          DefaultAnim, ou la séquence idle ou la première du modèle, avec playbackrate et cycle. prop_static reste          immobile. Seuls les modèles visibles sont animés.",
+    ),
     (
         "shell.render.effects_tip",
         "Shows render amount and color, body groups and default animations of entities",

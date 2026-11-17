@@ -41,6 +41,7 @@ pub mod mesh_disp;
 pub mod optimize;
 pub mod prefab;
 pub mod prop_export;
+pub mod quadbounds;
 pub mod rename_refs;
 pub mod side_index;
 pub mod sky;

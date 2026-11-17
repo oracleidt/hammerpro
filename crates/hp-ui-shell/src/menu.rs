@@ -82,6 +82,7 @@ fn hammer_order(group: MenuGroup) -> &'static [Action] {
             A::ToggleRenderEffects,
             A::ToggleEntityFx,
             A::ToggleAnimatedMaterials,
+            A::ToggleAnimatedModels,
             A::ToggleModelFade,
             A::ToggleOpaqueMaterials,
             A::ToggleRadiusCulling,

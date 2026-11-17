@@ -65,6 +65,12 @@ pub(crate) fn material_facts(info: &MaterialInfo) -> MaterialFacts {
     }
 }
 
+pub(crate) fn can_shatter(material: &hp_vmt::Material) -> bool {
+    material.get("$crackmaterial").is_some_and(|v| !v.trim().is_empty())
+        || material.shader.eq_ignore_ascii_case("shatteredglass")
+        || material.proxies.as_ref().is_some_and(|p| p.child("breakablesurface").is_some())
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct AssetAnswers {
     pub generation: u64,
@@ -192,6 +198,11 @@ impl CheckKnowledge for Knowledge {
         Some(self.fs.as_ref()?.exists(&path.trim().replace('\\', "/").to_ascii_lowercase()))
     }
 
+    fn material_has_crack(&self, name: &str) -> Option<bool> {
+        let material = self.fs.as_ref()?.material(&normalize(name))?;
+        Some(can_shatter(&material))
+    }
+
     fn sound_exists(&self, name: &str) -> Option<bool> {
         self.fs.as_ref()?;
         self.answers.lock().sounds.get(name.trim()).copied()
@@ -223,6 +234,11 @@ mod tests {
         assert!(!material_facts(&grate).seals(), "alpha tested brushes do not seal, like in the compiler");
         let water = MaterialInfo { is_water: true, ..MaterialInfo::default() };
         assert!(material_facts(&water).water);
+        let parse = |s: &str| hp_vmt::parse(s).expect("vmt");
+        assert!(can_shatter(&parse("ShatteredGlass { $basetexture glass/a }")));
+        assert!(can_shatter(&parse("LightmappedGeneric { $crackmaterial glass/b }")));
+        assert!(can_shatter(&parse("LightmappedGeneric { Proxies { BreakableSurface { } } }")));
+        assert!(!can_shatter(&parse("LightmappedGeneric { $basetexture glass/c $translucent 1 }")));
         assert_eq!(normalize("Materials\\Brick/Wall.VMT"), "brick/wall");
     }
 

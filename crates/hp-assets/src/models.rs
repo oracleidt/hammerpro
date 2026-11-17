@@ -201,10 +201,20 @@ pub(crate) fn model_job(fs: &hp_fs::GameFs, key: &str) -> Result<PreparedModel, 
         }
     }
     let skin_count = model.skin_count();
-    let sequence_frames = sequence_frames(&files.mdl, model.sequences.len().min(MAX_LISTED));
+    let set = (model.bones.len() > 1 && !model.is_static_prop && (particle || !model.include_models.is_empty()))
+        .then(|| hp_mdl::AnimSet::load(&files.mdl, |p| fs.read(p)))
+        .flatten();
+    let (sequence_names, sequence_frames) = match set.as_ref().filter(|_| !particle) {
+        Some(set) => merged_sequences(set),
+        None => (
+            model.sequences.iter().take(MAX_LISTED).map(|s| s.name.clone()).collect(),
+            sequence_frames(&files.mdl, model.sequences.len().min(MAX_LISTED)),
+        ),
+    };
     let hp_mdl::ModelFiles { mdl, .. } = files;
     let particle_animation = particle.then(|| {
         Arc::new(crate::particle_model_draw::AnimationSource {
+            set: set.map(Arc::new),
             ani: hp_mdl::animation_block_path(&mdl).and_then(|path| fs.read(&path)).map(Arc::new),
             mdl: Arc::new(mdl),
             bones: model.bones.clone(),
@@ -279,7 +289,7 @@ pub(crate) fn model_job(fs: &hp_fs::GameFs, key: &str) -> Result<PreparedModel, 
         hull_min: valid_hull(model.hull_min, model.hull_max).map(|(min, _)| min),
         hull_max: valid_hull(model.hull_min, model.hull_max).map(|(_, max)| max),
         body_groups: body_groups(&model),
-        sequences: model.sequences.iter().take(MAX_LISTED).map(|s| s.name.clone()).collect(),
+        sequences: sequence_names,
         sequence_frames,
         stats: hp_app::state::ModelStats {
             vertices: count(parts.iter().map(|p| p.vertices.len()).sum()),
@@ -391,6 +401,13 @@ pub(crate) fn box_edges(lo: [f32; 3], hi: [f32; 3]) -> impl Iterator<Item = ([f3
     (0..8usize).flat_map(move |a| {
         [1, 2, 4].into_iter().filter(move |bit| a & bit == 0).map(move |bit| (corner(a), corner(a | bit)))
     })
+}
+
+fn merged_sequences(set: &hp_mdl::AnimSet) -> (Vec<String>, Vec<u32>) {
+    let n = set.sequence_count().min(MAX_LISTED);
+    let names = (0..n).map(|i| set.sequence_info(i).map(|s| s.name.clone()).unwrap_or_default()).collect();
+    let frames = (0..n).map(|i| count(set.frames(i)).max(1)).collect();
+    (names, frames)
 }
 
 fn sequence_frames(mdl: &[u8], n: usize) -> Vec<u32> {

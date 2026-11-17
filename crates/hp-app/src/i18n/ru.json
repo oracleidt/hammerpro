@@ -432,6 +432,7 @@
   "action.tie_each_to_entity": "Привяжите каждого к своей сущности",
   "action.tie_to_entity": "Привязать к сущности",
   "action.toggle_animated_materials": "Анимированные материалы",
+  "action.toggle_animated_models": "Анимировать модели",
   "action.toggle_bounds_overlay": "Ограничительные рамки",
   "action.toggle_collision_models": "Модели столкновений",
   "action.toggle_collision_only": "Показать столкновения моделей",
@@ -6158,6 +6159,8 @@
   "shell.render.dots": "Вершинные точки",
   "shell.render.dots_tip": "Вершины браши при увеличении рисуются в виде точек.",
   "shell.render.effects": "Эффекты рендеринга",
+  "shell.render.animate_models": "Анимировать модели",
+  "shell.render.animate_models_tip": "Пропы, NPC и другие сущности с моделью проигрывают анимацию в 3D-виде, как в игре: DefaultAnim или последовательность idle либо первая последовательность модели, с playbackrate и cycle. prop_static остаётся неподвижным. Анимируются только видимые модели.",
   "shell.render.effects_tip": "Показывает количество и цвет рендеринга, группы тел и анимацию объектов по умолчанию.",
   "shell.render.exposure": "Экспозиция",
   "shell.render.exposure_max": "Самая высокая автоматическая экспозиция",
@@ -9952,5 +9955,15 @@
   "create.block.overlap_stop": "(остановлено брашем)",
   "create.block.overlap_blocked": "(пересекает браш)",
   "create.block.hint_limits": "{0}: развернуть направление. X, Y, Z при перетаскивании основания: зафиксировать ось. Удерживать Ctrl: игнорировать ограничения.",
-  "shell.brush.block_draw": "Инструмент блока в 3D-виде"
+  "shell.brush.block_draw": "Инструмент блока в 3D-виде",
+  "problems.breakable_surf_faces": "Разбиваемое стекло {0} ({1}) имеет {2} граней без nodraw: нужна ровно одна, иначе игра удаляет его или разбивает целиком",
+  "problems.breakable_surf_not_quad": "Разбиваемое стекло {0} ({1}) имеет стеклянную грань с {2} углами: она должна быть четырёхугольником",
+  "problems.breakable_surf_size": "Разбиваемое стекло {0} имеет размер {1} x {2} юнитов: сторона короче {3} юнитов не вмещает ни одной панели, поэтому стекло разбивается целиком",
+  "problems.breakable_surf_crack": "Разбиваемое стекло {0} ({1}) использует {2}, который не является материалом разбиваемого стекла (нет $crackmaterial и шейдера ShatteredGlass): игра не может отрисовать разбитое стекло",
+  "problems.fix.breakable_surf_faces": "Наложить nodraw на все грани, кроме стеклянной",
+  "problems.fix.breakable_surf_crack": "Использовать стандартный материал разбиваемого стекла",
+  "problems.kind.breakable_surf_faces": "разбиваемое стекло с несколькими гранями",
+  "problems.kind.breakable_surf_not_quad": "разбиваемое стекло не четырёхугольник",
+  "problems.kind.breakable_surf_size": "разбиваемое стекло слишком маленькое",
+  "problems.kind.breakable_surf_crack": "стекло без материала трещин"
 }

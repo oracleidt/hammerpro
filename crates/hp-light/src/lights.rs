@@ -362,11 +362,22 @@ pub fn collect<'a>(entities: impl IntoIterator<Item = &'a Entity>, radius_scale:
     out
 }
 
-pub fn surface_light(center: Vec3A, normal: Vec3A, value: Vec3A, area: f32, radius_scale: f32) -> Light {
+pub const TEXLIGHT_DIRECT_SCALE: f32 = 100.0 * 100.0;
+pub const TEXLIGHT_THRESHOLD: f32 = 0.1;
+
+pub fn texlight_intensity(value: Vec3A, area: f32, texels_per_unit: f32, texture_area: f32) -> Vec3A {
+    let ok = |v: f32| v.is_finite() && v > 0.0;
+    if !(ok(area) && ok(texels_per_unit) && ok(texture_area)) || value.element_sum() / 3.0 < TEXLIGHT_THRESHOLD {
+        return Vec3A::ZERO;
+    }
+    value * (area * texels_per_unit / texture_area * TEXLIGHT_DIRECT_SCALE)
+}
+
+pub fn surface_light(center: Vec3A, normal: Vec3A, intensity: Vec3A, radius_scale: f32) -> Light {
     let mut l = Light {
         kind: LightKind::Surface { normal },
         origin: center,
-        intensity: value * (area / std::f32::consts::PI),
+        intensity,
         constant: 0.0,
         linear: 0.0,
         quadratic: 1.0,
@@ -556,7 +567,11 @@ mod tests {
 
     #[test]
     fn surface_lights() {
-        let l = surface_light(Vec3A::ZERO, Vec3A::NEG_Z, Vec3A::splat(100.0), 64.0, 1.0);
+        let power = texlight_intensity(Vec3A::splat(100.0), 64.0, 16.0, 64.0 * 64.0);
+        assert!((power.x - 100.0 * 64.0 * 16.0 / 4096.0 * 10_000.0).abs() < 1.0, "VRAD's texture light power");
+        assert_eq!(texlight_intensity(Vec3A::splat(0.05), 64.0, 16.0, 4096.0), Vec3A::ZERO, "under the threshold");
+        assert_eq!(texlight_intensity(Vec3A::splat(100.0), 64.0, 16.0, 0.0), Vec3A::ZERO);
+        let l = surface_light(Vec3A::ZERO, Vec3A::NEG_Z, power, 1.0);
         let (v, ..) = l.incident(Vec3A::new(0.0, 0.0, -10.0), Vec3A::Z).unwrap();
         assert!(v.x > 0.0);
         assert!(l.incident(Vec3A::new(0.0, 0.0, 10.0), -Vec3A::Z).is_none());

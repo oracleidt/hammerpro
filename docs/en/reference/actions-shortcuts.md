@@ -192,6 +192,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Display options > Collision models | `toggle_collision_models` |  |  |  |
 | Display options > Fog preview | `toggle_fog_preview` |  |  |  |
 | Display options > Animated materials | `toggle_animated_materials` |  |  |  |
+| Display options > Animate models | `toggle_animated_models` |  |  |  |
 | Display options > Model fade | `toggle_model_fade` |  |  |  |
 | Display options > Opaque materials | `toggle_opaque_materials` |  |  |  |
 | Display options > Walkable slopes | `toggle_walkable` |  |  |  |

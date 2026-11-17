@@ -1,3 +1,4 @@
+mod animated;
 mod builtin_icons;
 mod bump;
 mod cubemaps;
@@ -205,6 +206,7 @@ pub struct AssetManager {
     pub(crate) pick_meshes: pick::PickMeshes,
     pub(crate) parked_limit: u64,
     pub(crate) residency: residency::Residency,
+    pub(crate) anim_models: animated::AnimatedModels,
 }
 
 impl AssetManager {
@@ -270,6 +272,7 @@ impl AssetManager {
             pick_meshes: pick::PickMeshes::default(),
             parked_limit: gpu_memory::DEFAULT_PARKED_LIMIT,
             residency: residency::Residency::default(),
+            anim_models: animated::AnimatedModels::default(),
         };
         m.start_mount(settings);
         m.start_fgd(settings);
@@ -569,6 +572,10 @@ impl hp_app::AssetsApi for AssetManager {
         self.scene.opts.is_some_and(|o| o.lighting_preview).then_some(self.scene.light_report)
     }
 
+    fn models_animating(&self) -> bool {
+        AssetManager::models_animating(self)
+    }
+
     fn animated_lights(&self) -> bool {
         self.scene.animated_lights && self.scene.opts.is_some_and(|o| o.lighting_preview)
     }
@@ -738,6 +745,7 @@ impl hp_app::AssetsApi for AssetManager {
     fn note_view(&mut self, view: u32, params: &hp_render::ViewParams) {
         let frame = self.shared.current_frame();
         self.residency.note_view(view, params, frame);
+        self.anim_models.note_view(view, params, frame);
     }
 
     fn set_texture_budget(&mut self, bytes: u64) {

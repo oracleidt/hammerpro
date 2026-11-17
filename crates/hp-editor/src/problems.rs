@@ -424,12 +424,56 @@ impl Document {
                     Ok(true)
                 })
             }
+            crate::limits::breakable::CODE_FACES => self.fix_breakable_surf(problem, false),
+            crate::limits::breakable::CODE_CRACK => self.fix_breakable_surf(problem, true),
             crate::duplicates::CODE_BRUSH | crate::duplicates::CODE_CONTAINED | crate::duplicates::CODE_ENTITY => {
                 let objs = problem.objects.clone();
                 Ok(self.delete_redundant(&objs)? > 0)
             }
             other => Err(EditError::Invalid(format!("no fix for problem '{other}'"))),
         }
+    }
+
+    fn fix_breakable_surf(&mut self, problem: &Problem, crack: bool) -> EditResult<bool> {
+        let mut updates: Vec<(Id, Solid)> = Vec::new();
+        for o in &problem.objects {
+            let ObjRef::Entity(id) = *o else { continue };
+            let Some(n) = self.scene.entities.get(&id) else { continue };
+            if !crate::quadbounds::is_breakable_surf(&n.entity.classname) {
+                continue;
+            }
+            let nodes: Vec<&crate::SolidNode> =
+                self.scene.entity_solid_ids(id).into_iter().filter_map(|s| self.scene.solids.get(&s)).collect();
+            let Some(quad) = crate::quadbounds::compute(nodes.iter().map(|n| (&n.solid, n.geom.as_ref()))) else {
+                continue;
+            };
+            for node in nodes {
+                let mut solid = node.solid.clone();
+                let mut changed = false;
+                for (i, side) in solid.sides.iter_mut().enumerate() {
+                    let keep = node.solid.id == quad.solid && i == quad.side_index;
+                    if crack {
+                        if keep && !crate::glob::same_material(&side.material, crate::quadbounds::STOCK_GLASS) {
+                            side.material = crate::quadbounds::STOCK_GLASS.to_ascii_uppercase();
+                            changed = true;
+                        }
+                    } else if !keep && !crate::quadbounds::is_nodraw(&side.material) {
+                        side.material = crate::quadbounds::NODRAW.to_ascii_uppercase();
+                        changed = true;
+                    }
+                }
+                if changed {
+                    updates.push((node.solid.id, solid));
+                }
+            }
+        }
+        if updates.is_empty() {
+            return Ok(false);
+        }
+        self.tx("Fix problems", |doc| {
+            doc.update_solids(updates);
+            Ok(true)
+        })
     }
 
     pub fn fix_problems(&mut self, problems: &[Problem]) -> EditResult<usize> {

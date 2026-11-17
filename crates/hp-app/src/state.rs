@@ -395,6 +395,9 @@ pub trait AssetsApi {
     fn animated_lights(&self) -> bool {
         false
     }
+    fn models_animating(&self) -> bool {
+        false
+    }
     fn play_cubemap_sources(&self) -> Option<(usize, usize)> {
         None
     }

@@ -642,4 +642,38 @@ pub const TR: TrTable = &[
         "Push it out of the other object by the shortest way",
         "Le sortir de l'autre objet par le chemin le plus court",
     ),
+    (
+        "problems.breakable_surf_faces",
+        "Breakable glass {0} ({1}) has {2} faces that are not nodraw: it needs exactly one, or the game removes it or breaks it in one piece",
+        "Le verre cassable {0} ({1}) a {2} faces qui ne sont pas en nodraw : il en faut exactement une, sinon le jeu le supprime ou le casse d'un seul bloc",
+    ),
+    (
+        "problems.breakable_surf_not_quad",
+        "Breakable glass {0} ({1}) has a glass face with {2} corners: it must be a four sided quad",
+        "Le verre cassable {0} ({1}) a une face de verre à {2} coins : elle doit être un quadrilatère",
+    ),
+    (
+        "problems.breakable_surf_size",
+        "Breakable glass {0} is {1} x {2} units: a side under {3} units holds no glass panel, so the whole pane breaks in one piece",
+        "Le verre cassable {0} mesure {1} x {2} unités : un côté de moins de {3} unités ne contient aucun panneau, la vitre entière casse d'un seul bloc",
+    ),
+    (
+        "problems.breakable_surf_crack",
+        "Breakable glass {0} ({1}) uses {2}, which is not a breakable glass material (no $crackmaterial, no ShatteredGlass shader): the game cannot draw the broken pane",
+        "Le verre cassable {0} ({1}) utilise {2}, qui n'est pas un matériau de verre cassable (ni $crackmaterial, ni shader ShatteredGlass) : le jeu ne peut pas dessiner la vitre brisée",
+    ),
+    (
+        "problems.fix.breakable_surf_faces",
+        "Put nodraw on every face but the glass one",
+        "Mettre du nodraw sur toutes les faces sauf celle du verre",
+    ),
+    (
+        "problems.fix.breakable_surf_crack",
+        "Use the stock breakable glass material",
+        "Utiliser le matériau de verre cassable standard",
+    ),
+    ("problems.kind.breakable_surf_faces", "breakable glass with several faces", "verre cassable à plusieurs faces"),
+    ("problems.kind.breakable_surf_not_quad", "breakable glass not a quad", "verre cassable non quadrilatère"),
+    ("problems.kind.breakable_surf_size", "breakable glass too small", "verre cassable trop petit"),
+    ("problems.kind.breakable_surf_crack", "glass without crack material", "verre sans matériau brisé"),
 ];
