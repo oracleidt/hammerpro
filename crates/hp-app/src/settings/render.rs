@@ -108,18 +108,25 @@ pub enum PerformanceMode {
     #[default]
     Auto,
     Off,
+    Lightweight,
     Low,
     VeryLow,
 }
 
 impl PerformanceMode {
-    pub const ALL: [PerformanceMode; 4] =
-        [PerformanceMode::Auto, PerformanceMode::Off, PerformanceMode::Low, PerformanceMode::VeryLow];
+    pub const ALL: [PerformanceMode; 5] = [
+        PerformanceMode::Auto,
+        PerformanceMode::Off,
+        PerformanceMode::Lightweight,
+        PerformanceMode::Low,
+        PerformanceMode::VeryLow,
+    ];
 
     pub const fn id(self) -> &'static str {
         match self {
             PerformanceMode::Auto => "Auto",
             PerformanceMode::Off => "Off",
+            PerformanceMode::Lightweight => "Lightweight",
             PerformanceMode::Low => "Low",
             PerformanceMode::VeryLow => "VeryLow",
         }
@@ -225,6 +232,10 @@ pub const MAX_ANIMATION_FPS: u32 = 240;
 pub const MIN_VRAM_BUDGET_MB: u32 = 256;
 
 pub const CUBEMAPS_REVISION: u32 = 1;
+pub const ANIMATION_REVISION: u32 = 1;
+pub const ANIMATION_IDLE_PAUSE_S: u32 = 10;
+const OLD_ANIMATION_IDLE_PAUSE_S: u32 = 120;
+pub const PERF_REVISION: u32 = 1;
 pub const MAX_VRAM_BUDGET_MB: u32 = 262_144;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -288,6 +299,8 @@ pub struct RenderSettings {
     pub animation_fps: u32,
     pub animate_in_background: bool,
     pub animation_idle_pause_s: u32,
+    #[serde(default)]
+    pub animation_revision: u32,
     pub model_fade: bool,
     pub force_opaque: bool,
     pub walkable: bool,
@@ -303,6 +316,8 @@ pub struct RenderSettings {
     pub disp_walk_mode: DispWalkMode,
     pub disp_walk_angle: f32,
     pub occlusion_culling: bool,
+    #[serde(default)]
+    pub perf_revision: u32,
     pub selection_outline: bool,
     pub grid_dotted: bool,
     pub grid_highlight_64: bool,
@@ -386,7 +401,8 @@ impl Default for RenderSettings {
             animate_models: true,
             animation_fps: 30,
             animate_in_background: false,
-            animation_idle_pause_s: 120,
+            animation_idle_pause_s: ANIMATION_IDLE_PAUSE_S,
+            animation_revision: ANIMATION_REVISION,
             model_fade: false,
             force_opaque: false,
             walkable: false,
@@ -401,7 +417,8 @@ impl Default for RenderSettings {
             disp_walkable: false,
             disp_walk_mode: DispWalkMode::Source,
             disp_walk_angle: DEFAULT_WALK_ANGLE,
-            occlusion_culling: true,
+            occlusion_culling: false,
+            perf_revision: PERF_REVISION,
             selection_outline: false,
             grid_dotted: false,
             grid_highlight_64: false,
@@ -433,6 +450,16 @@ impl RenderSettings {
         if self.cubemaps_revision < CUBEMAPS_REVISION {
             self.cubemaps = false;
             self.cubemaps_revision = CUBEMAPS_REVISION;
+        }
+        if self.animation_revision < ANIMATION_REVISION {
+            if self.animation_idle_pause_s == OLD_ANIMATION_IDLE_PAUSE_S {
+                self.animation_idle_pause_s = ANIMATION_IDLE_PAUSE_S;
+            }
+            self.animation_revision = ANIMATION_REVISION;
+        }
+        if self.perf_revision < PERF_REVISION {
+            self.occlusion_culling = false;
+            self.perf_revision = PERF_REVISION;
         }
     }
 
@@ -502,6 +529,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn occlusion_culling_is_off_for_new_and_existing_users() {
+        assert!(
+            !RenderSettings::default().occlusion_culling,
+            "the chunks are too coarse to be hidden: it cost more than it saved"
+        );
+        let mut old: RenderSettings = toml::from_str("occlusion_culling = true").expect("parse");
+        assert_eq!(old.perf_revision, 0);
+        old.migrate();
+        assert!(!old.occlusion_culling && old.perf_revision == PERF_REVISION);
+        let mut chosen: RenderSettings = toml::from_str(&format!(
+            "occlusion_culling = true
+perf_revision = {PERF_REVISION}"
+        ))
+        .expect("parse");
+        chosen.migrate();
+        assert!(chosen.occlusion_culling, "turning it on again later is kept");
+    }
+
+    #[test]
     fn graphics_backend_parses_and_defaults_to_auto() {
         assert_eq!(RenderSettings::default().graphics_backend, GraphicsBackend::Auto);
         let old: RenderSettings = toml::from_str("vsync = true").expect("parse");
@@ -527,14 +573,28 @@ mod tests {
         let s = RenderSettings::default();
         assert_eq!(s.animation_interval(true, 0.0), Some(Duration::from_secs_f64(1.0 / 30.0)));
         assert_eq!(s.animation_interval(false, 0.0), None, "paused in the background");
-        assert_eq!(s.animation_interval(true, 119.0), Some(Duration::from_secs_f64(1.0 / 30.0)));
-        assert_eq!(s.animation_interval(true, 120.0), None, "paused after two minutes without input");
+        assert_eq!(s.animation_interval(true, 9.0), Some(Duration::from_secs_f64(1.0 / 30.0)));
+        assert_eq!(s.animation_interval(true, 10.0), None, "paused after ten seconds without input");
         let every = RenderSettings { animation_fps: 0, animate_in_background: true, animation_idle_pause_s: 0, ..s };
         assert_eq!(every.animation_interval(false, 1e9), Some(Duration::ZERO));
         let fast = RenderSettings { animation_fps: 100_000, ..RenderSettings::default() };
         assert_eq!(fast.animation_interval(true, 0.0), Some(Duration::from_secs_f64(1.0 / 240.0)));
         let old: RenderSettings = toml::from_str("animate_materials = true").expect("parse");
-        assert_eq!((old.animation_fps, old.animate_in_background, old.animation_idle_pause_s), (30, false, 120));
+        assert_eq!((old.animation_fps, old.animate_in_background, old.animation_idle_pause_s), (30, false, 10));
+    }
+
+    #[test]
+    fn old_two_minute_animation_pause_migrates_to_ten_seconds() {
+        let mut old: RenderSettings = toml::from_str("animation_idle_pause_s = 120").expect("parse");
+        assert_eq!(old.animation_revision, 0);
+        old.migrate();
+        assert_eq!((old.animation_idle_pause_s, old.animation_revision), (10, ANIMATION_REVISION));
+        let mut chosen: RenderSettings = toml::from_str("animation_idle_pause_s = 300").expect("parse");
+        chosen.migrate();
+        assert_eq!(chosen.animation_idle_pause_s, 300, "a value the user picked is kept");
+        let mut again = RenderSettings { animation_idle_pause_s: 120, ..RenderSettings::default() };
+        again.migrate();
+        assert_eq!(again.animation_idle_pause_s, 120, "120 chosen after the migration is kept");
     }
 
     #[test]
@@ -595,7 +655,7 @@ mod tests {
         assert!(s.grid_3d);
         assert_eq!(s.near_plane, 1.0);
         assert_eq!(s.models_in_2d, Models2dSetting::SelectedOnly);
-        assert!(s.vsync && s.occlusion_culling);
+        assert!(s.vsync && !s.occlusion_culling);
         let bad = RenderSettings { near_plane: f32::NAN, ..Default::default() };
         assert_eq!(bad.near(), 1.0);
         assert_eq!(RenderSettings { near_plane: 100.0, ..Default::default() }.near(), 16.0);

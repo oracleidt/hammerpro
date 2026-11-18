@@ -41,6 +41,7 @@ impl ThumbDiskCache {
     pub(crate) fn new(dir: PathBuf) -> Self {
         let prune_dir = dir.clone();
         let _ = std::thread::Builder::new().name("hp-thumbs-prune".to_owned()).spawn(move || {
+            hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
             prune(&prune_dir, MAX_BYTES, PRUNE_TO);
         });
         Self { dir, tmp: AtomicU64::new(0) }

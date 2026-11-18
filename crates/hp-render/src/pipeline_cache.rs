@@ -15,6 +15,7 @@ struct Slot {
 
 static SLOT: RwLock<Option<Slot>> = RwLock::new(None);
 static DIRTY: AtomicBool = AtomicBool::new(false);
+static SAVING: AtomicBool = AtomicBool::new(false);
 static CREATED: AtomicU64 = AtomicU64::new(0);
 static CREATE_MICROS: AtomicU64 = AtomicU64::new(0);
 
@@ -173,22 +174,41 @@ pub(crate) fn save_if_dirty(device: &wgpu::Device) {
 
 pub(crate) fn save(device: &wgpu::Device) {
     DIRTY.store(false, Ordering::Relaxed);
-    let Ok(mut guard) = SLOT.write() else { return };
-    let Some(slot) = guard.as_mut().filter(|s| s.device == *device) else { return };
-    let Some(data) = slot.cache.get_data() else { return };
-    if data.is_empty() || data.len() as u64 == slot.saved {
+    if SAVING.swap(true, Ordering::AcqRel) {
+        DIRTY.store(true, Ordering::Relaxed);
         return;
     }
-    slot.saved = data.len() as u64;
-    let path = slot.path.clone();
-    drop(guard);
+    let taken = SLOT
+        .read()
+        .ok()
+        .and_then(|g| g.as_ref().filter(|s| s.device == *device).map(|s| (s.cache.clone(), s.path.clone(), s.saved)));
+    let Some((cache, path, saved)) = taken else {
+        SAVING.store(false, Ordering::Release);
+        return;
+    };
     let spawned = std::thread::Builder::new().name("hp-pipeline-cache".to_owned()).spawn(move || {
-        if let Err(e) = write_atomic(&path, &wrap_file(&data)) {
-            log::warn!("hp-render: cannot save the pipeline cache {}: {e}", path.display());
-        }
+        write_cache(&cache, &path, saved);
+        SAVING.store(false, Ordering::Release);
     });
     if let Err(e) = spawned {
+        SAVING.store(false, Ordering::Release);
         log::warn!("hp-render: cannot start the pipeline cache writer: {e}");
+    }
+}
+
+fn write_cache(cache: &wgpu::PipelineCache, path: &Path, saved: u64) {
+    let Some(data) = cache.get_data() else { return };
+    if data.is_empty() || data.len() as u64 == saved {
+        return;
+    }
+    if let Err(e) = write_atomic(path, &wrap_file(&data)) {
+        log::warn!("hp-render: cannot save the pipeline cache {}: {e}", path.display());
+        return;
+    }
+    if let Ok(mut guard) = SLOT.write()
+        && let Some(slot) = guard.as_mut().filter(|s| s.path == path)
+    {
+        slot.saved = data.len() as u64;
     }
 }
 

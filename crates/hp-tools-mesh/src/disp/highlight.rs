@@ -15,12 +15,14 @@ use crate::common::{DocKey, f3};
 const LIFT: f64 = 0.2;
 const LINE_ALPHA: f32 = 0.9;
 pub(crate) const REMOVED: [f32; 4] = [0.55, 0.2, 0.85, 0.6];
+pub(crate) const MASK_TINT: [f32; 3] = [1.0, 0.33, 0.18];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct HighlightOpts {
     pub grid: bool,
     pub tint: bool,
     pub removed: bool,
+    pub terrain_mask: bool,
 }
 
 fn selection(state: &AppState, alpha: f32) -> [f32; 4] {
@@ -120,6 +122,41 @@ pub(crate) fn build(state: &AppState, view: &ViewInfo, opts: HighlightOpts, out:
                 if let [Some(a), Some(b), Some(c)] = corners {
                     out.triangles.push(OverlayTri { p: [f3(a), f3(b), f3(c)], color: REMOVED });
                 }
+            }
+        }
+    }
+    if in_3d && opts.terrain_mask {
+        mask_tint(state, out);
+    }
+}
+
+fn mask_tint(state: &AppState, out: &mut Overlay) {
+    let doc = &state.doc;
+    for f in doc.disp_faces() {
+        if !doc.is_solid_visible(f.solid) {
+            continue;
+        }
+        let Some(node) = doc.scene().solid(f.solid) else { continue };
+        let (Some(mesh), Some(disp)) =
+            (node.disp_mesh(f.side), node.solid.sides.get(f.side).and_then(|s| s.disp.as_deref()))
+        else {
+            continue;
+        };
+        if !super::terraform::mask::has_mask(disp) {
+            continue;
+        }
+        let Some(mask) = super::terraform::mask::mask_of(disp) else { continue };
+        for t in mesh.indices.chunks_exact(3) {
+            let m = |k: u32| mask.get(k as usize).copied().unwrap_or(0.0);
+            let avg = (m(t[0]) + m(t[1]) + m(t[2])) / 3.0;
+            if avg < 0.02 {
+                continue;
+            }
+            let corners = [lifted(mesh, t[0] as usize), lifted(mesh, t[1] as usize), lifted(mesh, t[2] as usize)];
+            if let [Some(a), Some(b), Some(c)] = corners {
+                let [r, g, bl] = MASK_TINT;
+                let color = [r, g, bl, (0.12 + 0.43 * avg) as f32];
+                out.triangles.push(OverlayTri { p: [f3(a), f3(b), f3(c)], color });
             }
         }
     }

@@ -432,6 +432,7 @@ impl HammerProApp {
         match self.tabs.close_active(&mut self.state) {
             Some(closed) => {
                 files::drop_in_background(closed.doc);
+                self.state.runtime.gpu.collect_unused = true;
                 files::apply_doc_options(&mut self.state);
             }
             None => {

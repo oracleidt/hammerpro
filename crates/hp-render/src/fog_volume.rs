@@ -182,7 +182,7 @@ impl Renderer {
     pub fn set_fog_volumes(&mut self, volumes: &[FogVolume]) {
         if self.fog_volumes != volumes {
             self.fog_volumes = volumes.to_vec();
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
     }
 

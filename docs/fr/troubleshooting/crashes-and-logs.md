@@ -10,9 +10,11 @@ Hammer Pro protège votre travail de plusieurs façons :
 
 - **Sauvegarde d'urgence.** Quand l'éditeur intercepte un plantage de son image, il écrit une sauvegarde d'urgence de la map modifiée à côté des sauvegardes automatiques (`%LOCALAPPDATA%\HammerPro\autosave\`) et la note dans le rapport de plantage.
 - **Rapport de plantage.** Un plantage du fil principal écrit un rapport (message, emplacement, fil, pile d'appels et dernières lignes du journal) dans `%APPDATA%\HammerPro\crash\`.
-- **Plantages natifs.** Un plantage hors du code Rust (une violation d'accès dans le pilote graphique, un débordement de pile) écrit aussi un rapport, avec l'exception, le module où elle a eu lieu (par exemple `nvoglv64.dll+0x1234`) et les dernières lignes du journal. Quand il a lieu dans une tâche de fond, Hammer Pro sauvegarde d'abord les maps modifiées (il attend jusqu'à 10 secondes pour cela).
+- **Plantages natifs.** Un plantage hors du code Rust (une violation d'accès dans le pilote graphique, un débordement de pile) écrit aussi un rapport, avec le code de l'exception, le module où elle a eu lieu (par exemple `nvoglv64.dll+0x1234`), l'adresse lue ou écrite pour une violation d'accès, la pile du fil fautif avec les noms des fonctions quand `hammerpro.pdb` est à côté de `hammerpro.exe` (sinon les décalages dans les modules), un petit minidump (`crash-<heure>.dmp`, les 2 plus récents sont gardés) et les dernières lignes du journal. Quand il a lieu dans une tâche de fond, Hammer Pro sauvegarde d'abord les maps modifiées (il attend jusqu'à 10 secondes pour cela).
 - **Mémoire insuffisante.** Hammer Pro garde une réserve de mémoire : quand l'ordinateur n'en a plus, la réserve est rendue, les maps modifiées sont sauvegardées et un message vous demande de libérer de la mémoire. Une allocation qui échoue malgré tout écrit un rapport (« memory allocation of N bytes failed »). Voir [Mémoire insuffisante](out-of-memory.md).
-- **Arrêts sans un mot.** Un processus tué, ou un plantage si profond que même le rapport ne peut pas être écrit, ne laisse rien sur le moment. Chaque lancement laisse un marqueur dans le dossier des plantages qu'une fermeture normale supprime ; au lancement suivant, un marqueur laissé par un processus mort devient un rapport avec la fin du journal du lancement précédent.
+- **Ce que contient chaque rapport.** En plus des lignes du journal, chaque rapport dit ce que faisait l'éditeur : la map ouverte (solides, entités, sélection, maps ouvertes), le mode de rendu, l'outil, la caméra, l'activité (ouverture d'une map, compilation), le travail en cours du fil principal, la mémoire du processus et du système (RAM utilisée, pic, mémoire engagée, mémoire libre), la mémoire graphique utilisée et son budget, et le plus long gel du lancement.
+- **Gels.** Un fil de surveillance vérifie que la fenêtre répond. Quand elle ne répond plus pendant 2 secondes (puis 10 et 30), la pile du fil principal est écrite dans le journal avec la durée du gel ; une image qui prend plus de 250 ms écrit aussi la pile du fil principal dans le journal (une toutes les 2 secondes au plus). Même si vous fermez un éditeur gelé depuis le Gestionnaire des tâches, le rapport suivant montre où il était bloqué.
+- **Arrêts sans un mot.** Un processus tué, ou un plantage si profond que même le rapport ne peut pas être écrit (un arrêt immédiat du runtime C), ne laisse rien sur le moment. Chaque lancement laisse un marqueur dans le dossier des plantages qu'une fermeture normale supprime, et le fil de surveillance enregistre l'état ci-dessus toutes les 5 secondes à côté (`blackbox-<numéro du processus>.txt`). Au lancement suivant, un marqueur laissé par un processus mort devient un rapport avec la fin du journal du lancement précédent, son dernier état enregistré, si la fenêtre était gelée à la fin, et ce que Windows a noté pour ce processus : le code d'exception et le module fautif d'un plantage, un blocage que Windows a fermé, ou rien (le processus a été arrêté de l'extérieur : Gestionnaire des tâches, script, arrêt de l'ordinateur).
 
 Au lancement suivant, la fenêtre **Hammer Pro s'est fermé de façon inattendue** affiche le chemin du **Fichier du rapport :** et ces boutons :
 
@@ -24,7 +26,7 @@ Au lancement suivant, la fenêtre **Hammer Pro s'est fermé de façon inattendue
 
 Les erreurs des tâches de fond n'arrêtent pas l'éditeur : elles sont notées dans le journal avec leur emplacement, et les premières d'un lancement ont aussi un fichier de rapport dont le chemin figure dans le journal (non proposé au lancement suivant).
 
-Les lancements automatisés (`--script`, `--screenshot`) ne lisent ni n'écrivent jamais le dossier des plantages.
+Les lancements automatisés (`--script`, `--screenshot`) ne lisent ni n'écrivent jamais le dossier des plantages, sauf si la variable d'environnement `HAMMERPRO_CRASH_DIR` désigne un dossier : leur gestionnaire de plantages et leur fil de surveillance y écrivent alors (pour les tests).
 
 ## Sauvegardes automatiques
 
@@ -53,7 +55,7 @@ Une erreur graphique sur une image (validation, souvent un problème de pilote) 
 
 ### Choisir l'API graphique
 
-Hammer Pro dessine avec wgpu. Par défaut, il essaie Vulkan et DirectX 12 (et Metal sur macOS), en préférant un GPU et une API capables de dessiner des fenêtres transparentes (pour le cadre arrondi), puis une carte dédiée plutôt qu'une carte intégrée. La carte choisie est notée dans le journal (« graphics adapter: ... »).
+Hammer Pro dessine avec wgpu. Par défaut, il essaie Vulkan et DirectX 12 (et Metal sur macOS), en préférant un GPU et une API capables de dessiner des fenêtres transparentes (pour le cadre arrondi), puis une carte dédiée plutôt qu'une carte intégrée. La carte choisie est notée dans le journal (« graphics adapter: ... »). Sous Windows, quand Vulkan propose une carte dédiée (qui l'emporte toujours sur DirectX 12 pour la même carte), les cartes DirectX 12 ne sont pas ouvertes du tout : les ouvrir crée un périphérique DirectX 12 par carte et pouvait geler le démarrage jusqu'à quelques secondes (« Vulkan offers a dedicated GPU ..., DirectX 12 adapters are not opened » dans le journal). Définir `HP_ADAPTER` ou choisir l'API garde la recherche complète.
 
 Pour forcer une API, définissez la variable d'environnement `WGPU_BACKEND` avant de lancer Hammer Pro, par exemple dans une invite de commandes :
 

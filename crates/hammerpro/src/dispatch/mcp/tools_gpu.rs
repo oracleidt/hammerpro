@@ -10,11 +10,23 @@ domain! { "graphics memory";
         "How much graphics memory (VRAM) Hammer Pro uses and its budget: usage (from the driver when it reports \
         it, else an estimate), budget (render.vram_budget_mb, 0 means automatic: 90% of what the system gives \
         the process), pressure (normal, high above 85%, critical when over the budget or after an out of memory \
-        error), the estimated split (geometry, textures, models, lightmaps, compiled world, other, maps parked \
+        error: Hammer Pro frees memory quietly at these levels), card_mb and card_pressure (what the graphics card \
+        really gives the program and the level against it: the warnings only come from card_pressure, high above 95% \
+        of the card, critical over it or after an out of memory error), the estimated split (geometry, textures, models, lightmaps, compiled world, other, maps parked \
         in background tabs), the texture size limit applied under pressure, what was freed so far, and \
         texture_streaming (render.texture_streaming): how many textures far from every view are held at a smaller \
-        size, the graphics memory they use now against their full size, the texture budget (60% of the budget) \
-        and the reduction level used to stay under it (1 when the budget is not reached). graphics_memory is         render.graphics_memory (Auto, Low, Normal or High) and mode the one in force (low, normal, high; Auto picks         low on integrated graphics and cards under 3 GB, high from 12 GB): low uses half of what the system gives         (1 GB at most), textures up to 1024 pixels from the start, smaller shadow maps, no multisampling, fewer         lightmap layers (lightmap_layers_max) and thumbnails. hardware is the card seen (dedicated_mb, integrated,         simulated by HAMMERPRO_SIMULATE_LOW_VRAM), textures_loaded_smaller counts textures loaded at a smaller         size so they fit the budget (HAMMERPRO_VRAM_BUDGET_MB forces a budget for tests, below 3 GB with the low mode), and device the graphics         device losses and recoveries of the session.",
+        size, the graphics memory they use now against their full size, the texture budget (60% of the budget), \
+        comfort_budget_mb (an eighth of the texture budget, between 192 and 512 MB: above it textures are held at \
+        the screen resolution they are seen at, reduction level 2, which looks the same) and the reduction level \
+        used (1 when the comfort budget is not reached). allocations itemizes every graphics memory allocation \
+        Hammer Pro made (Vulkan and DirectX 12): allocated_mb, reserved_mb (memory blocks taken from the driver), \
+        unused_in_blocks_mb, emptiest_blocks, by_category_mb (textures, models, geometry, render_targets, shadows, \
+        lightmaps, cubemaps_reflections, particles_sprites, animation, interface, staging, lighting, other) and \
+        largest (the 40 biggest groups by label with their count, size and category). textures_by_format splits \
+        the textures by GPU format and size, process_ram_mb gives the working set and committed memory of the \
+        program, idle_lighting_maps_freed_mb what was freed from the Lit preview shadow maps (sun, sky light, \
+        light and shadow_control maps are freed 8 seconds after no view uses them) and unused_collections how many \
+        times the textures and models of closed or replaced maps were freed (3 seconds after the next map settles). graphics_memory is         render.graphics_memory (Auto, Low, Normal or High) and mode the one in force (low, normal, high; Auto picks         low on integrated graphics and cards under 3 GB, high from 12 GB): low uses half of what the system gives         (1 GB at most), textures up to 1024 pixels from the start, smaller shadow maps, no multisampling, fewer         lightmap layers (lightmap_layers_max) and thumbnails. hardware is the card seen (dedicated_mb, integrated,         simulated by HAMMERPRO_SIMULATE_LOW_VRAM), textures_loaded_smaller counts textures loaded at a smaller         size so they fit the budget (HAMMERPRO_VRAM_BUDGET_MB forces a budget for tests, below 3 GB with the low mode), and device the graphics         device losses and recoveries of the session.",
         {}, [];
     get_performance: Read, "Frame time and quality",
         "Frame time and quality of the 3D view: FPS, frame time, CPU time of the last 3D render (prepare, record, \
@@ -22,10 +34,10 @@ domain! { "graphics memory";
         effects, water reflection; passes splits it into light_cull (the clustered light lists of the lighting \
         preview), sun_shadows (sun, sky light and Textured mode shadow maps), local_shadows (the point and spot \
         light shadow maps and projected textures), main (the 3D view itself), effects (water, fog volumes, sun \
-        glow, refraction), present (tone mapping, bloom, display) and outline (selection outline), and \
+        glow, refraction), present (tone mapping, bloom, display) and outline (selection outline), views_2d is the GPU time of the 2D views drawn since the previous frame (they are drawn again only when something in them changed), and \
         water_reflection_passes splits the water reflection the same way), working set RAM, the graphics card, whether it is integrated, the performance \
-        mode (render.performance_mode: Auto, Off, Low or VeryLow), the quality level in force (full, low, very_low), \
-        whether Auto lowered it and at how many FPS, render.render_scale and render.perf_hud (the on-screen readout). \
+        mode (render.performance_mode: Auto, Off, Lightweight, Low or VeryLow; Lightweight draws like Hammer at full resolution: no antialiasing, bloom, shadows, reflections, normal maps, fog volumes, sun glow, 3D skybox or animated textures), the quality level in force (full, lightweight, low, very_low), low_end (why Auto started in the lightweight mode: integrated_graphics, small_graphics_memory under 2.5 GB, or on_battery; checked every 10 seconds, plugging a laptop in goes back to full quality), \
+        whether Auto lowered it and at how many FPS, render.render_scale and render.perf_hud (the on-screen readout), lighting_motion_scale (the share of the 3D view resolution used by the lighting previews while the camera moves with render.lit_quality Auto, 1 at rest or when the graphics card keeps up). \
         Auto only lowers the quality after the 3D view stays under 20 FPS for several seconds while it draws continuously (frames spaced out on purpose while idle do not count). Drive the camera \
         (set_camera, wait_frames) before reading to measure a view. Idle diagnostics: window_focused, animations_running (animated materials, sprite sway and \
         light styles are drawn: false in the background unless render.animate_in_background is on, and after \
@@ -37,7 +49,7 @@ domain! { "graphics memory";
         holds the slowest frame since the previous get_performance call, long_frames the frames of 30 ms or more since that call (the last 32: frame index, time, phases_ms and slowest, the subsystems that took the most time in that frame, such as a package tick, an action, scene_sync, render_3d, hover_pick or placement_checks), long_frame_count all of them since the start, average_frame_ms the average of the \
         frames_since_last_read frames drawn since that call. views_ms gives, for each of the four \
         views in the last frame, the CPU time spent building its overlay (layers, grid, tool), drawing it (or reusing \
-        its last image when nothing changed: rendered false) and painting its labels, with its overlay item count.         Startup and shaders: graphics_api (Vulkan or Dx12 in use), graphics_api_setting (render.graphics_backend:         Auto, Vulkan or Dx12, applied at the next start), dx12_shader_compiler (fxc or dxc on DirectX 12),         startup_ms (first_frame: the first frame of the window, views_ready: when the views could draw), and         pipelines: building_in_background, ready (msaa, no_msaa), sets (each set of render pipelines with its         sample count, build milliseconds and whether it was built on the background thread), main_thread_wait_ms,         created and create_ms_total (every render pipeline created so far), dx12_shaders (DirectX 12 only:         compiler, shaders compiled and their total milliseconds, disk_cache_hits and disk_cache_misses of the         shader cache kept between starts, disk_cache_dir).",
+        its last image when nothing changed: rendered false) and painting its labels, with its overlay item count. scene_sync_stages_ms splits the scene sync of the last up to 120 frames by stage (average and slowest milliseconds). redraw_reasons counts, for each view since the start, why it was drawn again (first, size_or_camera, view_options, content, lighting, animation, retained_overlay, overlay, textures: the first difference found; a 2D view picks up texture changes at most every 750 ms). view_draws gives, for each view, the draw calls of its last render split into world, model and sprite draws, the triangles, model instances, material changes and the chunks in the frustum and occluded.         Startup and shaders: graphics_api (Vulkan or Dx12 in use), graphics_api_setting (render.graphics_backend:         Auto, Vulkan or Dx12, applied at the next start), dx12_shader_compiler (fxc or dxc on DirectX 12),         startup_ms (first_frame: the first frame of the window, views_ready: when the views could draw), and         pipelines: building_in_background, ready (msaa, no_msaa), sets (each set of render pipelines with its         sample count, build milliseconds and whether it was built on the background thread), main_thread_wait_ms,         created and create_ms_total (every render pipeline created so far), dx12_shaders (DirectX 12 only:         compiler, shaders compiled and their total milliseconds, disk_cache_hits and disk_cache_misses of the         shader cache kept between starts, disk_cache_dir).",
         {}, [];
     run_benchmark: Editor, "Benchmark the 3D view",
         "Turn the 3D camera through a full circle around its position over a number of frames (the camera is         put back afterwards) and measure the frame time of the real window: average FPS, frame time average,         95th and 99th percentile and worst, CPU render time (average, median and 99th percentile), GPU time per stage when the card supports timestamp         queries (total, median, 99th percentile, and per pass like get_performance gpu_ms.passes and water_reflection_passes), and the working set RAM at the start, end and peak. It starts at once; call wait_frames, then         get_performance: its benchmark field is running while it runs, then holds the result. vsync caps the         FPS at the refresh rate, so compare the CPU and GPU milliseconds as well.",
@@ -91,6 +103,8 @@ fn get_gpu_memory(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
         "driver_budget_mb": mb(g.driver_budget),
         "dedicated_mb": mb(g.dedicated),
         "pressure": g.pressure.id(),
+        "card_mb": mb(g.card),
+        "card_pressure": g.card_pressure.id(),
         "fraction": g.fraction(),
         "estimate_mb": {
             "geometry": mb(e.geometry),
@@ -116,9 +130,44 @@ fn get_gpu_memory(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
             "textures_loaded_again": g.released.reloading,
         },
         "last_release": g.last_release,
+        "idle_lighting_maps_freed_mb": mb(g.idle_features_freed),
+        "unused_collections": g.unused_collections,
         "warning": g.warning,
         "texture_streaming": texture_streaming_json(state),
+        "allocations": allocations_json(state),
+        "textures_by_format": state.gfx.as_ref().map(|g| g.renderer.texture_breakdown().iter().take(16).map(|t| json!({
+            "format": t.format,
+            "size": t.size,
+            "count": t.count,
+            "mb": (t.bytes as f64 / 1048576.0 * 10.0).round() / 10.0,
+        })).collect::<Vec<_>>()),
+        "process_ram_mb": process_ram_json(),
     })))
+}
+
+fn allocations_json(state: &AppState) -> serde_json::Value {
+    let Some(s) = state.gfx.as_ref().and_then(|g| hp_render::memory::allocator_summary(&g.device)) else {
+        return serde_json::Value::Null;
+    };
+    json!({
+        "allocated_mb": mb(s.allocated),
+        "reserved_mb": mb(s.reserved),
+        "blocks": s.blocks,
+        "unused_in_blocks_mb": mb(s.reserved.saturating_sub(s.allocated)),
+        "emptiest_blocks": s.block_use.iter().take(12).map(|(size, used)| json!({ "size_mb": (*size as f64 / 1048576.0 * 10.0).round() / 10.0, "used_mb": (*used as f64 / 1048576.0 * 10.0).round() / 10.0 })).collect::<Vec<_>>(),
+        "by_category_mb": s.category_bytes().into_iter().map(|(c, b)| (c.to_owned(), json!(b as f64 / 1048576.0))).collect::<serde_json::Map<_, _>>(),
+        "largest": s.groups.iter().take(40).map(|g| json!({
+            "label": g.label,
+            "count": g.count,
+            "mb": (g.bytes as f64 / 1048576.0 * 10.0).round() / 10.0,
+            "category": hp_render::memory::category_of(&g.label),
+        })).collect::<Vec<_>>(),
+    })
+}
+
+fn process_ram_json() -> serde_json::Value {
+    let u = crate::dispatch::lighting::memory::of_self().unwrap_or_default();
+    json!({ "working_set": mb(u.working_set), "committed": mb(u.committed), "peak_working_set": mb(u.peak_working_set) })
 }
 
 fn texture_streaming_json(state: &AppState) -> serde_json::Value {
@@ -133,6 +182,8 @@ fn texture_streaming_json(state: &AppState) -> serde_json::Value {
         "full_size_mb": mb(t.full_bytes),
         "saved_mb": mb(t.full_bytes.saturating_sub(t.bytes)),
         "budget_mb": mb(t.budget),
+        "comfort_budget_mb": mb(t.comfort),
+        "models_without_bounds": t.unknown_model_instances,
         "reduction_level": t.aggression,
     })
 }
@@ -247,10 +298,12 @@ fn get_performance(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
         "performance_mode": r.performance_mode.id(),
         "quality_level": level.id(),
         "reduced_automatically": p.reduced_automatically(r.performance_mode),
+        "low_end": p.low_end.map(hp_app::runtime::LowEnd::id),
         "auto_locked_to_full": p.auto_locked,
         "auto_fps_measured": p.auto_fps,
         "auto_reductions": p.auto_events,
         "render_scale": r.scale(),
+        "lighting_motion_scale": hp_ui_viewports::motion_scale::current(),
         "perf_hud": r.perf_hud,
         "primitive_stats_enabled": r.primitive_stats,
         "map_resource_loading": state.runtime.startup.resources,
@@ -274,6 +327,21 @@ fn get_performance(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
             "overlay_items": v.overlay_items,
             "rendered": v.rendered,
         })).collect::<Vec<_>>(),
+        "scene_sync_stages_ms": state.assets.scene_sync_stages().iter().map(|(name, avg, max)| json!({ "stage": name, "avg": avg, "max": max })).collect::<Vec<_>>(),
+        "redraw_reasons": p.redraw_reasons.iter().map(|r| {
+            hp_app::runtime::REDRAW_REASONS.iter().zip(r).filter(|(_, n)| **n > 0).map(|(k, n)| ((*k).to_owned(), json!(n))).collect::<serde_json::Map<_, _>>()
+        }).collect::<Vec<_>>(),
+        "view_draws": (0..4u32).map(|i| state.gfx.as_ref().and_then(|g| g.renderer.view_counts(i)).map(|c| json!({
+            "draw_calls": c.draw_calls,
+            "triangles": c.triangles,
+            "world_draws": c.world_draws,
+            "model_draws": c.model_draws,
+            "model_instances": c.model_instances,
+            "sprites": c.sprites,
+            "material_changes": c.material_changes,
+            "chunks_in_frustum": c.chunks_in_frustum,
+            "chunks_occluded": c.chunks_occluded,
+        }))).collect::<Vec<_>>(),
         "worst_frame_ms": phases_json(&p.worst_frame),
         "average_frame_ms": phases_json(&p.phase_sum.divided(p.phase_frames)),
         "frames_since_last_read": p.phase_frames,
@@ -314,6 +382,7 @@ fn passes_json(p: &hp_app::runtime::GpuPasses) -> serde_json::Value {
         "effects": p.effects_ms,
         "present": p.present_ms,
         "outline": p.outline_ms,
+        "views_2d": p.views_2d_ms,
     })
 }
 
@@ -373,6 +442,12 @@ mod tests {
         assert!(m["estimate_mb"]["total"].is_number());
         assert_eq!(m["texture_streaming"]["enabled"], true);
         assert_eq!(m["texture_streaming"]["reduced"], 0);
+        assert!(m["texture_streaming"]["comfort_budget_mb"].is_number());
+        assert_eq!(m["card_pressure"], "normal");
+        assert!(m["card_mb"].is_number());
+        assert!(m["allocations"].is_null(), "no graphics device in tests");
+        assert!(m["process_ram_mb"]["working_set"].is_number());
+        assert_eq!(m["idle_lighting_maps_freed_mb"], 0);
         ok(&mut s, "free_gpu_memory", json!({ "lower_textures": true }));
         assert_eq!(s.runtime.gpu.release_request, Some(true));
         ok(&mut s, "free_gpu_memory", json!({}));

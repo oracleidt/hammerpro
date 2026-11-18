@@ -4,6 +4,7 @@ use hp_render::memory::VramProbe;
 
 const CHECK_EVERY: f64 = 0.5;
 const HIGH: f64 = 0.85;
+const CARD_HIGH: f64 = 0.95;
 const PARKED_SHARE: f64 = 0.75;
 const TEXTURE_SHARE: f64 = 0.6;
 const RAISE_BELOW: f64 = 0.5;
@@ -17,6 +18,8 @@ const LAYER_SIZE: u32 = 2048;
 pub(crate) const BUDGET_ENV: &str = "HAMMERPRO_VRAM_BUDGET_MB";
 pub(crate) const SIMULATE_ENV: &str = "HAMMERPRO_SIMULATE_LOW_VRAM";
 const WARN_GAP: f64 = 60.0;
+const FEATURE_IDLE: std::time::Duration = std::time::Duration::from_secs(8);
+const UNUSED_SETTLE: f64 = 3.0;
 const QUIET_GAP: f64 = 30.0;
 
 pub(crate) struct VramMonitor {
@@ -35,6 +38,7 @@ pub(crate) struct VramMonitor {
     forced_budget: Option<u64>,
     simulate: Option<String>,
     squeezed_seen: u64,
+    unused_since: Option<f64>,
 }
 
 impl Default for VramMonitor {
@@ -55,6 +59,7 @@ impl Default for VramMonitor {
             forced_budget: None,
             simulate: None,
             squeezed_seen: 0,
+            unused_since: None,
         }
     }
 }
@@ -68,6 +73,24 @@ pub(crate) fn pressure(usage: u64, budget: u64, out_of_memory: bool) -> VramPres
     if out_of_memory || usage > budget {
         VramPressure::Critical
     } else if usage as f64 > budget as f64 * HIGH {
+        VramPressure::High
+    } else {
+        VramPressure::Normal
+    }
+}
+
+pub(crate) fn card_capacity(driver: Option<u64>, hardware: GpuHardware, soft_budget: u64) -> u64 {
+    if hardware.simulated {
+        let sim = [hardware.dedicated, hardware.driver_budget].into_iter().filter(|b| *b > 0).min();
+        return sim.unwrap_or(soft_budget);
+    }
+    driver.filter(|b| *b > 0).unwrap_or(soft_budget).max(soft_budget)
+}
+
+pub(crate) fn card_pressure(usage: u64, card: u64, out_of_memory: bool) -> VramPressure {
+    if out_of_memory || usage > card {
+        VramPressure::Critical
+    } else if usage as f64 > card as f64 * CARD_HIGH {
         VramPressure::High
     } else {
         VramPressure::Normal
@@ -213,6 +236,7 @@ impl VramMonitor {
         let fixed = state.settings.render.vram_budget().or(self.forced_budget);
         let budget = fixed.unwrap_or_else(|| tier.budget(driver.map(|v| v.budget), self.fallback, self.shared));
         self.apply_tier(state, tier, hardware, budget);
+        crate::native_crash::set_vram(usage, budget);
         let Some(gfx) = state.gfx.as_mut() else { return };
         let untracked = match driver {
             Some(v) => v.usage.saturating_sub(report.total),
@@ -231,6 +255,8 @@ impl VramMonitor {
         }
         let keep = state.settings.render.keep_background_maps_on_gpu;
         let level = pressure(usage, budget, new_oom || upload_failed);
+        let card = card_capacity(driver.map(|v| v.budget), hardware, budget);
+        let card_level = card_pressure(usage, card, new_oom || upload_failed);
         let request = request.or_else(|| {
             (wants_room && now - self.last_release >= RELEASE_GAP).then_some(level != VramPressure::Normal)
         });
@@ -284,7 +310,7 @@ impl VramMonitor {
         if (upload_failed || new_oom) && !released.is_empty() {
             state.doc.mark_everything_changed();
         }
-        self.warn(state, level, now, usage, budget, &released);
+        self.warn(state, card_level, now, usage, card, &released);
         let texture_limit = state.gfx.as_ref().map_or(texture_limit, |g| g.renderer.texture_limit());
         let rt = &mut state.runtime.gpu;
         rt.tier = tier;
@@ -302,6 +328,8 @@ impl VramMonitor {
         rt.texture_limit = texture_limit;
         rt.max_texture = max_texture;
         rt.pressure = level;
+        rt.card_pressure = card_level;
+        rt.card = card;
         rt.out_of_memory_events = oom;
         if !released.is_empty() {
             rt.releases += 1;
@@ -318,6 +346,40 @@ impl VramMonitor {
                 rt.last_release.as_deref().unwrap_or("")
             );
         }
+    }
+
+    pub(crate) fn collect_unused(&mut self, state: &mut AppState, now: f64) -> Option<std::time::Duration> {
+        if !state.runtime.gpu.collect_unused {
+            self.unused_since = None;
+            return None;
+        }
+        let since = *self.unused_since.get_or_insert(now);
+        let wait = UNUSED_SETTLE - (now - since);
+        if wait > 0.0 || state.assets.busy() {
+            return Some(std::time::Duration::from_secs_f64(wait.max(0.25)));
+        }
+        let gfx = state.gfx.as_mut()?;
+        let freed = state.assets.release_gpu_memory(gfx, GpuRelease::Unused);
+        state.runtime.gpu.collect_unused = false;
+        state.runtime.gpu.unused_collections += 1;
+        self.unused_since = None;
+        if freed.textures + freed.models > 0 {
+            log::info!(
+                "graphics memory: {} textures and {} models no open map uses were freed",
+                freed.textures,
+                freed.models
+            );
+        }
+        None
+    }
+
+    pub(crate) fn release_idle_features(&mut self, state: &mut AppState) -> Option<std::time::Duration> {
+        let gfx = state.gfx.as_mut()?;
+        let freed = gfx.renderer.release_idle_features(FEATURE_IDLE);
+        if freed > 0 {
+            state.runtime.gpu.idle_features_freed += freed;
+        }
+        gfx.renderer.idle_features_release_in(FEATURE_IDLE).map(|w| w + std::time::Duration::from_millis(50))
     }
 
     fn warn(
@@ -403,6 +465,38 @@ mod tests {
         assert_eq!(pressure(900, b, false), VramPressure::High);
         assert_eq!(pressure(1001, b, false), VramPressure::Critical);
         assert_eq!(pressure(10, b, true), VramPressure::Critical, "an out of memory error is critical");
+    }
+
+    #[test]
+    fn closed_maps_are_collected_once_loading_settles() {
+        let mut state = hp_app::testing::test_state();
+        let mut m = VramMonitor::default();
+        assert_eq!(m.collect_unused(&mut state, 10.0), None, "nothing asked");
+        state.runtime.gpu.collect_unused = true;
+        let wait = m.collect_unused(&mut state, 10.0).expect("waits for the map to settle");
+        assert!(wait.as_secs_f64() >= UNUSED_SETTLE - 0.01);
+        assert!(m.collect_unused(&mut state, 11.0).is_some());
+        assert_eq!(m.collect_unused(&mut state, 10.0 + UNUSED_SETTLE), None, "no graphics device in tests");
+        assert!(state.runtime.gpu.collect_unused, "kept for when a device exists");
+    }
+
+    #[test]
+    fn warnings_follow_the_real_card_not_the_soft_budget() {
+        let gb = 1u64 << 30;
+        let real = GpuHardware { dedicated: 2 * gb, driver_budget: 1900 << 20, integrated: false, simulated: false };
+        let soft = MemoryTier::Low.budget(Some(1900 << 20), OTHER_FALLBACK, false);
+        let card = card_capacity(Some(1900 << 20), real, soft);
+        assert_eq!(card, 1900 << 20);
+        assert_eq!(pressure(1000 << 20, soft, false), VramPressure::Critical, "over the soft budget");
+        assert_eq!(card_pressure(1000 << 20, card, false), VramPressure::Normal, "the card still has room");
+        assert_eq!(card_pressure(1850 << 20, card, false), VramPressure::High);
+        assert_eq!(card_pressure(1950 << 20, card, false), VramPressure::Critical);
+        assert_eq!(card_pressure(10, card, true), VramPressure::Critical);
+        let sim = GpuHardware::default().with_simulation(Some("2048"));
+        assert_eq!(card_capacity(Some(16 * gb), sim, soft), 2 * gb, "a simulated card is the small one");
+        assert_eq!(card_capacity(Some(16 * gb), real.with_simulation(Some("2048")), soft), 1900 << 20);
+        assert_eq!(card_capacity(None, GpuHardware::default(), 3 * gb), 3 * gb);
+        assert_eq!(card_capacity(Some(gb), GpuHardware::default(), 2 * gb), 2 * gb, "never below a chosen budget");
     }
 
     #[test]

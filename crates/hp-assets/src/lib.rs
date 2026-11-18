@@ -64,6 +64,7 @@ mod helpers;
 mod instance_decor;
 mod instances;
 mod render;
+mod sync_stats;
 
 pub use lights::set_designer_rad;
 use std::collections::VecDeque;
@@ -152,6 +153,7 @@ pub struct AssetStats {
 }
 
 pub struct AssetManager {
+    sync_stats: sync_stats::SyncStats,
     pub(crate) shared: Arc<Shared>,
     pub(crate) rx: Receiver<JobResult>,
     _workers: Vec<JoinHandle<()>>,
@@ -215,6 +217,7 @@ impl AssetManager {
         let shared = Arc::new(Shared::new(tx));
         let workers = queue::spawn_workers(&shared, queue::worker_count());
         let mut m = AssetManager {
+            sync_stats: sync_stats::SyncStats::default(),
             shared,
             rx,
             _workers: workers,
@@ -370,6 +373,11 @@ impl hp_app::AssetsApi for AssetManager {
     fn preload_resources(&self, doc: &hp_editor::Document) -> Vec<hp_app::runtime::PreloadResource> {
         self.preload_resources_impl(doc)
     }
+    fn preload_lister(
+        &self,
+    ) -> Option<Box<dyn FnOnce(&hp_editor::Document) -> Vec<hp_app::runtime::PreloadResource> + Send>> {
+        Some(self.preload_lister())
+    }
     fn preload_resource(
         &mut self,
         resource: &hp_app::runtime::PreloadResource,
@@ -378,7 +386,11 @@ impl hp_app::AssetsApi for AssetManager {
         self.preload_resource_impl(resource, gfx)
     }
     fn scene_prepared(&self) -> bool {
-        if !self.scene.initialized || self.scene.prep.is_some() || !self.scene.upload_pending.is_empty() {
+        if !self.scene.initialized
+            || self.scene.prep.is_some()
+            || !self.scene.upload_pending.is_empty()
+            || !self.scene.entity_queue.is_empty()
+        {
             return false;
         }
         if !self.fresh_scene_ready() {
@@ -446,6 +458,7 @@ impl hp_app::AssetsApi for AssetManager {
             || !self.uploads.is_empty()
             || self.late_sources > 0
             || !self.scene.realize_later.is_empty()
+            || !self.scene.entity_queue.is_empty()
             || self.ragdolls.loading()
     }
 
@@ -574,6 +587,10 @@ impl hp_app::AssetsApi for AssetManager {
 
     fn models_animating(&self) -> bool {
         AssetManager::models_animating(self)
+    }
+
+    fn models_next_step(&self) -> Option<std::time::Duration> {
+        AssetManager::models_next_step(self)
     }
 
     fn animated_lights(&self) -> bool {
@@ -707,6 +724,10 @@ impl hp_app::AssetsApi for AssetManager {
 
     fn sync_scene(&mut self, doc: &mut hp_editor::Document, gfx: &mut Gfx, opts: &SceneOptions) {
         self.sync_scene_impl(doc, &mut gfx.renderer, opts);
+    }
+
+    fn scene_sync_stages(&self) -> Vec<(&'static str, f32, f32)> {
+        self.sync_stats.averages()
     }
 
     fn sync_detail_preview(

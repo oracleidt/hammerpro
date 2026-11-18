@@ -239,3 +239,4 @@ Every call is one undo step labeled "MCP: import heightmap", "MCP: import blend 
 - After an import, use the [displacement tool](displacement-tool.md) to sculpt, to **Paint alpha**, to sew with other terrain, or to change the power with **Keep the shape**.
 - Exported heightmaps open in any image editor and in terrain tools such as World Machine or Gaea (16 bit PNG, or EXR and R32 float for full precision).
 - The [World Machine and Gaea guide](../guides/world-machine-gaea.md) walks through a whole round trip: heights, splat maps, materials and compile.
+- To shape the terrain by hand like in Gaea or Unreal Landscape (local hydraulic and thermal erosion, terraces, fractal noise, mountain and crater stamps, cliffs, plateaus, clone and a protection mask), use the **Terraform** mode of the [displacement tool](displacement-tool.md#terraform).

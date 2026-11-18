@@ -60,6 +60,14 @@ pub const TR: TrTable = &[
         "Quality lowered automatically ({0}, {1} FPS measured)",
         "Qualité baissée automatiquement ({0}, {1} i/s mesurées)",
     ),
+    (
+        "perf.banner_low_end",
+        "Lightweight mode (like Hammer) for this computer: {0}",
+        "Mode léger (comme Hammer) pour cet ordinateur : {0}",
+    ),
+    ("perf.low_end_integrated", "integrated graphics", "carte graphique intégrée"),
+    ("perf.low_end_vram", "little graphics memory", "peu de mémoire graphique"),
+    ("perf.low_end_battery", "on battery", "sur batterie"),
     ("perf.restore", "Restore full quality", "Rétablir la qualité maximale"),
     (
         "perf.restore_tip",
@@ -172,8 +180,16 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState, rect: Rect, top: f32, index
     }
     let mode = state.settings.render.performance_mode;
     let perf = &state.runtime.render.perf;
-    if perf.reduced_automatically(mode) && perf.auto_level != PerfLevel::Full {
-        let text = tf!("perf.banner", perf.auto_level.id().replace('_', " "), format!("{:.0}", perf.auto_fps));
+    let hardware = perf.low_end.filter(|_| perf.auto_level == PerfLevel::Lightweight && perf.auto_fps == 0.0);
+    let fresh = state.frame.time - perf.low_end_at < LOW_END_BANNER_S;
+    if perf.reduced_automatically(mode) && perf.auto_level != PerfLevel::Full && (hardware.is_none() || fresh) {
+        if hardware.is_some() {
+            ui.ctx().request_repaint_after(std::time::Duration::from_secs(1));
+        }
+        let text = match hardware {
+            Some(reason) => tf!("perf.banner_low_end", low_end_label(reason)),
+            None => tf!("perf.banner", perf.auto_level.id().replace('_', " "), format!("{:.0}", perf.auto_fps)),
+        };
         let label = t!("perf.restore");
         let font = paint::small_font();
         let g1 = painter.layout_no_wrap(text, font.clone(), paint::TEXT);
@@ -202,4 +218,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState, rect: Rect, top: f32, index
         taken = if taken.is_positive() { taken.union(r) } else { r };
     }
     taken
+}
+
+const LOW_END_BANNER_S: f64 = 20.0;
+
+fn low_end_label(reason: hp_app::runtime::LowEnd) -> &'static str {
+    match reason {
+        hp_app::runtime::LowEnd::Integrated => t!("perf.low_end_integrated"),
+        hp_app::runtime::LowEnd::SmallVram => t!("perf.low_end_vram"),
+        hp_app::runtime::LowEnd::Battery => t!("perf.low_end_battery"),
+    }
 }

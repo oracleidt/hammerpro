@@ -30,6 +30,7 @@ pub enum Interaction {
     Alpha,
     Sculpt,
     Tag,
+    Terraform,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -256,7 +257,7 @@ pub(crate) fn build_sample(
         Sample::Local(LocalBrush { center, radius: s.radius, falloff: s.falloff, spatial: s.spatial, op })
     };
     match interaction {
-        Interaction::Select | Interaction::Sculpt | Interaction::Tag => None,
+        Interaction::Select | Interaction::Sculpt | Interaction::Tag | Interaction::Terraform => None,
         Interaction::Geometry => {
             let effect = match (s.geo_effect, invert) {
                 (GeoEffect::Raise, true) => GeoEffect::Lower,

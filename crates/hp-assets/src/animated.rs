@@ -17,6 +17,7 @@ type SkinnedGroup = (ModelId, (usize, f32), Option<(Vec<Vertex>, Vec<[f32; 4]>)>
 
 const VERTEX_BUDGET: usize = 600_000;
 const MIN_STEP: f64 = 1.0 / 60.0;
+const NEAR_STEP: f64 = 1.0 / 30.0;
 const SHADOW_INTERVAL: f64 = 0.1;
 const VIEW_TTL: u64 = 3;
 const TOUCH_INTERVAL: u64 = 60;
@@ -70,7 +71,7 @@ struct Group {
     born: f64,
     posed: Option<(usize, u32)>,
     boxes: Vec<(Vec3, Vec3)>,
-    stale: u32,
+    posed_at: f64,
     materials: Vec<u32>,
     local: (Vec3, Vec3),
 }
@@ -113,9 +114,29 @@ pub(crate) struct AnimatedModels {
     tick: u64,
     pub animating: bool,
     pub updated: u64,
+    next_due: Option<f64>,
 }
 
 impl AnimatedModels {
+    fn next_wait(&self) -> Option<std::time::Duration> {
+        if !self.animating {
+            return None;
+        }
+        let now = self.clock?.elapsed().as_secs_f64();
+        let at = self.next_due.unwrap_or(now + NEAR_STEP);
+        Some(std::time::Duration::from_secs_f64((at - now).clamp(MIN_STEP, 1.0)))
+    }
+
+    pub(crate) fn live_models(&self) -> impl Iterator<Item = ModelId> + '_ {
+        self.ids.keys().copied()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn note_test_model(&mut self, id: ModelId) {
+        let key = GroupKey { path: format!("test{}", id.raw()), skin: 0, body: 0, sequence: 0, rate: 0, cycle: 0 };
+        self.ids.insert(id, key);
+    }
+
     fn now(&mut self) -> f64 {
         self.clock.get_or_insert_with(Instant::now).elapsed().as_secs_f64()
     }
@@ -175,6 +196,10 @@ fn update_interval(distance: f32) -> u32 {
         d if d < 16384.0 => 4,
         _ => 8,
     }
+}
+
+fn update_step(distance: f32) -> f64 {
+    NEAR_STEP * f64::from(update_interval(distance))
 }
 
 fn world_box(local: (Vec3, Vec3), m: &Mat4) -> (Vec3, Vec3) {
@@ -367,7 +392,7 @@ impl AssetManager {
                 born,
                 posed: None,
                 boxes: Vec::new(),
-                stale: u32::MAX / 2,
+                posed_at: f64::NEG_INFINITY,
                 materials,
                 local,
             },
@@ -413,6 +438,7 @@ impl AssetManager {
         let a = &mut self.anim_models;
         if !display.animate_models || !shown || a.groups.is_empty() {
             a.animating = false;
+            a.next_due = None;
             return;
         }
         let now = a.now();
@@ -425,6 +451,7 @@ impl AssetManager {
         a.views.retain(|_, v| frame.saturating_sub(v.2) <= VIEW_TTL);
         let views: Vec<([Vec4; 6], Vec3)> = a.views.values().map(|v| (frustum(&v.0), v.1)).collect();
         let mut animating = false;
+        let mut next_due = f64::INFINITY;
         let mut due: Vec<(f32, GroupKey, (usize, f32))> = Vec::new();
         for (key, g) in a.groups.iter_mut() {
             let (distance, visible) = if views.is_empty() {
@@ -441,22 +468,28 @@ impl AssetManager {
                 (best, best.is_finite())
             };
             if !visible {
-                g.stale = g.stale.saturating_add(1);
                 continue;
             }
             let target = g.target(now);
             let moving = g.posed != Some((target.0, target.1.to_bits()));
-            animating |= moving || !g.finished(now);
+            let finished = g.finished(now);
+            animating |= moving || !finished;
+            let next = g.posed_at + update_step(distance);
             if !moving {
+                if !finished {
+                    next_due = next_due.min(next.max(now + NEAR_STEP));
+                }
                 continue;
             }
-            g.stale = g.stale.saturating_add(1);
-            if g.stale >= update_interval(distance) {
+            if next <= now + MIN_STEP * 0.5 {
                 due.push((distance, key.clone(), target));
+            } else {
+                next_due = next_due.min(next);
             }
         }
         a.animating = animating;
         if due.is_empty() {
+            a.next_due = next_due.is_finite().then_some(next_due);
             return;
         }
         due.sort_by(|x, y| x.0.total_cmp(&y.0));
@@ -465,6 +498,7 @@ impl AssetManager {
         for (_, key, target) in &due {
             let Some(g) = a.groups.get(key) else { continue };
             if !chosen.is_empty() && budget + g.vertices > VERTEX_BUDGET {
+                next_due = now;
                 break;
             }
             budget += g.vertices;
@@ -479,7 +513,8 @@ impl AssetManager {
             let Some(key) = a.ids.get(&id).cloned() else { continue };
             let Some(g) = a.groups.get_mut(&key) else { continue };
             g.posed = Some((target.0, target.1.to_bits()));
-            g.stale = 0;
+            g.posed_at = now;
+            next_due = next_due.min(now + update_step(0.0));
             if let Some((vertices, tangents)) = result
                 && renderer.update_model_vertices(id, &vertices, &tangents)
             {
@@ -494,6 +529,7 @@ impl AssetManager {
             }
             renderer.note_animated_models(shadows);
         }
+        a.next_due = next_due.is_finite().then_some(next_due);
         if a.tick.is_multiple_of(TOUCH_INTERVAL) {
             let paths: AHashSet<String> =
                 a.groups.keys().map(|k| model_data_key(&k.path, Some(ANIMATION_KEY))).collect();
@@ -509,6 +545,10 @@ impl AssetManager {
 
     pub(crate) fn models_animating(&self) -> bool {
         self.anim_models.animating
+    }
+
+    pub(crate) fn models_next_step(&self) -> Option<std::time::Duration> {
+        self.anim_models.next_wait()
     }
 }
 
@@ -569,6 +609,24 @@ mod tests {
         assert!(!box_in_frustum(&planes, Vec3::new(500.0, 2000.0, -10.0), Vec3::new(520.0, 2100.0, 10.0)));
         assert_eq!(update_interval(100.0), 1);
         assert!(update_interval(20_000.0) > update_interval(3000.0));
+    }
+
+    #[test]
+    fn far_models_wake_the_window_less_often() {
+        assert!((update_step(100.0) - 1.0 / 30.0).abs() < 1e-9);
+        assert!((update_step(4000.0) - 2.0 / 30.0).abs() < 1e-9);
+        assert!((update_step(50_000.0) - 8.0 / 30.0).abs() < 1e-9);
+        let mut am = AnimatedModels::default();
+        assert!(am.next_wait().is_none(), "nothing animates");
+        am.animating = true;
+        am.next_due = Some(0.5);
+        am.clock = Some(Instant::now());
+        let wait = am.next_wait().expect("animating").as_secs_f64();
+        assert!(wait > 0.4 && wait <= 0.5, "the next pose is due in half a second: {wait}");
+        am.next_due = Some(-1.0);
+        assert!((am.next_wait().expect("late").as_secs_f64() - MIN_STEP).abs() < 1e-6, "a late pose wakes soon");
+        am.animating = false;
+        assert!(am.next_wait().is_none(), "a finished animation stops waking the window");
     }
 
     #[test]

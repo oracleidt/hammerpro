@@ -239,3 +239,4 @@ Chaque appel est une seule étape d'annulation nommée « MCP : import d'une car
 - Après un import, utilisez l'[outil displacement](displacement-tool.md) pour sculpter, **Peindre l'alpha**, coudre avec un autre terrain, ou changer la puissance avec **Garder la forme**.
 - Les cartes de hauteur exportées s'ouvrent dans tout éditeur d'images et dans les outils de terrain comme World Machine ou Gaea (PNG 16 bits, ou EXR et R32 flottants pour la pleine précision).
 - Le [guide World Machine et Gaea](../guides/world-machine-gaea.md) décrit un aller-retour complet : hauteurs, splat maps, matériaux et compilation.
+- Pour façonner le terrain à la main comme dans Gaea ou Unreal Landscape (érosion hydraulique et thermique locale, terrasses, bruit fractal, tampons de montagnes et de cratères, falaises, plateaux, clonage et masque de protection), utilisez le mode **Terraformer** de l'[outil displacement](displacement-tool.md#terraformer).

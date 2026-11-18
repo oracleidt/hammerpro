@@ -82,6 +82,7 @@ impl ParticleIndex {
             let (tx, rx) = std::sync::mpsc::channel();
             let fs = fs.clone();
             let spawned = std::thread::Builder::new().name("hp-particle-index".to_owned()).spawn(move || {
+                hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
                 let _ = tx.send(build_catalog(&fs));
             });
             match spawned {

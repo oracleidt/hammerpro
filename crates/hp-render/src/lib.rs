@@ -113,14 +113,18 @@ use pipelines::{COLOR_FORMAT, DEPTH_FORMAT, DISPLAY_FORMAT, LDR_FORMAT, MESH_PAS
 use scene::{ARENA_ELEM, ArenaKind, NULL_SLOT, Scene};
 use textures::TexEntry;
 
+const SLOW_VIEW_MS: f32 = 150.0;
 const UNKNOWN_MODEL_HALF: f32 = 8.0;
 const ADAPTIVE_SUN_SHADOW: u32 = 2048;
 const ADAPTIVE_LOCAL_SHADOW: u32 = 256;
 const ADAPTIVE_SKY_GROWTH: f32 = 2.6;
 const TOOL_ALPHA: f32 = 0.55;
 
+const MATERIAL_PAGE: u64 = 256;
+
 struct MaterialGpu {
     uniform: wgpu::Buffer,
+    offset: u64,
     bind_group: wgpu::BindGroup,
     texs: MatTextures,
 }
@@ -194,6 +198,7 @@ struct ViewState {
     depth_view: wgpu::TextureView,
     generation: u64,
     target_bytes: u64,
+    heavy: [bool; 4],
     uniform: wgpu::Buffer,
     overlay: GrowBuffer,
     clusters: GrowBuffer,
@@ -274,6 +279,7 @@ pub struct Renderer {
     textures: HashMap<u32, TexEntry>,
     next_tex: u32,
     mat_gpu: Vec<MaterialGpu>,
+    material_pages: Vec<wgpu::Buffer>,
     scene: Scene,
     arenas: [GrowBuffer; 3],
     states: GrowBuffer,
@@ -302,6 +308,7 @@ pub struct Renderer {
     ambient: [f32; 3],
     lights_gen: u64,
     views: HashMap<u32, ViewState>,
+    shared_targets: HashMap<([u32; 2], u32), SharedTargets>,
     next_generation: u64,
     fallback_view: wgpu::TextureView,
     overlay_scratch: Vec<gpu::ColorVertex>,
@@ -314,6 +321,7 @@ pub struct Renderer {
     pipeline_wait_ms: f64,
     shadow: Option<shadow::ShadowGpu>,
     control_shadow: Option<control_shadow::ControlShadow>,
+    heavy_use: memory::HeavyUse,
     shadow_dummy_array: wgpu::TextureView,
     surface_dummy: wgpu::TextureView,
     sky_layers: [shadow::SkyAnalysis; 2],
@@ -326,6 +334,7 @@ pub struct Renderer {
     sun_cams: ahash::AHashMap<u32, (Mat4, u64)>,
     motion_cams: ahash::AHashMap<u32, Mat4>,
     pub(crate) last_motion: Option<std::time::Instant>,
+    pub(crate) surface_bounds: Option<(glam::Vec3, glam::Vec3)>,
     sun_followup: bool,
     render_serial: u64,
     instance_bounds: Option<(Vec3, Vec3)>,
@@ -334,6 +343,8 @@ pub struct Renderer {
     instance_pool: instance_cull::InstancePool,
     instances_dirty: bool,
     content_gen: u64,
+    content_gen_3d: u64,
+    content_gen_tex: u64,
     model_anim_gen: u64,
     light_content_gen: u64,
     view_redraws: ahash::AHashMap<u32, u64>,
@@ -356,10 +367,11 @@ pub struct Renderer {
     model_lights: compiled_light::ModelLights,
     environment: Environment,
     sel_chunks: ((u64, u64), Vec<u32>),
+    world_args: arena::GrowBuffer,
     translucent_instances: bool,
     instance_list: Vec<ModelInstance>,
     occ_pipes: Option<occlusion::OcclusionPipelines>,
-    light_cull: Option<light_cull::LightCullPipeline>,
+    light_cull: std::sync::Arc<std::sync::OnceLock<light_cull::LightCullPipeline>>,
     gpu_clusters: bool,
     outline_pipes: Option<outline::OutlinePipelines>,
     bg_pipes: Option<bgimages::BgPipelines>,
@@ -1055,6 +1067,7 @@ impl Renderer {
             textures: HashMap::new(),
             next_tex: 3,
             mat_gpu: Vec::new(),
+            material_pages: Vec::new(),
             scene,
             arenas,
             states,
@@ -1083,6 +1096,7 @@ impl Renderer {
             ambient: [0.0; 3],
             lights_gen: 1,
             views: HashMap::new(),
+            shared_targets: HashMap::new(),
             next_generation: 1,
             fallback_view: fallback.create_view(&wgpu::TextureViewDescriptor::default()),
             overlay_scratch: Vec::new(),
@@ -1095,6 +1109,7 @@ impl Renderer {
             pipeline_wait_ms: 0.0,
             shadow: None,
             control_shadow: None,
+            heavy_use: memory::HeavyUse::default(),
             shadow_dummy_array: shadow_dummy,
             surface_dummy: surface_light::dummy(&device),
             sky_layers: [None, None],
@@ -1107,6 +1122,7 @@ impl Renderer {
             sun_cams: ahash::AHashMap::default(),
             motion_cams: ahash::AHashMap::default(),
             last_motion: None,
+            surface_bounds: None,
             sun_followup: false,
             render_serial: 0,
             instance_bounds: None,
@@ -1115,6 +1131,8 @@ impl Renderer {
             instance_pool: instance_cull::InstancePool::new(&device),
             instances_dirty: false,
             content_gen: 1,
+            content_gen_3d: 0,
+            content_gen_tex: 0,
             model_anim_gen: 0,
             light_content_gen: 0,
             view_redraws: ahash::AHashMap::default(),
@@ -1137,10 +1155,11 @@ impl Renderer {
             model_lights: compiled_light::ModelLights::default(),
             environment: Environment::default(),
             sel_chunks: ((0, 0), Vec::new()),
+            world_args: arena::GrowBuffer::new(&device, "hp-render world draws", wgpu::BufferUsages::INDIRECT, 1 << 12),
             translucent_instances: false,
             instance_list: Vec::new(),
             occ_pipes: None,
-            light_cull: None,
+            light_cull: std::sync::Arc::default(),
             gpu_clusters: light_cull::supported(&device) && !profile::baseline("gpuclusters"),
             outline_pipes: None,
             bg_pipes: None,
@@ -1216,6 +1235,24 @@ impl Renderer {
         self.content_gen
     }
 
+    pub fn content_generation_2d(&self) -> u64 {
+        self.content_gen.wrapping_sub(self.content_gen_3d).wrapping_sub(self.content_gen_tex)
+    }
+
+    pub fn texture_generation(&self) -> u64 {
+        self.content_gen_tex
+    }
+
+    pub(crate) fn bump_3d_content(&mut self) {
+        self.content_gen += 1;
+        self.content_gen_3d += 1;
+    }
+
+    pub(crate) fn bump_texture_content(&mut self) {
+        self.content_gen += 1;
+        self.content_gen_tex += 1;
+    }
+
     pub fn bump_content_generation(&mut self) {
         self.content_gen += 1;
     }
@@ -1251,7 +1288,7 @@ impl Renderer {
     pub fn set_environment(&mut self, env: Environment) {
         if self.environment != env {
             self.environment = env;
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
     }
 
@@ -1311,7 +1348,7 @@ impl Renderer {
             return Err(RenderError::OutOfMemory);
         }
         self.staging.wrote(&self.device, &self.queue, entry.bytes);
-        self.content_gen += 1;
+        self.bump_texture_content();
         let id = self.next_tex;
         self.next_tex = self.next_tex.checked_add(1).filter(|v| *v != TexId::FLAT_NORMAL.0).unwrap_or(3);
         self.textures.insert(id, entry);
@@ -1365,6 +1402,62 @@ impl Renderer {
         std::mem::take(&mut self.memory_budget.wants_room)
     }
 
+    fn heavy_in_use(&self) -> [bool; 4] {
+        self.views.values().fold([false; 4], |acc, v| std::array::from_fn(|i| acc[i] || v.heavy[i]))
+    }
+
+    pub fn release_idle_features(&mut self, idle: std::time::Duration) -> u64 {
+        let now = std::time::Instant::now();
+        self.heavy_use.note_at(now, self.heavy_in_use());
+        let stale = self.heavy_use.stale(now, idle);
+        let mut freed = 0;
+        if stale.sun
+            && let Some(t) = self.shadow.take()
+        {
+            freed += shadow::Layers::Sun.bytes(t.layers, self.applied.sun_shadow_size);
+        }
+        if stale.sky
+            && let Some(t) = self.sky_map.take()
+        {
+            freed += shadow::Layers::Sky.bytes(t.layers, u32::MAX);
+        }
+        if stale.local && self.local_shadows.bytes() > 0 {
+            freed += self.local_shadows.bytes();
+            self.local_shadows.reset_size();
+        }
+        if stale.control && self.control_shadow.take().is_some() {
+            freed += 2048 * 2048 * 4;
+        }
+        if freed > 0 {
+            self.scene_gen += 1;
+            let ids: Vec<u32> = self.views.keys().copied().collect();
+            for id in ids {
+                self.ensure_view_bind_group(id);
+                if self.views.get(&id).is_some_and(|v| v.sky_pass.is_some()) {
+                    self.ensure_sky_pass(id);
+                }
+                if let Some(t) = self.views.get_mut(&id).and_then(|v| v.surface.as_mut()) {
+                    t.pass_bind = None;
+                }
+            }
+            let _ = self.device.poll(wgpu::PollType::Poll);
+            log::info!("hp-render: {} MB of lighting preview shadow maps freed, not used for a while", freed >> 20);
+        }
+        freed
+    }
+
+    pub fn idle_features_release_in(&self, idle: std::time::Duration) -> Option<std::time::Duration> {
+        let held = [
+            self.shadow.is_some(),
+            self.sky_map.is_some(),
+            self.local_shadows.bytes() > 0,
+            self.control_shadow.is_some(),
+        ];
+        let used = self.heavy_in_use();
+        let held = std::array::from_fn(|i| held[i] && !used[i]);
+        self.heavy_use.next_release(std::time::Instant::now(), idle, held)
+    }
+
     pub fn take_upload_failed(&mut self) -> bool {
         std::mem::take(&mut self.upload_failed)
     }
@@ -1384,6 +1477,23 @@ impl Renderer {
         MemoryReport { geometry, textures, models, lightmaps, compiled, other, total: total + lightmaps + compiled }
     }
 
+    pub fn texture_breakdown(&self) -> Vec<TextureGroup> {
+        let mut out: Vec<TextureGroup> = Vec::new();
+        for t in self.textures.values() {
+            let format = format!("{:?}", t.format);
+            let size = t.size.next_power_of_two();
+            match out.iter_mut().find(|g| g.format == format && g.size == size) {
+                Some(g) => {
+                    g.count += 1;
+                    g.bytes += t.bytes;
+                }
+                None => out.push(TextureGroup { format, size, count: 1, bytes: t.bytes }),
+            }
+        }
+        out.sort_by_key(|g| std::cmp::Reverse(g.bytes));
+        out
+    }
+
     pub fn texture_view(&self, id: TexId) -> Option<&wgpu::TextureView> {
         self.textures.get(&id.0).map(|t| &t.view)
     }
@@ -1392,7 +1502,7 @@ impl Renderer {
         if id.is_builtin() || self.textures.remove(&id.0).is_none() {
             return;
         }
-        self.content_gen += 1;
+        self.bump_texture_content();
         if self.sky_bind.as_ref().is_some_and(|(faces, _)| faces.contains(&Some(id))) {
             self.sky_bind = None;
         }
@@ -1407,7 +1517,11 @@ impl Renderer {
             if desc.and_then(|d| d.envmap).and_then(|e| e.texture) == Some(id) {
                 let cube = self.material_cube(desc.as_ref());
                 if let Some(g) = self.mat_gpu.get(i) {
-                    self.queue.write_buffer(&g.uniform, 0, bytemuck::bytes_of(&material_uniform(desc.as_ref(), cube)));
+                    self.queue.write_buffer(
+                        &g.uniform,
+                        g.offset,
+                        bytemuck::bytes_of(&material_uniform(desc.as_ref(), cube)),
+                    );
                 }
             }
         }
@@ -1439,9 +1553,28 @@ impl Renderer {
         }
     }
 
+    fn material_uniform_stride(&self) -> u64 {
+        let align = u64::from(self.device.limits().min_uniform_buffer_offset_alignment.max(1));
+        (size_of::<MaterialUniform>() as u64).next_multiple_of(align)
+    }
+
+    fn material_uniform_slot(&mut self, i: usize) -> (wgpu::Buffer, u64) {
+        let stride = self.material_uniform_stride();
+        let page = i as u64 / MATERIAL_PAGE;
+        while self.material_pages.len() as u64 <= page {
+            self.material_pages.push(self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("hp-render material uniforms"),
+                size: stride * MATERIAL_PAGE,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+        }
+        (self.material_pages[page as usize].clone(), (i as u64 % MATERIAL_PAGE) * stride)
+    }
+
     fn material_bind_group(
         &self,
-        uniform: &wgpu::Buffer,
+        uniform: (&wgpu::Buffer, u64),
         texs: &MatTextures,
         flags: MaterialFlags,
     ) -> Option<wgpu::BindGroup> {
@@ -1458,7 +1591,14 @@ impl Renderer {
             entries: &[
                 wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(v1) },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(v2) },
-                wgpu::BindGroupEntry { binding: 2, resource: uniform.as_entire_binding() },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: uniform.0,
+                        offset: uniform.1,
+                        size: wgpu::BufferSize::new(size_of::<MaterialUniform>() as u64),
+                    }),
+                },
                 wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(v3) },
                 wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(v4) },
                 wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(v5) },
@@ -1482,7 +1622,8 @@ impl Renderer {
         let desc = self.scene.materials.get(i).and_then(|m| m.desc);
         let texs = self.resolve_textures(desc.as_ref());
         let Some(g) = self.mat_gpu.get(i) else { return };
-        if let Some(bg) = self.material_bind_group(&g.uniform, &texs, desc.map_or(MaterialFlags::empty(), |d| d.flags))
+        if let Some(bg) =
+            self.material_bind_group((&g.uniform, g.offset), &texs, desc.map_or(MaterialFlags::empty(), |d| d.flags))
             && let Some(g) = self.mat_gpu.get_mut(i)
         {
             g.bind_group = bg;
@@ -1494,22 +1635,17 @@ impl Renderer {
         while self.mat_gpu.len() < self.scene.materials.len() {
             let i = self.mat_gpu.len();
             let desc = self.scene.materials.get(i).and_then(|m| m.desc);
-            let uniform = self.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("hp-render material uniform"),
-                size: size_of::<MaterialUniform>() as u64,
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
+            let (uniform, offset) = self.material_uniform_slot(i);
             let cube = self.material_cube(desc.as_ref());
-            self.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&material_uniform(desc.as_ref(), cube)));
+            self.queue.write_buffer(&uniform, offset, bytemuck::bytes_of(&material_uniform(desc.as_ref(), cube)));
             let texs = self.resolve_textures(desc.as_ref());
             let Some(bind_group) =
-                self.material_bind_group(&uniform, &texs, desc.map_or(MaterialFlags::empty(), |d| d.flags))
+                self.material_bind_group((&uniform, offset), &texs, desc.map_or(MaterialFlags::empty(), |d| d.flags))
             else {
                 log::error!("hp-render: built-in textures are missing");
                 return;
             };
-            self.mat_gpu.push(MaterialGpu { uniform, bind_group, texs });
+            self.mat_gpu.push(MaterialGpu { uniform, offset, bind_group, texs });
         }
     }
 
@@ -1525,11 +1661,11 @@ impl Renderer {
         }
         self.sync_materials();
         self.shadow_epoch += 1;
-        self.content_gen += 1;
+        self.bump_texture_content();
         let texs = self.resolve_textures(Some(desc));
         let cube = self.material_cube(Some(desc));
         let Some(g) = self.mat_gpu.get(i) else { return };
-        self.queue.write_buffer(&g.uniform, 0, bytemuck::bytes_of(&material_uniform(Some(desc), cube)));
+        self.queue.write_buffer(&g.uniform, g.offset, bytemuck::bytes_of(&material_uniform(Some(desc), cube)));
         let addressing = MaterialFlags::PARTICLE_CLAMP_U | MaterialFlags::PARTICLE_CLAMP_V;
         if g.texs != texs || old.map(|d| d.flags & addressing) != Some(desc.flags & addressing) {
             self.refresh_material_bind_group(i);
@@ -2286,7 +2422,7 @@ impl Renderer {
         self.ambient = ambient.map(|c| if c.is_finite() { c.max(0.0) } else { 0.0 });
         self.lights_gen += 1;
         self.cubes.epoch += 1;
-        self.content_gen += 1;
+        self.bump_3d_content();
     }
 
     pub fn set_sun(&mut self, sun: SunParams) {
@@ -2295,7 +2431,7 @@ impl Renderer {
             self.sun = sun;
             self.lights_gen += 1;
             self.cubes.epoch += 1;
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
     }
 
@@ -2416,19 +2552,30 @@ impl Renderer {
             usage: att | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[DISPLAY_FORMAT],
         });
-        let msaa = (samples > 1).then(|| tex("hp-render view msaa", COLOR_FORMAT, samples, att));
-        let depth = tex("hp-render view depth", DEPTH_FORMAT, samples, att | wgpu::TextureUsages::TEXTURE_BINDING);
+        let shared = match self.shared_targets.get(&(size, samples)) {
+            Some(t) => t.clone(),
+            None => {
+                let msaa = (samples > 1).then(|| tex("hp-render view msaa", COLOR_FORMAT, samples, att));
+                let depth =
+                    tex("hp-render view depth", DEPTH_FORMAT, samples, att | wgpu::TextureUsages::TEXTURE_BINDING);
+                let t = SharedTargets {
+                    msaa: msaa.map(|t| t.create_view(&wgpu::TextureViewDescriptor::default())),
+                    depth: depth.create_view(&wgpu::TextureViewDescriptor::default()),
+                };
+                self.shared_targets.insert((size, samples), t.clone());
+                t
+            }
+        };
         let px = u64::from(size[0]) * u64::from(size[1]);
-        let target_bytes =
-            px * 12 + px * 4 * u64::from(samples) + if samples > 1 { px * 8 * u64::from(samples) } else { 0 };
+        let target_bytes = px * 12;
         let generation = self.next_generation;
         self.next_generation += 1;
         let color_view = color.create_view(&wgpu::TextureViewDescriptor::default());
         let display_srgb = display.create_view(&wgpu::TextureViewDescriptor::default());
         let display_view =
             display.create_view(&wgpu::TextureViewDescriptor { format: Some(DISPLAY_FORMAT), ..Default::default() });
-        let msaa_view = msaa.map(|t| t.create_view(&wgpu::TextureViewDescriptor::default()));
-        let depth_view = depth.create_view(&wgpu::TextureViewDescriptor::default());
+        let msaa_view = shared.msaa;
+        let depth_view = shared.depth;
         if let Some(v) = self.views.get_mut(&id) {
             v.size = size;
             v.samples = samples;
@@ -2442,6 +2589,7 @@ impl Renderer {
             v.generation = generation;
             v.target_bytes = target_bytes;
             v.cluster_key = None;
+            self.prune_shared_targets();
             return;
         }
         let uniform = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -2463,6 +2611,7 @@ impl Renderer {
             depth_view,
             generation,
             target_bytes,
+            heavy: [false; 4],
             uniform,
             overlay: GrowBuffer::new(&self.device, "hp-render overlay", wgpu::BufferUsages::VERTEX, 1 << 12),
             clusters: GrowBuffer::new(&self.device, "hp-render clusters", storage, 16),
@@ -2484,6 +2633,22 @@ impl Renderer {
             animated: false,
         };
         self.views.insert(id, view);
+        self.prune_shared_targets();
+    }
+
+    fn prune_shared_targets(&mut self) {
+        let views = &self.views;
+        self.shared_targets.retain(|key, _| views.values().any(|v| (v.size, v.samples) == *key));
+    }
+
+    fn shared_target_bytes(&self) -> u64 {
+        self.shared_targets
+            .keys()
+            .map(|(size, samples)| {
+                let px = u64::from(size[0]) * u64::from(size[1]) * u64::from(*samples);
+                px * 4 + if *samples > 1 { px * 8 } else { 0 }
+            })
+            .sum()
     }
 
     fn update_clusters(&mut self, id: u32, cam: &Camera, delta_only: bool) -> ClusterGrid {
@@ -2568,7 +2733,7 @@ impl Renderer {
         if cull.reading() {
             let _ = self.device.poll(wgpu::PollType::Poll);
         }
-        let pipe = self.light_cull.get_or_insert_with(|| light_cull::LightCullPipeline::new(&self.device));
+        let pipe = self.light_cull.get_or_init(|| light_cull::LightCullPipeline::new(&self.device));
         cull.record(
             &self.device,
             &self.queue,
@@ -2894,13 +3059,14 @@ impl Renderer {
         self.reserve_instance_pool();
         let is_reflection = self.reflecting.is_some();
         let profiled = !self.probing && !matches!(params.kind, ViewKind::Ortho { .. });
+        let ortho_timed = !self.probing && matches!(params.kind, ViewKind::Ortho { .. });
         if !is_reflection {
             self.reflection_cpu_ms = 0.0;
             if !self.probing {
                 self.render_serial += 1;
             }
         }
-        if profiled
+        if (profiled || ortho_timed)
             && !is_reflection
             && let Some(p) = self.profiler.as_mut()
         {
@@ -2909,7 +3075,9 @@ impl Renderer {
         if profiled && !is_reflection {
             self.observe_gpu_time();
         }
+        let flushing = std::time::Instant::now();
         self.flush();
+        let flush_ms = flushing.elapsed().as_secs_f32() * 1000.0;
         self.write_cube_info();
         let mut params = *params;
         params.size = [params.size[0].clamp(1, self.max_tex_dim), params.size[1].clamp(1, self.max_tex_dim)];
@@ -2927,6 +3095,7 @@ impl Renderer {
         let pi = self.ensure_pipelines(samples);
         self.ensure_view(view_id, params.size, samples);
         let mut lap = profile::Lap::new();
+        let pre_ms = started.elapsed().as_secs_f32() * 1000.0;
         let chain = !self.probing && reflecting.is_none() && self.tone_chain(&opts, params.mode, cam.is_ortho);
         self.prepare_tone(view_id, params.size, params.mode, chain);
         let tone = reflecting.map_or_else(|| self.tone_scale_for(view_id, chain), |r| r.tone);
@@ -2969,7 +3138,7 @@ impl Renderer {
         let control = if !cam.is_ortho
             && matches!(params.mode, RenderMode::Textured | RenderMode::TexturedWire | RenderMode::Lit)
         {
-            opts.shadow_control.and_then(|c| self.prepare_control_shadow(&fit_cam, c))
+            opts.shadow_control.and_then(|c| self.prepare_control_shadow(view_id, &fit_cam, c))
         } else {
             None
         };
@@ -2987,13 +3156,19 @@ impl Renderer {
             Vec::new()
         };
         let shadow_prep_ms = lap.take();
+        if reflecting.is_none()
+            && !self.probing
+            && let Some(v) = self.views.get_mut(&view_id)
+        {
+            v.heavy = [shadow.is_some(), sky_map.is_some(), local_lighting, control.is_some()];
+        }
         let mut uniform = self.view_uniform(&cam, &params, &opts, grid, shadow.as_ref().map(|s| &s.0), false, tone);
         let compiled_drawn = !cam.is_ortho
             && opts.compiled_lighting
             && self.compiled.present
             && compiled_light::textured_mode(params.mode);
         let surface_on = self.surface_light_wanted(cam.is_ortho, compiled_drawn, reflecting.is_some());
-        let surface_on = self.ensure_surface_light(view_id, surface_on);
+        let surface_on = self.ensure_surface_light(view_id, surface_on) && self.update_surface_bounds(&cam.view_proj);
         if surface_on {
             uniform.opts[0] |= OPT_DECAL_LIGHT;
         }
@@ -3057,7 +3232,7 @@ impl Renderer {
         if sky_cam.is_some() {
             self.ensure_sky_pass(view_id);
         }
-        if cam.is_ortho && opts.fill_selected_2d > 0.0 {
+        if !self.probing {
             self.update_selected_chunks();
         }
         if cam.is_ortho {
@@ -3091,8 +3266,16 @@ impl Renderer {
         let mut enc =
             self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("hp-render view") });
         let recording = std::time::Instant::now();
-        if profiled && let Some(p) = self.profiler.as_mut() {
-            p.begin(is_reflection);
+        if (profiled || ortho_timed)
+            && let Some(p) = self.profiler.as_mut()
+        {
+            p.begin(if ortho_timed {
+                profile::SampleKind::Ortho
+            } else if is_reflection {
+                profile::SampleKind::Reflection
+            } else {
+                profile::SampleKind::Main
+            });
             p.mark(&mut enc, 0);
         }
         let cull_read = self.record_light_cull(view_id, &mut enc);
@@ -3130,6 +3313,16 @@ impl Renderer {
         }
         if let Some(p) = self.profiler.as_ref() {
             p.mark(&mut enc, 3);
+        }
+        let world_multi = !cam.is_ortho
+            && !self.probing
+            && occ.is_none()
+            && params.mode != RenderMode::Lit
+            && params.mode != RenderMode::Wireframe
+            && !crate::profile::baseline("multidraw");
+        if world_multi {
+            let needed = (self.scene.chunks.len() as u64).max(1) * occlusion::ARGS_BYTES;
+            let _ = self.world_args.ensure(&self.device, &self.queue, needed, self.max_buffer, false);
         }
         let mut main_marked = false;
         if let (Some(view), Some(ps)) = (self.views.get(&view_id), self.pipelines[pi].as_ref())
@@ -3191,6 +3384,7 @@ impl Renderer {
                     && (sky_bg.is_some() || sky_cam.is_some()),
                 water: water_frame.as_ref(),
                 packed: packed.as_ref(),
+                world_args: None,
             };
             let depth = || {
                 Some(wgpu::RenderPassDepthStencilAttachment {
@@ -3200,6 +3394,7 @@ impl Renderer {
                 })
             };
             let lists = if cam.is_ortho { Default::default() } else { ctx.collect_chunks(&mut counter) };
+            let ctx = DrawCtx { world_args: world_multi.then(|| self.write_world_args(&lists)).flatten(), ..ctx };
             animated =
                 !cam.is_ortho && (self.shows_animation(&lists) || water_frame.as_ref().is_some_and(|w| w.animated));
             let mut cands: Vec<ChunkDraw> = Vec::new();
@@ -3397,6 +3592,20 @@ impl Renderer {
                 shadow_prep_ms,
                 models_ms,
             };
+            let c = &self.frame_cpu;
+            if c.prepare_ms + c.record_ms + c.submit_ms > SLOW_VIEW_MS {
+                log::info!(
+                    "hp-render: slow 3D view {:.0} ms (uploads {flush_ms:.0}, before setup {pre_ms:.0}, setup {:.0}, clusters {:.0}, shadows {:.0}, models {:.0}, prepare {:.0}, record {:.0}, submit {:.0})",
+                    c.prepare_ms + c.record_ms + c.submit_ms,
+                    c.setup_ms,
+                    c.clusters_ms,
+                    c.shadow_prep_ms,
+                    c.models_ms,
+                    c.prepare_ms,
+                    c.record_ms,
+                    c.submit_ms
+                );
+            }
         }
         if let Some(o) = occ.as_mut() {
             o.after_submit();
@@ -3555,6 +3764,24 @@ impl Renderer {
         }
     }
 
+    fn write_world_args(&self, lists: &[Vec<ChunkDraw>; MESH_PASSES]) -> Option<&wgpu::Buffer> {
+        let draws = lists[0].iter().chain(&lists[1]);
+        let bytes: Vec<u8> = draws
+            .flat_map(|d| {
+                let words: [u32; 5] = [d.count, 1, d.first, 0, 0];
+                bytemuck::cast::<[u32; 5], [u8; 20]>(words)
+            })
+            .collect();
+        if bytes.is_empty() {
+            return Some(&self.world_args.buffer);
+        }
+        if bytes.len() as u64 > self.world_args.size {
+            return None;
+        }
+        self.queue.write_buffer(&self.world_args.buffer, 0, &bytes);
+        Some(&self.world_args.buffer)
+    }
+
     fn update_selected_chunks(&mut self) {
         let key = (self.scene.selected_gen, self.scene.membership_gen);
         if self.sel_chunks.0 == key {
@@ -3575,6 +3802,7 @@ impl Renderer {
     pub fn remove_view(&mut self, view_id: u32) {
         self.remove_particle_refraction_view(view_id);
         self.views.remove(&view_id);
+        self.prune_shared_targets();
         self.retained.remove(&view_id);
         self.forget_water_view(view_id);
         self.forget_fog_volume_view(view_id);
@@ -3710,6 +3938,9 @@ impl Renderer {
             for (slot, samples) in order {
                 let started = std::time::Instant::now();
                 let set = PipelineSet::new(&device, &shared, samples);
+                if slot == order[0].0 {
+                    pipelines::ShadowPipelines::prewarm(&device, &shared);
+                }
                 let ms = started.elapsed().as_secs_f64() * 1000.0;
                 if tx.send(PrewarmedSet { slot, samples, ms, set }).is_err() {
                     return;
@@ -3719,6 +3950,23 @@ impl Renderer {
         match spawned {
             Ok(_) => self.prewarm = Some(Prewarm { rx: std::sync::Mutex::new(rx), started: std::time::Instant::now() }),
             Err(e) => log::warn!("hp-render: cannot start the pipeline thread: {e}"),
+        }
+        self.prewarm_light_cull();
+    }
+
+    fn prewarm_light_cull(&self) {
+        if self.light_cull.get().is_some() {
+            return;
+        }
+        let cull = self.light_cull.clone();
+        let device = self.device.clone();
+        let spawned = std::thread::Builder::new().name("hp-render-light-cull".to_owned()).spawn(move || {
+            if light_cull::supported(&device) {
+                cull.get_or_init(|| light_cull::LightCullPipeline::new(&device));
+            }
+        });
+        if let Err(e) = spawned {
+            log::warn!("hp-render: cannot start the light list pipeline thread: {e}");
         }
     }
 
@@ -3772,11 +4020,11 @@ impl Renderer {
         if sun_changed || local_changed {
             self.shadow_epoch += 1;
         }
-        self.content_gen += 1;
+        self.bump_3d_content();
     }
 
     pub fn wants_another_frame(&self) -> bool {
-        self.sun_followup
+        self.sun_followup || self.local_shadows.pending
     }
 
     pub fn quality(&self) -> Quality {
@@ -3803,6 +4051,8 @@ impl Renderer {
             },
             reflection_cpu_ms: self.reflection_cpu_ms,
             gpu_supported: self.profiler.is_some(),
+            views_2d_gpu_ms_total: self.profiler.as_ref().map_or(0.0, |p| p.ortho_ms_total),
+            views_2d_timed: self.profiler.as_ref().map_or(0, |p| p.ortho_timed),
         }
     }
 
@@ -3849,6 +4099,7 @@ impl Renderer {
                 + v.cull.as_ref().map_or(0, light_cull::CullView::bytes)
                 + v.surface.as_ref().map_or(0, surface_light::SurfaceTarget::bytes);
         }
+        bytes += self.shared_target_bytes();
         s.retained_overlay_bytes = self.retained.values().map(|r| r.size).sum();
         s.static_lines = self.static_lines.values().map(|l| u64::from(l.count)).sum();
         s.content_generation = self.content_gen;
@@ -3858,8 +4109,15 @@ impl Renderer {
     }
 }
 
+#[derive(Clone)]
+struct SharedTargets {
+    msaa: Option<wgpu::TextureView>,
+    depth: wgpu::TextureView,
+}
+
 #[derive(Clone, Copy)]
 struct DrawCtx<'a> {
+    world_args: Option<&'a wgpu::Buffer>,
     r: &'a Renderer,
     ps: &'a PipelineSet,
     cam: &'a Camera,
@@ -3928,6 +4186,25 @@ impl DrawCtx<'_> {
 
     fn visible_edge_chunks(&self, n: &mut FrameCounter) -> Vec<(u32, u32)> {
         self.visible_vertex_chunks(&self.r.scene.edge_chunks, n)
+    }
+
+    fn selected_edge_chunks(&self) -> Vec<(u32, u32)> {
+        if self.r.scene.selected.is_empty() {
+            return Vec::new();
+        }
+        let scene = &self.r.scene;
+        let mut skip = FrameCounter::default();
+        let list: Vec<u32> = self
+            .r
+            .sel_chunks
+            .1
+            .iter()
+            .copied()
+            .filter(|&c| {
+                scene.chunks.get(c as usize).and_then(Option::as_ref).is_some_and(|ch| ch.is_edge() && !ch.is_mark())
+            })
+            .collect();
+        self.visible_vertex_chunks(&list, &mut skip)
     }
 
     fn visible_mark_chunks(&self, n: &mut FrameCounter) -> Vec<(u32, u32)> {
@@ -4273,7 +4550,7 @@ impl DrawCtx<'_> {
         let edges = self.visible_edge_chunks(n);
         self.draw_edges(pass, &self.ps.edge_unselected, &edges, n);
         self.draw_models_2d(pass, false, n);
-        self.draw_edges(pass, &self.ps.edge_selected, &edges, n);
+        self.draw_edges(pass, &self.ps.edge_selected, &self.selected_edge_chunks(), n);
         self.draw_models_2d(pass, true, n);
         if self.opts.sprites_2d_px > 0.0 {
             self.draw_sprites(pass, n);
@@ -4456,6 +4733,55 @@ impl DrawCtx<'_> {
             }
             pass.draw_indexed(first..first + count, 0, 0..1);
             n.world(u64::from(count / 3));
+            i = j;
+        }
+    }
+
+    fn draw_chunks_multi(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        list: &[ChunkDraw],
+        args: &wgpu::Buffer,
+        base: usize,
+        n: &mut FrameCounter,
+    ) {
+        if list.is_empty() {
+            return;
+        }
+        pass.set_vertex_buffer(0, self.r.arenas[ArenaKind::MeshVerts as usize].buffer.slice(..));
+        pass.set_index_buffer(self.r.arenas[ArenaKind::Indices as usize].buffer.slice(..), wgpu::IndexFormat::Uint32);
+        let mut pipe: Option<(MeshPass, bool)> = None;
+        let mut mat = u32::MAX;
+        let mut i = 0;
+        while i < list.len() {
+            let d = list[i];
+            let mut j = i + 1;
+            let mut triangles = u64::from(d.count / 3);
+            while let Some(next) = list.get(j) {
+                if next.material != d.material || next.pass != d.pass || next.two_sided != d.two_sided {
+                    break;
+                }
+                triangles += u64::from(next.count / 3);
+                j += 1;
+            }
+            if pipe != Some((d.pass, d.two_sided)) {
+                pass.set_pipeline(&self.ps.chunk[d.pass as usize][usize::from(d.two_sided)]);
+                pipe = Some((d.pass, d.two_sided));
+            }
+            if mat != d.material {
+                if let Some(g) = self.r.mat_gpu.get(d.material as usize) {
+                    pass.set_bind_group(1, &g.bind_group, &[]);
+                    n.material();
+                }
+                mat = d.material;
+            }
+            let offset = (base + i) as u64 * occlusion::ARGS_BYTES;
+            if j - i == 1 {
+                pass.draw_indexed(d.first..d.first + d.count, 0, 0..1);
+            } else {
+                pass.multi_draw_indexed_indirect(args, offset, (j - i) as u32);
+            }
+            n.world(triangles);
             i = j;
         }
     }
@@ -4762,10 +5088,16 @@ impl DrawCtx<'_> {
         }
         match indirect {
             Some((cands, args)) => self.draw_chunks_indirect(pass, cands, args, n),
-            None => {
-                self.draw_chunks(pass, &lists[0], false, n);
-                self.draw_chunks(pass, &lists[1], false, n);
-            }
+            None => match self.world_args.filter(|_| !self.depth_prepass()) {
+                Some(args) => {
+                    self.draw_chunks_multi(pass, &lists[0], args, 0, n);
+                    self.draw_chunks_multi(pass, &lists[1], args, lists[0].len(), n);
+                }
+                None => {
+                    self.draw_chunks(pass, &lists[0], false, n);
+                    self.draw_chunks(pass, &lists[1], false, n);
+                }
+            },
         }
         self.draw_models(pass, &[MeshPass::Opaque, MeshPass::AlphaTest], false, n);
     }
@@ -4882,7 +5214,7 @@ impl DrawCtx<'_> {
         self.draw_collision(pass, n);
         self.draw_overlay(pass, false, n);
         self.draw_static_lines(pass, false, n);
-        self.draw_edges(pass, &self.ps.edge_selected, &edges, n);
+        self.draw_edges(pass, &self.ps.edge_selected, &self.selected_edge_chunks(), n);
         self.draw_boxes(pass, &self.ps.box_selected, BoxSet::All, n);
         if self.r.scene.invalid > 0 {
             self.draw_edges(pass, &self.ps.edge_invalid, &edges, n);

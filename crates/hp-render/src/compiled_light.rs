@@ -858,7 +858,7 @@ impl Renderer {
         cl.mode = mode;
         cl.present = true;
         cl.stats = stats;
-        self.content_gen += 1;
+        self.bump_3d_content();
         stats
     }
 
@@ -884,7 +884,7 @@ impl Renderer {
         c.mode = CompiledLightMode::Fullbright;
         c.stats = CompiledLightStats::default();
         if had {
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
     }
 
@@ -904,7 +904,7 @@ impl Renderer {
             changed = true;
         }
         if changed {
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
     }
 
@@ -947,7 +947,7 @@ impl Renderer {
         }
         self.queue.write_buffer(&self.light_styles, 0, bytemuck::cast_slice(&clean));
         self.compiled.style_values = clean;
-        self.content_gen += 1;
+        self.bump_3d_content();
     }
 
     pub fn light_styles(&self) -> Vec<f32> {
@@ -966,7 +966,7 @@ impl Renderer {
             };
             if flags != old {
                 self.scene.set_flags(id, flags);
-                self.content_gen += 1;
+                self.bump_3d_content();
             }
             if let Some(base) = self.play_base.get_mut(&id) {
                 base.0 =

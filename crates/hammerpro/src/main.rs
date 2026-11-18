@@ -156,7 +156,7 @@ fn forced_backend(choice: hp_app::settings::GraphicsBackend) -> Option<wgpu::Bac
     }
 }
 
-fn backend_has_adapter(backend: wgpu::Backend) -> bool {
+fn backend_adapters(backend: wgpu::Backend) -> Option<Vec<wgpu::DeviceType>> {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: wgpu::Backends::from(backend),
         ..wgpu::InstanceDescriptor::new_without_display_handle()
@@ -165,9 +165,37 @@ fn backend_has_adapter(backend: wgpu::Backend) -> bool {
     let mut future = std::pin::pin!(future);
     let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
     match future.as_mut().poll(&mut cx) {
-        std::task::Poll::Ready(adapters) => !adapters.is_empty(),
-        std::task::Poll::Pending => true,
+        std::task::Poll::Ready(adapters) => Some(adapters.iter().map(|a| a.get_info().device_type).collect()),
+        std::task::Poll::Pending => None,
     }
+}
+
+fn backend_has_adapter(backend: wgpu::Backend) -> bool {
+    backend_adapters(backend).is_none_or(|a| !a.is_empty())
+}
+
+fn vulkan_wins_alone(vulkan: Option<&[wgpu::DeviceType]>, adapter_named: bool) -> bool {
+    !adapter_named && vulkan.is_some_and(|types| types.contains(&wgpu::DeviceType::DiscreteGpu))
+}
+
+fn automatic_backends() -> wgpu::Backends {
+    if !cfg!(windows) {
+        return wgpu::Backends::PRIMARY;
+    }
+    let named = std::env::var("HP_ADAPTER").is_ok_and(|v| !v.trim().is_empty());
+    if named {
+        return wgpu::Backends::PRIMARY;
+    }
+    let started = std::time::Instant::now();
+    let vulkan = backend_adapters(wgpu::Backend::Vulkan);
+    if vulkan_wins_alone(vulkan.as_deref(), named) {
+        log::info!(
+            "graphics: Vulkan offers a dedicated GPU (checked in {} ms), DirectX 12 adapters are not opened",
+            started.elapsed().as_millis()
+        );
+        return wgpu::Backends::VULKAN;
+    }
+    wgpu::Backends::PRIMARY
 }
 
 fn instance_backends(forced: Option<wgpu::Backend>) -> (wgpu::Backends, Option<wgpu::Backend>) {
@@ -180,9 +208,9 @@ fn instance_backends(forced: Option<wgpu::Backend>) -> (wgpu::Backends, Option<w
             log::warn!(
                 "graphics API {b:?} was asked for but no graphics adapter offers it, the automatic choice is used"
             );
-            (wgpu::Backends::PRIMARY, None)
+            (automatic_backends(), None)
         }
-        None => (wgpu::Backends::PRIMARY, None),
+        None => (automatic_backends(), None),
     }
 }
 
@@ -218,7 +246,7 @@ fn wgpu_options(
             | hp_render::pipeline_cache::wanted_features(adapter)
             | hp_render::profile::wanted_features(adapter),
         required_limits: adapter.limits(),
-        memory_hints: wgpu::MemoryHints::MemoryUsage,
+        memory_hints: hp_render::memory::memory_hints(),
         ..Default::default()
     });
     egui_wgpu::WgpuConfiguration { wgpu_setup: egui_wgpu::WgpuSetup::CreateNew(setup), ..Default::default() }
@@ -344,6 +372,8 @@ fn main() -> eframe::Result<()> {
     let log_rx = logger::init(!cli.is_automated());
     if !cli.is_automated() {
         crash::install_hook();
+    } else if let Some(dir) = std::env::var_os("HAMMERPRO_CRASH_DIR") {
+        crash::install_hook_at(std::path::PathBuf::from(dir));
     }
 
     let saved = (!cli.is_automated())
@@ -374,4 +404,19 @@ fn main() -> eframe::Result<()> {
     };
 
     eframe::run_native("HammerPro", options, Box::new(move |cc| Ok(Box::new(app::HammerProApp::new(cc, cli, log_rx)))))
+}
+
+#[cfg(test)]
+mod backend_tests {
+    use super::*;
+
+    #[test]
+    fn vulkan_alone_only_with_a_dedicated_gpu_and_no_named_adapter() {
+        use wgpu::DeviceType::{Cpu, DiscreteGpu, IntegratedGpu};
+        assert!(vulkan_wins_alone(Some(&[IntegratedGpu, DiscreteGpu]), false));
+        assert!(!vulkan_wins_alone(Some(&[DiscreteGpu]), true));
+        assert!(!vulkan_wins_alone(Some(&[IntegratedGpu, Cpu]), false));
+        assert!(!vulkan_wins_alone(Some(&[]), false));
+        assert!(!vulkan_wins_alone(None, false));
+    }
 }

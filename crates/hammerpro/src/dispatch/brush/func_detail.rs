@@ -387,6 +387,7 @@ impl HammerProApp {
         let (job, revision) = candidate_job(&mut self.state, &filter);
         let (tx, rx) = std::sync::mpsc::channel();
         let spawned = std::thread::Builder::new().name("hp-detail-candidates".to_owned()).spawn(move || {
+            hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
             let cancel = AtomicBool::new(false);
             let _ = tx.send((hp_editor::background::run(|| job.run(None, &cancel)), revision));
         });

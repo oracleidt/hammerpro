@@ -34,6 +34,7 @@ The row of buttons at the top of the panel chooses what clicks and drags do in t
 | **Paint alpha** | Paint the blend between the textures of a blend material |
 | **Sculpt** | Push the surface to a layer, carve a profile along the stroke, project it onto brushes, or pinch, grab, inflate and flatten it |
 | **Tags** | Paint the triangle tags: forced walkable, forced buildable or removed |
+| **Terraform** | Modern terrain brushes: erosion, terraces, fractal noise, stamps, cliffs, plateaus, clone and a protection mask (see [Terraform](#terraform)) |
 
 ## Mouse and keys
 
@@ -245,6 +246,53 @@ Section **Paint tags** (mode **Tags**), Hammer's Tag Walkable, Tag Buildable and
 | **Remove** / **Restore** (with the Remove tag) | Marks the triangles removed, or clears the mark; `Shift` paints the opposite | |
 | **Show walkability** | Colors displacement triangles by walkability (same setting as **View > Diagnostics > Displacement walkability**) | Off |
 | **Apply to selection** | Gives the chosen tag to every triangle of the selected displacements | |
+
+## Terraform
+
+Mode **Terraform** (the last button of the mode row) gives the brushes of modern terrain editors (Gaea, World Machine, Unreal Landscape). Every brush uses the **Brush** section (radius, falloff, spatial, line of sight, sew while painting, selected only), works across sewn displacements, and one stroke is one undo step. The work is done on a small height grid around the brush, so it stays fluid on big terrains. The heights move along the paint **Axis** (face normal by default; choose **Z** for terrain on several orientations).
+
+| Brush | What it does | `Shift` |
+| --- | --- | --- |
+| **Erosion** | **Hydraulic**: rain droplets fall inside the brush, run downhill, dig gullies where they run fast and drop their sediment in the valleys. **Thermal**: slopes steeper than the **Talus angle** crumble and pile up at their foot | Smooths |
+| **Terrace** | Steps the surface into terraces (rice fields, quarries, layered cliffs): **Step height**, **Sharpness** (0 soft waves, 1 flat steps with vertical risers), **Offset** (height of the first step) | Smooths |
+| **Noise** | Paints fractal detail: **fBm** (rolling), **Ridged** (sharp crests) or **Billow** (puffy bumps), with **Amplitude**, **Scale**, **Octaves**, **Roughness** and **Seed**. The noise is in world space, so it continues across displacements, and one stroke never adds more than the amplitude | Inverted noise |
+| **Stamp** | Stamps a shape under the cursor at the click: **Mountain**, **Hill**, **Crater**, **Mesa**, **Volcano**, **Dune**, **Ridge**, **Rock**, or any grayscale image (**Import image...**, white is high). **Rotation**, **Scale** (size relative to the brush radius), **Height** and **Blend**: **Add** (on top of the terrain), **Max** (only raises), **Min** (only lowers) or **Replace** (the footprint takes the exact shape from the height under the cursor). A wireframe preview of the stamp follows the cursor, and the panel shows a thumbnail | Digs (upside down) |
+| **Cliff** | Steepens slopes and sharpens ridges, the opposite of smooth (**Strength**) | Softens |
+| **Plateau** | Flattens the tops above a level and keeps the slopes below it. **Level**: **Stroke start** (the height under the cursor when the stroke starts) or **Fixed** (**Height** along the axis, world units) | Fills the hollows up to the level |
+| **Clone** | Copies a terrain region: `Alt` + click on the terrain sets the source (a green ring), then each stroke paints the copy starting from the source, with **Rotation** and **Height offset**. The source ring follows the brush while painting | Smooths |
+| **Mask** | Paints a protection mask, shown as a red tint: masked vertices are left alone by every brush of every mode and by the whole-selection commands (noise, erosion, slope control, height blending, scale, subdivide, flatten, invert alpha). **Invert**, **Clear** and **Mask all** work on the selected displacements, or on every displacement when none is selected. **Show mask** hides the tint. The mask is saved in the map (a `hp_terrain_mask` block in the displacement, ignored by Hammer and the compiler) and is undone like any edit | Erases the mask |
+
+Erosion and Cliff never take the terrain below the lowest point or above the highest point around the brush, so long strokes stay clean.
+
+| Gesture (3D view) | Effect |
+| --- | --- |
+| Hold the left button | Paints with the brush (Stamp: one stamp per click) |
+| `Shift` | See the table above |
+| `Shift` or `Alt` + mouse wheel | Rotates the stamp or the clone copy by 15 degrees |
+| `Alt` + click | Clone: sets the source |
+| Right drag, or `Alt` + left drag | Brush radius (the stamp size follows it) |
+| `Esc` | Cancels the stroke |
+
+| Option | Brush | Default |
+| --- | --- | --- |
+| **Strength** | Terrace, Noise, Plateau, Clone, Mask (0 to 1) | 0.5 |
+| **Strength**, **Droplets** or **Rate**, **Capacity**, **Deposition**, **Evaporation**, **Inertia**, **Talus angle** | Erosion | 0.5, 1200 /s, 4, 0.3, 0.02, 0.05, 35 degrees |
+| **Step height**, **Sharpness**, **Offset** | Terrace | 64, 0.75, 0 |
+| **Amplitude**, **Scale**, **Octaves**, **Roughness**, **Seed** | Noise | 48, 384, 5, 0.5, 7 |
+| **Rotation**, **Scale**, **Height**, **Blend** | Stamp | 0, 1 x, 384, Max |
+| **Strength** | Cliff | 0.5 |
+| **Rotation**, **Height offset** | Clone | 0, 0 |
+
+Every option is saved with the panel options (`mesh.disp_tool`). The noise and erosion buttons of the [Tools](#tools) section and the [Terrain](terrain.md) generator still work on whole selections; the Terraform brushes paint the same effects locally.
+
+### How to: a valley between mountains
+
+1. Create a grid of displacements (power 3 or 4), select them all and turn on **Sew while painting**.
+2. Choose **Terraform**, **Stamp**, **Mountain**, blend **Max**, a big radius, and click a few times around the map; turn the stamp with `Shift` + wheel between clicks.
+3. Choose **Erosion**, **Hydraulic**, and hold the brush over the flanks for a few seconds: gullies appear and sediment fills the foot of the mountains.
+4. Choose **Mask** and paint the valley floor where a road will go, then **Noise** with **Ridged** on the peaks: the road stays clean.
+5. Choose **Terrace** with a step of 48 on one side for fields, or **Plateau** on a summit for a lookout, then **Cliff** on the ridges.
+6. Press `Ctrl+Z` after any stroke you do not like: each stroke is one undo step.
 
 ## Brush
 
@@ -479,7 +527,7 @@ MCP: `blend_displacements` (`sets` as lists of solid ids, or `faces`, `ids`, `so
 
 ## Scripting and MCP
 
-Every option of the panel has a name for scripts (`tool_option KEY VALUE`, see [Script commands](../reference/script-commands.md)) and for the MCP tools `get_tool_options` and `set_tool_options`: `mode`, `effect`, `axis`, `custom_axis`, `radius`, `strength`, `smooth`, `smooth_boost`, `target_height`, `height_reference`, `slope_brush_start`, `slope_brush_end`, `sample_point`, `slope_brush_strength`, `falloff`, `spatial`, `line_of_sight`, `autosew`, `selected_only`, `continuous`, `alpha_effect`, `alpha_value`, `alpha_strength`, `blend_channel`, `sculpt` (`push`, `carve`, `project`, `pinch`, `grab`, `inflate`, `flatten`, `relax`), `push_mode`, `sculpt_bounds`, `falloff_position`, `falloff_final`, `push_distance`, `push_percent`, `carve_depth`, `carve_profile`, `project_range`, `flatten_plane`, `flatten_strength`, `relax_strength`, `scale_factor`, `noise_type`, `noise_scale`, `noise_octaves`, `noise_persistence`, `terrain_seed`, `thermal_iterations`, `thermal_talus`, `thermal_strength`, `hydraulic_iterations`, `hydraulic_rain`, `hydraulic_evaporation`, `hydraulic_capacity`, `hydraulic_deposition`, `hydraulic_strength`, `blend_width`, `blend_falloff`, `blend_mode`, `blend_match_edges`, `blend_alpha`, `blend_match_powers`, `slope_max_angle`, `slope_terrace`, `slope_terrace_step`, `slope_terrace_strength`, `slope_ramp_angle`, `slope_ramp_direction`, `slope_ramp_pivot`, `slope_ramp_strength`, `slope_ramp_detail`, `slope_uniform_strength`, `slope_uniform_detail`, `slope_path`, `slope_path_width`, `slope_path_falloff`, `slope_path_strength`, `slope_smooth_passes`, `slope_smooth_strength`, `slope_select_angle`, `slope_select_mode`, `slope_select_match`, `slope_select_op`, `tag_kind`, `tag_value`, `mask_grid`, `mask_select`, `keep_shape`. `axis` takes `normal`, `subdiv`, `center`, `view`, `view_flat` (View (camera), horizontal), `x`, `y`, `z` or `custom`. Other MCP tools create, paint, sew, subdivide, tag and inspect displacements (`displacement_to_mesh` writes them to an OBJ, `mesh_to_displacement`, `conform_displacements_to_mesh` and `tile_displacements_from_selection` build or shape them from a 3D mesh, `terrain_displacements` runs fractal noise, thermal erosion or hydraulic erosion with these options, `blend_displacements`, `control_slope` and `select_displacements_by_slope` blend heights and control or select by slope, `create_displacements`, `stroke_displacement`, `paint_displacement`, `sample_displacement_height`, `paint_displacement_slope`, `sew_displacements`, `resample_displacements`...); `get_displacement` returns the 4-way blend rows (`multiblend`) and `set_displacement_data` writes them (`multiblend_weights`, `alphablend`, `multiblend_colors`, `remove_multiblend`), see the [MCP tool reference](../../MCP.md).
+Every option of the panel has a name for scripts (`tool_option KEY VALUE`, see [Script commands](../reference/script-commands.md)) and for the MCP tools `get_tool_options` and `set_tool_options`: `mode`, `effect`, `axis`, `custom_axis`, `radius`, `strength`, `smooth`, `smooth_boost`, `target_height`, `height_reference`, `slope_brush_start`, `slope_brush_end`, `sample_point`, `slope_brush_strength`, `falloff`, `spatial`, `line_of_sight`, `autosew`, `selected_only`, `continuous`, `alpha_effect`, `alpha_value`, `alpha_strength`, `blend_channel`, `sculpt` (`push`, `carve`, `project`, `pinch`, `grab`, `inflate`, `flatten`, `relax`), `push_mode`, `sculpt_bounds`, `falloff_position`, `falloff_final`, `push_distance`, `push_percent`, `carve_depth`, `carve_profile`, `project_range`, `flatten_plane`, `flatten_strength`, `relax_strength`, `scale_factor`, `noise_type`, `noise_scale`, `noise_octaves`, `noise_persistence`, `terrain_seed`, `thermal_iterations`, `thermal_talus`, `thermal_strength`, `hydraulic_iterations`, `hydraulic_rain`, `hydraulic_evaporation`, `hydraulic_capacity`, `hydraulic_deposition`, `hydraulic_strength`, `blend_width`, `blend_falloff`, `blend_mode`, `blend_match_edges`, `blend_alpha`, `blend_match_powers`, `slope_max_angle`, `slope_terrace`, `slope_terrace_step`, `slope_terrace_strength`, `slope_ramp_angle`, `slope_ramp_direction`, `slope_ramp_pivot`, `slope_ramp_strength`, `slope_ramp_detail`, `slope_uniform_strength`, `slope_uniform_detail`, `slope_path`, `slope_path_width`, `slope_path_falloff`, `slope_path_strength`, `slope_smooth_passes`, `slope_smooth_strength`, `slope_select_angle`, `slope_select_mode`, `slope_select_match`, `slope_select_op`, `tag_kind`, `tag_value`, `mask_grid`, `mask_select`, `keep_shape`. `axis` takes `normal`, `subdiv`, `center`, `view`, `view_flat` (View (camera), horizontal), `x`, `y`, `z` or `custom`. Other MCP tools create, paint, sew, subdivide, tag and inspect displacements (`displacement_to_mesh` writes them to an OBJ, `mesh_to_displacement`, `conform_displacements_to_mesh` and `tile_displacements_from_selection` build or shape them from a 3D mesh, `terrain_displacements` runs fractal noise, thermal erosion or hydraulic erosion with these options, `blend_displacements`, `control_slope` and `select_displacements_by_slope` blend heights and control or select by slope, `create_displacements`, `stroke_displacement`, `paint_displacement`, `sample_displacement_height`, `paint_displacement_slope`, `sew_displacements`, `resample_displacements`...); `get_displacement` returns the 4-way blend rows (`multiblend`) and `set_displacement_data` writes them (`multiblend_weights`, `alphablend`, `multiblend_colors`, `remove_multiblend`), see the [MCP tool reference](../../MCP.md). The Terraform mode adds `terraform` (`erode`, `terrace`, `noise`, `stamp`, `cliff`, `plateau`, `clone`, `mask`), `terraform_strength`, `erosion_brush` (`hydraulic` or `thermal`), `erosion_strength`, `erosion_rate`, `erosion_capacity`, `erosion_deposition`, `erosion_evaporation`, `erosion_inertia`, `erosion_talus`, `terrace_step`, `terrace_sharpness`, `terrace_offset`, `paint_noise` (`fbm`, `ridged`, `billow`), `paint_noise_scale`, `paint_noise_octaves`, `paint_noise_roughness`, `paint_noise_amplitude`, `paint_noise_seed`, `stamp` (`mountain`, `hill`, `crater`, `mesa`, `volcano`, `dune`, `ridge`, `rock`, `image`), `stamp_rotation`, `stamp_scale`, `stamp_height`, `stamp_blend` (`add`, `max`, `min`, `replace`), `stamp_image` (a path: imports a grayscale image as the stamp), `cliff_strength`, `plateau_level` (`stroke` or `fixed`), `plateau_height`, `clone_source`, `clone_rotation`, `clone_height`, `mask_show`, and the actions `mask_clear`, `mask_invert` and `mask_fill` (value `selection` or `all`). `stroke_displacement` paints with them (`invert` is `Shift`; `smooth` is `Shift` for Erosion, Terrace and Clone; a stamp is applied at the first point).
 
 ## Tips
 

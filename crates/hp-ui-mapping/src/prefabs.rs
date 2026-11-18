@@ -110,6 +110,7 @@ impl PrefabTab {
             let (tx, rx) = std::sync::mpsc::channel();
             let repaint = ctx.clone();
             let spawned = std::thread::Builder::new().name("hp-prefab-scan".to_owned()).spawn(move || {
+                hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
                 let _ = tx.send(library::scan(roots));
                 repaint.request_repaint();
             });

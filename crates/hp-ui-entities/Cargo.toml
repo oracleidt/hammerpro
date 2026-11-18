@@ -10,6 +10,7 @@ authors.workspace = true
 hp-app = { path = "../hp-app" }
 hp-editor.workspace = true
 hp-geom.workspace = true
+hp-sched.workspace = true
 hp-vmf.workspace = true
 hp-render.workspace = true
 egui.workspace = true

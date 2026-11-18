@@ -203,7 +203,8 @@ impl AssetManager {
     }
 
     pub(crate) fn release_gpu_memory_impl(&mut self, renderer: &mut Renderer, what: GpuRelease) -> GpuReleased {
-        let mut out = GpuReleased { background_maps: self.drop_parked_scenes(), ..GpuReleased::default() };
+        let parked = if what == GpuRelease::Unused { 0 } else { self.drop_parked_scenes() };
+        let mut out = GpuReleased { background_maps: parked, ..GpuReleased::default() };
         let (textures, models) = self.collect_garbage(renderer);
         out.textures = textures;
         out.models = models;

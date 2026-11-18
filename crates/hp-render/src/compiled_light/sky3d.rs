@@ -23,7 +23,7 @@ impl Renderer {
         let set: ahash::AHashSet<ObjectId> = objects.iter().copied().collect();
         if set != self.compiled_sky.objects {
             self.compiled_sky.objects = set;
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
     }
 

@@ -147,7 +147,7 @@ impl Renderer {
         self.indirect.volume = None;
         self.indirect.buffer = None;
         self.scene_gen += 1;
-        self.content_gen += 1;
+        self.bump_3d_content();
         let Some(v) = volume else { return };
         let bytes = v.gpu_bytes();
         if bytes > self.max_storage {

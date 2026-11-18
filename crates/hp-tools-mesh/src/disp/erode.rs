@@ -260,6 +260,15 @@ pub(crate) fn erode_parts(parts: &mut [SmoothPart<'_>], run: impl FnOnce(&mut He
 }
 
 pub fn apply(state: &mut AppState, op: TerrainOp, opts: &TerrainOptions) -> usize {
+    let label = match op {
+        TerrainOp::Noise => "Displacement noise",
+        TerrainOp::Thermal => UNDO_THERMAL,
+        TerrainOp::Hydraulic => UNDO_HYDRAULIC,
+    };
+    super::terraform::mask::guard_state(state, label, |state| apply_unguarded(state, op, opts))
+}
+
+fn apply_unguarded(state: &mut AppState, op: TerrainOp, opts: &TerrainOptions) -> usize {
     match op {
         TerrainOp::Noise => noise(state, opts),
         TerrainOp::Thermal => {

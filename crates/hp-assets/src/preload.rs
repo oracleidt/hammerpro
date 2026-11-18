@@ -7,47 +7,62 @@ use hp_editor::{Document, deps_roots::RootKind};
 use crate::AssetManager;
 use crate::material::{AnaLook, MatKind, texture_keys};
 use crate::models::{ModelEntry, model_data_key};
+type PreloadLister = Box<dyn FnOnce(&Document) -> Vec<PreloadResource> + Send>;
 
 impl AssetManager {
     pub(crate) fn preload_resources_impl(&self, doc: &Document) -> Vec<PreloadResource> {
-        let mut resources = BTreeSet::new();
-        let material =
-            |name: &str, context| PreloadResource::Material { name: crate::util::material_key(name), context };
-        for root in doc.asset_roots(&|_, _| None) {
-            match root.kind {
-                RootKind::Material => {
-                    resources.insert(material(&root.name, PreloadMaterial::World));
-                }
-                RootKind::Skybox => {
-                    resources.insert(PreloadResource::Sky(crate::util::material_key(&root.name)));
-                }
-                RootKind::Particle => {
-                    resources.insert(PreloadResource::Particle(root.name));
-                }
-                _ => {}
-            }
-        }
-        for node in doc.scene().entities().values() {
-            let desc = crate::entities::entity_desc(&node.entity, self.fgd.as_deref());
-            if let Some((name, skin)) = desc.model {
-                resources.insert(PreloadResource::Model { name, skin, body: desc.body, animation: desc.anim });
-            }
-            if let Some(name) = desc.sprite {
-                resources.insert(material(
-                    &name,
-                    if desc.sprite_is_icon {
-                        PreloadMaterial::Icon
-                    } else if desc.sprite_additive {
-                        PreloadMaterial::AdditiveSprite
-                    } else {
-                        PreloadMaterial::Sprite
-                    },
-                ));
-            }
-        }
-        resources.into_iter().collect()
+        preload_list(doc, self.fgd.as_deref())
     }
 
+    pub(crate) fn preload_lister(&self) -> PreloadLister {
+        let fgd = self.fgd.clone();
+        Box::new(move |doc: &Document| preload_list(doc, fgd.as_deref()))
+    }
+}
+
+fn preload_list(doc: &Document, fgd: Option<&hp_fgd::ResolvedFgd>) -> Vec<PreloadResource> {
+    let mut resources = BTreeSet::new();
+    let material = |name: &str, context| PreloadResource::Material { name: crate::util::material_key(name), context };
+    for root in doc.asset_roots(&|_, _| None) {
+        match root.kind {
+            RootKind::Material => {
+                resources.insert(material(&root.name, PreloadMaterial::World));
+            }
+            RootKind::Skybox => {
+                resources.insert(PreloadResource::Sky(crate::util::material_key(&root.name)));
+            }
+            RootKind::Particle => {
+                resources.insert(PreloadResource::Particle(root.name));
+            }
+            _ => {}
+        }
+    }
+    let nodes: Vec<_> = doc.scene().entities().values().collect();
+    let descs: Vec<_> = {
+        use rayon::prelude::*;
+        nodes.par_iter().with_min_len(256).map(|node| crate::entities::entity_desc(&node.entity, fgd)).collect()
+    };
+    for desc in descs {
+        if let Some((name, skin)) = desc.model {
+            resources.insert(PreloadResource::Model { name, skin, body: desc.body, animation: desc.anim });
+        }
+        if let Some(name) = desc.sprite {
+            resources.insert(material(
+                &name,
+                if desc.sprite_is_icon {
+                    PreloadMaterial::Icon
+                } else if desc.sprite_additive {
+                    PreloadMaterial::AdditiveSprite
+                } else {
+                    PreloadMaterial::Sprite
+                },
+            ));
+        }
+    }
+    resources.into_iter().collect()
+}
+
+impl AssetManager {
     fn preload_material(&mut self, name: &str, kind: MatKind) -> PreloadResult {
         self.asset_material(name, kind);
         match self.mats.ana_look(name) {

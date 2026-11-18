@@ -317,6 +317,7 @@ impl Engine {
         let flag = Arc::clone(&cancel);
         crate::checks::watch(&cancel);
         let spawned = std::thread::Builder::new().name("hp-health".into()).spawn(move || {
+            hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
             crate::checks::lowest_priority();
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 crate::checks::run(|| run_job(&snap, &know, profile, leak, &flag, &tx));

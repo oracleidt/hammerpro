@@ -58,17 +58,17 @@ domain! { "displacements";
         }, ["mode", "centers", "radius", "amount"];
     stroke_displacement: Edit, "Brush stroke on displacements",
         "Paint a stroke through world points with the displacement tool's own brush, exactly like a drag in the 3D \
-        view: its mode (geometry, alpha, sculpt), effect, paint axis (normal, subdiv, z, custom, view: toward \
+        view: its mode (geometry, alpha, sculpt, tag, terraform), effect, paint axis (normal, subdiv, z, custom, view: toward \
         the 3D camera as it is now, or view_flat: toward it on X and Y only, never up or down), radius, intensity (strength), falloff, spatial, line of sight, live sewing \
-        (autosew), blend channel and sculpt settings, read and changed with get_tool_options and \
+        (autosew), blend channel, sculpt and terraform settings (terraform: erode, terrace, noise, stamp, cliff, plateau, clone, mask; a stamp is applied once at the first point, clone needs clone_source; stamp_image imports a grayscale image as a stamp), read and changed with get_tool_options and \
         set_tool_options (tool displacement). Like the tool, only the selected displacements change when some \
         are selected (faces limits it instead), their unselected neighbours are pinned. Each point is one brush \
         sample; rate based effects (raise, lower, smooth, alpha) apply seconds_per_sample of their per second \
         strength. One undo step.",
         {
             "points": { "type": "array", "items": vec3("Brush center (world, on the surface)."), "minItems": 1, "maxItems": MAX_STROKES, "description": "Stroke samples in order." },
-            "invert": boolean("The inverted effect (Shift while painting: lower instead of raise, remove alpha; Ctrl while sculpting)."),
-            "smooth": boolean("Sculpt mode: smooth instead (Shift while sculpting)."),
+            "invert": boolean("The inverted effect (Shift while painting: lower instead of raise, remove alpha, dig a stamp, erase the mask, soften instead of cliff, fill instead of plateau, inverted noise; Ctrl while sculpting)."),
+            "smooth": boolean("Sculpt mode, and the erode, terrace and clone terraform brushes: smooth instead (Shift)."),
             "boost": boolean("Smoothing four times stronger, like holding Ctrl while smoothing (the smooth effect, or smooth with Shift while sculpting)."),
             "seconds_per_sample": number("Time each sample stands for (default 1/60: one frame).", 0.001, 10.0),
             "faces": faces("Only these displacements change (default: the selected ones, else every one)."),
@@ -423,7 +423,11 @@ fn displacement_noise(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         return Err("min must not be above max".to_owned());
     }
     let seed = a.opt_u64("seed", 0, u64::from(u32::MAX))?.unwrap_or_else(|| state.doc.revision() ^ 0x5eed_0fd1);
-    let n = edit(state, "displacement_noise", |doc| doc.disp_noise(&faces, min, max, seed))?;
+    let n = edit(state, "displacement_noise", |doc| {
+        hp_tools_mesh::disp::terraform::mask::guard_doc(doc, &faces, "displacement_noise", |doc| {
+            doc.disp_noise(&faces, min, max, seed)
+        })
+    })?;
     Ok(ToolResult::json(json!({ "faces": n, "seed": seed })))
 }
 
@@ -489,13 +493,21 @@ fn terrain_displacements(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
 fn scale_displacements(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let faces = disp_targets(state, a, false)?;
     let factor = a.opt_f64("factor", -100.0, 100.0)?.ok_or("factor is required")?;
-    let n = edit(state, "scale_displacements", |doc| doc.scale_disps(&faces, factor))?;
+    let n = edit(state, "scale_displacements", |doc| {
+        hp_tools_mesh::disp::terraform::mask::guard_doc(doc, &faces, "scale_displacements", |doc| {
+            doc.scale_disps(&faces, factor)
+        })
+    })?;
     Ok(ToolResult::json(json!({ "faces": n })))
 }
 
 fn invert_displacement_alpha(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let faces = disp_targets(state, a, false)?;
-    let n = edit(state, "invert_displacement_alpha", |doc| doc.invert_disp_alpha(&faces))?;
+    let n = edit(state, "invert_displacement_alpha", |doc| {
+        hp_tools_mesh::disp::terraform::mask::guard_doc(doc, &faces, "invert_displacement_alpha", |doc| {
+            doc.invert_disp_alpha(&faces)
+        })
+    })?;
     Ok(ToolResult::json(json!({ "faces": n })))
 }
 

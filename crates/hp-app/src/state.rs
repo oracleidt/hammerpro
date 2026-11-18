@@ -303,6 +303,12 @@ pub trait AssetsApi {
     fn preload_resources(&self, _doc: &hp_editor::Document) -> Vec<crate::runtime::PreloadResource> {
         Vec::new()
     }
+    #[allow(clippy::type_complexity)]
+    fn preload_lister(
+        &self,
+    ) -> Option<Box<dyn FnOnce(&hp_editor::Document) -> Vec<crate::runtime::PreloadResource> + Send>> {
+        None
+    }
     fn preload_resource(
         &mut self,
         _resource: &crate::runtime::PreloadResource,
@@ -398,6 +404,9 @@ pub trait AssetsApi {
     fn models_animating(&self) -> bool {
         false
     }
+    fn models_next_step(&self) -> Option<std::time::Duration> {
+        None
+    }
     fn play_cubemap_sources(&self) -> Option<(usize, usize)> {
         None
     }
@@ -435,6 +444,9 @@ pub trait AssetsApi {
     }
     fn begin_frame(&mut self, ctx: &egui::Context, gfx: Option<&mut Gfx>);
     fn sync_scene(&mut self, doc: &mut hp_editor::Document, gfx: &mut Gfx, opts: &SceneOptions);
+    fn scene_sync_stages(&self) -> Vec<(&'static str, f32, f32)> {
+        Vec::new()
+    }
     fn sync_detail_preview(
         &mut self,
         doc: &hp_editor::Document,

@@ -114,6 +114,7 @@ impl Monitor {
         let (tx, result) = std::sync::mpsc::channel();
         let wake = ctx.clone();
         match std::thread::Builder::new().name("hp-primitive-memory".into()).spawn(move || {
+            hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
             let start = std::time::Instant::now();
             let memory = crate::primitive_memory::measure(&mut probes);
             let measurement_us = u64::try_from(start.elapsed().as_micros()).unwrap_or(u64::MAX);

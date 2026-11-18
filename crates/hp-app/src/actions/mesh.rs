@@ -214,6 +214,8 @@ pub(super) const TR: TrTable = &[
     ),
     ("shell.undo.invert_displacement_alpha", "Invert displacement alpha", "Inversion de l'alpha du displacement"),
     ("shell.undo.displacement_noise", "Displacement noise", "Bruit sur le displacement"),
+    ("shell.undo.displacement_mask", "Displacement mask", "Masque de displacement"),
+    ("shell.undo.terraform_displacement", "Terraform displacement", "Terraformer le displacement"),
     ("shell.undo.import_heightmap", "Import heightmap", "Import d'une carte de hauteur"),
     ("shell.undo.import_blend_masks", "Import blend masks", "Import de masques de blend"),
     ("shell.undo.generate_terrain", "Generate terrain", "Génération de terrain"),

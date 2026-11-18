@@ -338,6 +338,7 @@ impl HammerProApp {
         let (ids, solids) = self.state.doc.hidden_face_scan();
         let (tx, rx) = std::sync::mpsc::channel();
         let spawned = std::thread::Builder::new().name("hp-nodraw-scan".to_owned()).spawn(move || {
+            hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
             let found = hp_editor::background::run(|| hp_geom::hidden_faces(&solids));
             let _ = tx.send((solids, found));
         });

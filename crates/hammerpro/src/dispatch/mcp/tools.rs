@@ -1170,10 +1170,12 @@ fn save_map(state: &mut AppState, v: &Value) -> R<ToolResult> {
              new versions next to it",
         )?,
         Some(name) => {
-            let folder = current.as_ref().and_then(|p| p.parent()).ok_or(
+            let other = state.runtime.workflow.tabs.iter().find_map(|t| t.path.as_deref().and_then(Path::parent));
+            let folder = current.as_ref().and_then(|p| p.parent()).or(other).ok_or(
                 "the map has no file yet: save it once from Hammer Pro (File > Save as); new files go in its folder",
             )?;
-            folder.join(vmf_file_name(name, folder)?)
+            let folder = folder.to_path_buf();
+            folder.join(vmf_file_name(name, &folder)?)
         }
     };
     if !is_vmf(&target) {

@@ -249,9 +249,12 @@ impl Watcher {
         let thread_wake = wake.clone();
         std::thread::Builder::new()
             .name("hp-assets-watch".to_owned())
-            .spawn(move || match thread_wake {
-                Some(wake) => run_waiting(&lists, &changes, &shared, &wake),
-                None => run(&lists, &changes, &shared),
+            .spawn(move || {
+                hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
+                match thread_wake {
+                    Some(wake) => run_waiting(&lists, &changes, &shared, &wake),
+                    None => run(&lists, &changes, &shared),
+                }
             })
             .map_err(|e| log::warn!("cannot start the content watcher: {e}"))
             .ok()?;

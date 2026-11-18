@@ -2,6 +2,8 @@ use hp_app::runtime::{FramePhases, PerfSample, RepaintCount};
 use hp_app::{AppState, Severity, t, tf};
 
 const MEMORY_EVERY: f64 = 0.5;
+const POWER_EVERY: f64 = 10.0;
+const SIMULATE_BATTERY_ENV: &str = "HAMMERPRO_SIMULATE_BATTERY";
 const CAUSES_EVERY: f64 = 0.25;
 const CAUSES_SHOWN: usize = 24;
 
@@ -22,6 +24,8 @@ pub(crate) const TR: hp_app::i18n::TrTable = &[
 pub(crate) struct PerfMonitor {
     seen_rendered: u64,
     next_memory: f64,
+    views_2d_seen: (f64, u64),
+    next_power: f64,
     last_mode: Option<hp_app::settings::PerformanceMode>,
     causes: Vec<((&'static str, u32), u64)>,
     causes_dirty: bool,
@@ -189,8 +193,25 @@ impl PerfMonitor {
         if self.last_mode != Some(mode) {
             if self.last_mode.is_some() {
                 state.runtime.render.perf.unlock();
+                state.runtime.render.perf.low_end = None;
+                self.next_power = now;
             }
             self.last_mode = Some(mode);
+        }
+        if now >= self.next_power {
+            self.next_power = now + POWER_EVERY;
+            let hw = state.runtime.gpu.hardware;
+            let integrated = hw.integrated || state.runtime.render.perf.integrated;
+            let found = hp_app::runtime::LowEnd::detect(integrated, hw.dedicated, on_battery());
+            if state.runtime.render.perf.note_low_end(mode, found) {
+                state.runtime.render.perf.low_end_at = state.frame.time;
+                let level = state.runtime.render.perf.level(mode);
+                log::info!(
+                    "performance: {} quality ({})",
+                    level.id(),
+                    found.map_or("plugged in, full graphics card", hp_app::runtime::LowEnd::id)
+                );
+            }
         }
         let rendered = state.runtime.render.views_rendered != self.seen_rendered;
         self.seen_rendered = state.runtime.render.views_rendered;
@@ -232,6 +253,11 @@ impl PerfMonitor {
                 next.gpu_post_ms = g.post_ms;
                 next.gpu_passes = passes_of(&g);
             }
+            let (seen_ms, seen_n) = self.views_2d_seen;
+            if t.views_2d_timed > seen_n {
+                next.gpu_passes.views_2d_ms = (t.views_2d_gpu_ms_total - seen_ms) as f32;
+            }
+            self.views_2d_seen = (t.views_2d_gpu_ms_total, t.views_2d_timed);
             next.gpu_reflection_ms = t.reflection_gpu_ms;
             if let Some(g) = t.reflection_gpu {
                 next.gpu_reflection_passes = passes_of(&g);
@@ -442,6 +468,7 @@ fn passes_of(g: &hp_render::profile::GpuTimes) -> hp_app::runtime::GpuPasses {
         effects_ms: g.effects_ms,
         present_ms: g.present_ms,
         outline_ms: g.outline_ms,
+        views_2d_ms: 0.0,
     }
 }
 
@@ -454,4 +481,31 @@ fn percentile(values: &[f32], q: f32) -> f32 {
     v.sort_by(f32::total_cmp);
     let i = ((v.len() as f32) * q) as usize;
     v.get(i.min(v.len().saturating_sub(1))).copied().unwrap_or(0.0)
+}
+
+fn on_battery() -> bool {
+    if let Ok(v) = std::env::var(SIMULATE_BATTERY_ENV) {
+        return !v.trim().is_empty() && v.trim() != "0";
+    }
+    system_on_battery()
+}
+
+#[cfg(windows)]
+fn system_on_battery() -> bool {
+    use windows_sys::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+    let mut status = SYSTEM_POWER_STATUS {
+        ACLineStatus: 255,
+        BatteryFlag: 0,
+        BatteryLifePercent: 0,
+        SystemStatusFlag: 0,
+        BatteryLifeTime: 0,
+        BatteryFullLifeTime: 0,
+    };
+    let ok = unsafe { GetSystemPowerStatus(&mut status) } != 0;
+    ok && status.ACLineStatus == 0 && status.BatteryFlag & 128 == 0
+}
+
+#[cfg(not(windows))]
+fn system_on_battery() -> bool {
+    false
 }

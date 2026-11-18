@@ -80,6 +80,7 @@ pub(super) struct Preview {
     pub cancelling: bool,
     pub restart: Option<BakeKind>,
     pub needs_map: bool,
+    pub sent_geometry: Option<(u64, u64)>,
     pub auto_scoped: bool,
     pub cam_last: DVec3,
     pub cam_moved_at: f64,
@@ -343,6 +344,7 @@ impl Preview {
             cancelling: false,
             restart: None,
             needs_map: false,
+            sent_geometry: None,
             auto_scoped: false,
             cam_last: DVec3::ZERO,
             cam_moved_at: 0.0,
@@ -548,9 +550,11 @@ impl Preview {
             Origin::Drag(key, moved) => Some((key, moved)),
             _ => None,
         };
+        let t = std::time::Instant::now();
         let resolved = self.cache.resolve(state, lit, 0.0, true).expect("forced lighting cache key");
         let serial = live.map_or(resolved, |(key, _)| key);
         let geometry = self.geometry_of(state, &scope);
+        let keys_ms = t.elapsed().as_millis();
         let hdr = Self::light_hdr(state, lit);
         let content = state.doc.content_serial();
         let baseline = (!lit && self.rendered_scene == Some((content, hdr)))
@@ -569,9 +573,8 @@ impl Preview {
         }
         self.cancelling = false;
         self.restart = None;
-        self.needs_map = false;
+        let lost = std::mem::take(&mut self.needs_map);
         self.models_for = None;
-        let t = std::time::Instant::now();
         let s = state.settings.lighting.sanitized();
         let options = state.doc.light_plus();
         let (layer_size, max_layers) = state.gfx.as_ref().map_or((super::LAYER_SIZE, 16), |g| {
@@ -593,8 +596,14 @@ impl Preview {
                 factor
             }
         };
+        let luxels_ms = t.elapsed().as_millis();
+        let sent = (geometry, factor.to_bits());
+        let held = !relight && !lost && self.sent_geometry == Some(sent);
+        if lost {
+            self.sent_geometry = None;
+        }
         let export = hp_editor::compile_export::CompileExport::default();
-        let map = (!relight).then(|| {
+        let map = (!relight && !held).then(|| {
             let mut map = match region_box(&scope) {
                 None => state.doc.compile_snapshot(&export).map,
                 Some(b) => state.doc.compile_snapshot_in(&export, &[b]).map,
@@ -602,7 +611,10 @@ impl Preview {
             map.entities.retain(|entity| options.uses_entity(entity.id));
             map
         });
-        let points = relight.then(|| {
+        if map.is_some() {
+            self.sent_geometry = Some(sent);
+        }
+        let points = (relight || held).then(|| {
             let mut points = points_of(state, &scope);
             if let Some((_, moved)) = live {
                 for point in &mut points {
@@ -613,7 +625,7 @@ impl Preview {
             }
             points
         });
-        let solids: HashMap<u32, bsp::SolidInfo> = if relight {
+        let solids: HashMap<u32, bsp::SolidInfo> = if relight || held {
             HashMap::new()
         } else {
             let renderer = state.gfx.as_ref().map(|g| &g.renderer);
@@ -632,6 +644,7 @@ impl Preview {
                 })
                 .collect()
         };
+        let snapshot_ms = t.elapsed().as_millis();
         let id = self.next_id;
         self.next_id += 1;
         let base = child::Tuning::of(&options).skybox_recurse(&state.settings.compile);
@@ -679,7 +692,7 @@ impl Preview {
             rt.samples = 0;
         }
         log::info!(
-            "lighting preview: bake {id} ({kind:?}{}{}{}) started, prepared in {} ms",
+            "lighting preview: bake {id} ({kind:?}{}{}{}) started, prepared in {} ms (keys {keys_ms}, luxels {luxels_ms}, snapshot {snapshot_ms})",
             if relight { ", lights only" } else { "" },
             if lit { ", for the Lit mode" } else { "" },
             if background { ", in the background" } else { "" },

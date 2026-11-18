@@ -111,6 +111,7 @@ pub struct HammerProApp {
     pub(crate) emergency_saved: bool,
     emergency_saves: Vec<(TabId, PathBuf)>,
     low_memory_at: Option<Instant>,
+    crash_context_at: Option<Instant>,
     initial_open: Option<PathBuf>,
     first_frame: bool,
     script: Option<std::collections::VecDeque<Step>>,
@@ -378,6 +379,7 @@ impl HammerProApp {
             emergency_saved: false,
             emergency_saves: Vec::new(),
             low_memory_at: None,
+            crash_context_at: None,
             initial_open: cli.open,
             first_frame: true,
             script: cli.script.as_ref().map(|path| match std::fs::read_to_string(path) {
@@ -594,6 +596,12 @@ impl HammerProApp {
         {
             let _span = hp_app::runtime::Span::new("vram");
             self.vram.tick(&mut self.state, now);
+            if let Some(wait) = self.vram.release_idle_features(&mut self.state) {
+                ctx.request_repaint_after(wait);
+            }
+            if let Some(wait) = self.vram.collect_unused(&mut self.state, now) {
+                ctx.request_repaint_after(wait);
+            }
         }
         let busy = self.state.assets.busy();
         let (focused, input, minimized) = ctx.input(|i| {
@@ -605,7 +613,7 @@ impl HammerProApp {
             (focused, input, i.viewport().minimized.unwrap_or(false))
         });
         self.state.runtime.render.minimized = minimized;
-        self.state.runtime.render.update_animation(&self.state.settings.render, focused, input, now);
+        self.state.runtime.render.update_animation(&self.state.settings.render, focused && !minimized, input, now);
         let continuous = self.perf.note_repaints(&mut self.state, ctx, now);
         self.perf.tick(&mut self.state, elapsed, self.avg_frame_time * 1000.0, busy, continuous, now);
         self.primitives.tick(&mut self.state, &self.pkg.lighting, ctx);
@@ -1285,6 +1293,41 @@ impl HammerProApp {
         std::process::exit(4);
     }
 
+    fn update_crash_context(&mut self) {
+        crate::native_crash::frame_started(self.state.frame.index);
+        if self.crash_context_at.is_some_and(|t| t.elapsed() < std::time::Duration::from_secs(1)) {
+            return;
+        }
+        self.crash_context_at = Some(Instant::now());
+        let doc = &self.state.doc;
+        let scene = doc.scene();
+        let cam = self.state.cameras.cam3d.pos;
+        let compiling =
+            self.state.runtime.compile.progress.is_some() || self.state.runtime.compile.background.is_some();
+        let text = format!(
+            "map {} ({} solids, {} entities, {} selected), {} open maps, render mode {:?}, tool {:?}, camera {:.0} {:.0} {:.0}{}",
+            self.state.map_title(),
+            scene.solids().len(),
+            scene.entities().len(),
+            doc.selection().objects.len(),
+            self.state.runtime.workflow.tabs.len().max(1),
+            self.state.render_mode(),
+            self.state.tool,
+            cam.x,
+            cam.y,
+            cam.z,
+            if compiling { ", compiling" } else { "" }
+        );
+        crate::native_crash::set_context(&text);
+        match self.opener.loading() {
+            Some((path, since)) => {
+                crate::native_crash::set_activity(&format!("opening {} for {} ms", path.display(), since.as_millis()))
+            }
+            None if compiling => crate::native_crash::set_activity("compiling"),
+            None => crate::native_crash::set_activity(""),
+        }
+    }
+
     fn watch_native_failures(&mut self) {
         if crate::native_crash::emergency_wanted() {
             self.emergency_save();
@@ -1755,8 +1798,10 @@ impl eframe::App for HammerProApp {
             }
         }
         self.watch_native_failures();
+        self.update_crash_context();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.frame(ui, frame)));
         hp_app::native_window::upload_textures(ui.ctx());
+        crate::native_crash::frame_finished();
         if let Err(payload) = result {
             self.emergency_save();
             std::panic::resume_unwind(payload);
@@ -1771,6 +1816,7 @@ impl eframe::App for HammerProApp {
     }
 
     fn on_exit(&mut self) {
+        crate::native_crash::remove_blackbox();
         self.apply_finished_saves(true);
         if self.persist_settings {
             crash::end_session(&Settings::crash_dir(), std::process::id());

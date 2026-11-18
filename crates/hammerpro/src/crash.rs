@@ -90,6 +90,7 @@ fn prune_reports(dir: &Path) {
         .filter_map(Result::ok)
         .map(|e| e.path())
         .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("crash-")))
+        .filter(|p| p.extension().is_some_and(|e| e == "txt"))
         .collect();
     reports.sort();
     let excess = reports.len().saturating_sub(KEEP_REPORTS);
@@ -113,13 +114,14 @@ fn marker_name(pid: u32) -> String {
     format!("{RUNNING_PREFIX}{pid}.txt")
 }
 
-pub fn unexpected_end_text(previous_log: Option<&str>) -> String {
+pub fn unexpected_end_text(previous_log: Option<&str>, previous_run: &str) -> String {
     let mut out = String::new();
     out.push_str(&format!("Hammer Pro {} crash report\n", env!("CARGO_PKG_VERSION")));
     out.push_str(&format!("time (unix): {}\n", now_secs()));
     out.push_str(&format!("os: {} {}\n", std::env::consts::OS, std::env::consts::ARCH));
     out.push_str("message: the previous run ended without closing normally and without a panic ");
     out.push_str("(graphics driver crash, allocation failure, stack overflow, or the process was killed)\n");
+    out.push_str(previous_run);
     out.push_str("\nlast log lines of that run:\n");
     match previous_log {
         Some(log) => {
@@ -141,6 +143,7 @@ pub fn begin_session(
     alive: &dyn Fn(u32) -> bool,
 ) -> Option<PendingCrash> {
     let mut dead = false;
+    let mut previous_run = String::new();
     if let Ok(entries) = std::fs::read_dir(dir) {
         for e in entries.filter_map(Result::ok) {
             let name = e.file_name().to_string_lossy().into_owned();
@@ -153,14 +156,19 @@ pub fn begin_session(
             };
             if other != pid && !alive(other) {
                 dead = true;
+                if previous_run.is_empty() {
+                    previous_run = crate::native_crash::previous_run_text(dir, other);
+                }
                 let _ = std::fs::remove_file(e.path());
             }
         }
     }
+    crate::native_crash::prune_blackboxes(dir, alive);
     let mut pending = take_pending(dir);
     if pending.is_none() && dead {
         let log = previous_log.and_then(|p| std::fs::read_to_string(p).ok());
-        if let Ok(report) = write_report_file(dir, &unexpected_end_text(log.as_deref()), "-unexpected") {
+        let text = unexpected_end_text(log.as_deref(), &previous_run);
+        if let Ok(report) = write_report_file(dir, &text, "-unexpected") {
             pending = Some(PendingCrash { report, emergency_save: None, original: None });
         }
     }
@@ -172,11 +180,13 @@ pub fn begin_session(
 
 pub fn end_session(dir: &Path, pid: u32) {
     let _ = std::fs::remove_file(dir.join(marker_name(pid)));
+    let _ = std::fs::remove_file(crate::native_crash::blackbox_path(dir, pid));
 }
 
 pub fn write_device_lost_report(dir: &Path, reason: &str) -> std::io::Result<PathBuf> {
     let message = format!("the graphics device was lost: {reason}");
-    let text = report_text(&message, "", "main", "(none: a driver reset, not a panic)", &crate::logger::recent_lines());
+    let details = format!("(none: a driver reset, not a panic)\n\n{}", crate::native_crash::state_text());
+    let text = report_text(&message, "", "main", &details, &crate::logger::recent_lines());
     let path = write_report(dir, &text)?;
     if let Ok(mut last) = LAST_REPORT.lock() {
         *last = Some(path.clone());
@@ -206,8 +216,13 @@ fn panic_message(info: &std::panic::PanicHookInfo<'_>) -> String {
 }
 
 pub fn install_hook() {
-    crate::native_crash::install(Settings::crash_dir());
-    install_hook_in(Settings::crash_dir());
+    install_hook_at(Settings::crash_dir());
+}
+
+pub fn install_hook_at(dir: PathBuf) {
+    crate::native_crash::install(dir.clone());
+    crate::native_crash::start_watchdog();
+    install_hook_in(dir);
 }
 
 pub fn install_hook_in(dir: PathBuf) {
@@ -223,7 +238,8 @@ pub fn install_hook_in(dir: PathBuf) {
         let message = panic_message(info);
         let location = info.location().map(|l| l.to_string()).unwrap_or_default();
         if name == "main" && !egui_wgpu::recovery::in_guarded_paint() {
-            let backtrace = std::backtrace::Backtrace::force_capture().to_string();
+            let backtrace =
+                format!("{}\n{}", std::backtrace::Backtrace::force_capture(), crate::native_crash::state_text());
             let text = report_text(&message, &location, &name, &backtrace, &crate::logger::recent_lines_in_hook());
             match write_report(&dir, &text) {
                 Ok(path) => {
@@ -303,6 +319,7 @@ mod tests {
         let pending = begin_session(&dir, 12, Some(&log), &dead).expect("a report");
         let text = read_report(&pending.report).unwrap();
         assert!(text.contains("without closing normally") && text.contains("last words"), "{text}");
+        assert!(text.contains("Windows error log:"), "{text}");
         assert_eq!(pending.emergency_save, None);
         let running = |pid: u32| pid == 12;
         assert_eq!(begin_session(&dir, 13, Some(&log), &running), None, "a live instance is not a crash");

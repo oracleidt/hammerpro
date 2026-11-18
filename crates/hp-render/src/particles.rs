@@ -318,14 +318,14 @@ impl Renderer {
     pub fn set_particles(&mut self, particles: &[ParticleInstance]) {
         self.particle_draw_batches.clear();
         if self.upload_particles(false, particles, false) {
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
     }
 
     pub fn set_particles_ordered(&mut self, particles: &[ParticleInstance]) {
         self.particle_draw_batches.clear();
         if self.upload_particles(false, particles, true) {
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
     }
 

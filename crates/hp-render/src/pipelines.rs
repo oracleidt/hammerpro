@@ -37,6 +37,7 @@ pub(crate) struct Shared {
     sprite: wgpu::ShaderModule,
     grid: wgpu::ShaderModule,
     sky: wgpu::ShaderModule,
+    shadow: std::sync::Arc<std::sync::OnceLock<ShadowPipelines>>,
 }
 
 fn storage_entry(binding: u32, visibility: wgpu::ShaderStages) -> wgpu::BindGroupLayoutEntry {
@@ -259,6 +260,7 @@ impl Shared {
             sprite: module("hp-render sprite", SPRITE_WGSL),
             grid: module("hp-render grid", GRID_WGSL),
             sky: module("hp-render sky", SKY_WGSL),
+            shadow: std::sync::Arc::default(),
         }
     }
 }
@@ -1066,6 +1068,7 @@ impl PipelineSet {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct ShadowPipelines {
     pub chunk: wgpu::RenderPipeline,
     pub chunk_alpha: wgpu::RenderPipeline,
@@ -1076,7 +1079,25 @@ pub(crate) struct ShadowPipelines {
 }
 
 impl ShadowPipelines {
-    pub fn new(device: &wgpu::Device, shared: &Shared) -> Self {
+    pub fn shared(device: &wgpu::Device, shared: &Shared) -> Self {
+        shared.shadow.get_or_init(|| Self::new(device, shared)).clone()
+    }
+
+    pub fn prewarm(device: &wgpu::Device, shared: &Shared) {
+        if shared.shadow.get().is_some() {
+            return;
+        }
+        let device = device.clone();
+        let shared = shared.clone();
+        let spawned = std::thread::Builder::new().name("hp-render-shadow-pipelines".to_owned()).spawn(move || {
+            let _ = Self::shared(&device, &shared);
+        });
+        if let Err(e) = spawned {
+            log::warn!("hp-render: cannot start the shadow pipeline thread: {e}");
+        }
+    }
+
+    fn new(device: &wgpu::Device, shared: &Shared) -> Self {
         let chunk_vb = [Some(vertex_layout(size_of::<GpuVertex>(), wgpu::VertexStepMode::Vertex, &CHUNK_ATTRS))];
         let model_vb = model_mesh_buffers();
         let build = |vs: &str, fs: &str, alpha: bool, buffers: &[Option<wgpu::VertexBufferLayout<'_>>]| {

@@ -34,6 +34,10 @@ fn failed(state: &mut AppState, e: &EditError) {
 }
 
 pub fn invert_alpha(state: &mut AppState) -> usize {
+    super::terraform::mask::guard_state(state, "Invert displacement alpha", invert_alpha_unguarded)
+}
+
+fn invert_alpha_unguarded(state: &mut AppState) -> usize {
     let faces = targets(&state.doc);
     if !require(state, &faces) {
         return 0;
@@ -51,6 +55,10 @@ pub fn invert_alpha(state: &mut AppState) -> usize {
 }
 
 pub fn add_noise(state: &mut AppState) -> usize {
+    super::terraform::mask::guard_state(state, "Displacement noise", add_noise_unguarded)
+}
+
+fn add_noise_unguarded(state: &mut AppState) -> usize {
     let faces = targets(&state.doc);
     if !require(state, &faces) {
         return 0;
@@ -163,6 +171,10 @@ pub fn subdivide(state: &mut AppState) -> usize {
 }
 
 pub fn subdivide_with_shape(state: &mut AppState, shape: SubdivisionShape, amount: f64) -> usize {
+    super::terraform::mask::guard_state(state, UNDO_SUBDIVIDE, |state| subdivide_unguarded(state, shape, amount))
+}
+
+fn subdivide_unguarded(state: &mut AppState, shape: SubdivisionShape, amount: f64) -> usize {
     match reshape_components(state, UNDO_SUBDIVIDE, shape == SubdivisionShape::Sphere, |parts| match shape {
         SubdivisionShape::Smooth => subdivide_parts(parts, amount),
         SubdivisionShape::Sphere => sphere_parts(parts, amount),
@@ -243,6 +255,10 @@ pub fn cast_shadows_state(doc: &Document, faces: &[FaceRef]) -> Option<bool> {
 }
 
 pub fn scale(state: &mut AppState, factor: f64) -> usize {
+    super::terraform::mask::guard_state(state, "Scale displacements", |state| scale_unguarded(state, factor))
+}
+
+fn scale_unguarded(state: &mut AppState, factor: f64) -> usize {
     let faces = targets(&state.doc);
     if !require(state, &faces) {
         return 0;

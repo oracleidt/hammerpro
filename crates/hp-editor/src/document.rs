@@ -390,7 +390,11 @@ impl Document {
     }
 
     pub fn to_map(&self) -> Map {
-        let mut map = self.scene.to_map();
+        self.to_map_keeping(&|_| true)
+    }
+
+    pub(crate) fn to_map_keeping(&self, keep: &(dyn Fn(&crate::scene::SolidNode) -> bool + Sync)) -> Map {
+        let mut map = self.scene.to_map_keeping(keep);
         crate::curve_meta::prepare_road_contents(&mut map, &self.scene);
         crate::quadbounds::prepare_map(&mut map);
         map

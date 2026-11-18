@@ -148,9 +148,9 @@ impl Renderer {
             tone,
             main_cam: *cam,
         });
-        let content = self.content_gen;
+        let content = (self.content_gen, self.content_gen_3d, self.content_gen_tex);
         self.render_view(REFLECT_VIEW, &rp, &Overlay::default());
-        self.content_gen = content;
+        (self.content_gen, self.content_gen_3d, self.content_gen_tex) = content;
         self.reflecting = None;
         let view_proj = Camera::new(&rp).clipped_by(clip).view_proj;
         let view = self.views.get(&REFLECT_VIEW)?;

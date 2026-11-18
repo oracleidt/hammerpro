@@ -620,6 +620,7 @@ fn perf_mode_label(m: PerformanceMode) -> &'static str {
     match m {
         PerformanceMode::Auto => t!("shell.render.perf_auto"),
         PerformanceMode::Off => t!("shell.render.perf_off"),
+        PerformanceMode::Lightweight => t!("shell.render.perf_lightweight"),
         PerformanceMode::Low => t!("shell.render.perf_low"),
         PerformanceMode::VeryLow => t!("shell.render.perf_very_low"),
     }
@@ -629,6 +630,7 @@ fn perf_mode_tip(m: PerformanceMode) -> &'static str {
     match m {
         PerformanceMode::Auto => t!("shell.render.perf_auto_tip"),
         PerformanceMode::Off => t!("shell.render.perf_off_tip"),
+        PerformanceMode::Lightweight => t!("shell.render.perf_lightweight_tip"),
         PerformanceMode::Low => t!("shell.render.perf_low_tip"),
         PerformanceMode::VeryLow => t!("shell.render.perf_very_low_tip"),
     }
@@ -1253,8 +1255,8 @@ pub(crate) const TR: TrTable = &[
     ("shell.render.lit_quality_balanced", "Balanced", "Équilibrée"),
     (
         "shell.render.lit_quality_auto_tip",
-        "While the camera moves, each part of the view keeps its 32 strongest lights; at rest every light is drawn again, so a still picture is the full quality one.",
-        "Pendant que la caméra bouge, chaque partie de la vue garde ses 32 lumières les plus fortes ; à l'arrêt toutes les lumières sont de nouveau dessinées, une image immobile est donc en pleine qualité.",
+        "While the camera moves, each part of the view keeps its 32 strongest lights, draws fewer light shadow faces per frame and lowers its resolution when the graphics card cannot keep up; at rest every light is drawn again at full resolution, so a still picture is the full quality one.",
+        "Pendant que la caméra bouge, chaque partie de la vue garde ses 32 lumières les plus fortes, dessine moins de faces d'ombres de lumières par image et baisse sa résolution quand la carte graphique ne suit pas ; à l'arrêt toutes les lumières sont de nouveau dessinées en pleine résolution, une image immobile est donc en pleine qualité.",
     ),
     (
         "shell.render.lit_quality_high_tip",
@@ -1268,6 +1270,7 @@ pub(crate) const TR: TrTable = &[
     ),
     ("shell.render.perf_auto", "Auto", "Auto"),
     ("shell.render.perf_off", "Off (full quality)", "Désactivé (qualité maximale)"),
+    ("shell.render.perf_lightweight", "Lightweight (like Hammer)", "Léger (comme Hammer)"),
     ("shell.render.perf_low", "Low", "Bas"),
     ("shell.render.perf_very_low", "Very low", "Très bas"),
     (
@@ -1279,6 +1282,11 @@ pub(crate) const TR: TrTable = &[
         "shell.render.perf_off_tip",
         "Always full quality, never lowered automatically.",
         "Toujours la qualité maximale, jamais baissée automatiquement.",
+    ),
+    (
+        "shell.render.perf_lightweight_tip",
+        "Draws like Hammer at full resolution: plain textures, no antialiasing, bloom, shadows, reflections, normal maps, fog volumes, sun glow, 3D skybox or animated textures, textures up to 1024 pixels. Auto picks it by itself on integrated graphics, cards with little graphics memory and laptops on battery.",
+        "Dessine comme Hammer à pleine résolution : textures simples, sans anticrénelage, bloom, ombres, reflets, normal maps, volumes de brouillard, halo du soleil, skybox 3D ni textures animées, textures jusqu'à 1024 pixels. Auto le choisit tout seul sur les cartes graphiques intégrées, les cartes avec peu de mémoire graphique et les portables sur batterie.",
     ),
     (
         "shell.render.perf_low_tip",

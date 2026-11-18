@@ -185,6 +185,7 @@ impl PlacementChecks {
             .or_else(|| crate::dispatch::mcp::remembered_scan(&key));
         hp_app::checks::watch(&cancel);
         let spawned = std::thread::Builder::new().name("hp-placement-check".into()).spawn(move || {
+            hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
             hp_app::checks::lowest_priority();
             let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 hp_app::checks::run(|| {

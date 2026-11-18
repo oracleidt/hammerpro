@@ -30,6 +30,13 @@ pub(crate) fn guarded<T>(device: &wgpu::Device, f: impl FnOnce() -> T) -> (T, bo
     (out, oom)
 }
 
+pub const MIN_GPU_BLOCK: u64 = 4 << 20;
+pub const MAX_GPU_BLOCK: u64 = 16 << 20;
+
+pub fn memory_hints() -> wgpu::MemoryHints {
+    wgpu::MemoryHints::Manual { suballocated_device_memory_block_size: MIN_GPU_BLOCK..MAX_GPU_BLOCK }
+}
+
 pub(crate) const STAGING_SLICE: u64 = 16 << 20;
 pub(crate) const LOW_STAGING_SLICE: u64 = 4 << 20;
 pub(crate) const MIN_SQUEEZED_TEXTURE: u32 = 128;
@@ -155,6 +162,183 @@ impl VramProbe {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct HeavyFlags {
+    pub sun: bool,
+    pub sky: bool,
+    pub local: bool,
+    pub control: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct HeavyUse {
+    last: [Option<std::time::Instant>; 4],
+}
+
+impl HeavyUse {
+    pub fn note_at(&mut self, now: std::time::Instant, used: [bool; 4]) {
+        for (slot, used) in self.last.iter_mut().zip(used) {
+            if used {
+                *slot = Some(now);
+            }
+        }
+    }
+
+    fn is_stale(last: Option<std::time::Instant>, now: std::time::Instant, idle: std::time::Duration) -> bool {
+        last.is_none_or(|t| now.saturating_duration_since(t) >= idle)
+    }
+
+    pub fn stale(&self, now: std::time::Instant, idle: std::time::Duration) -> HeavyFlags {
+        let s = self.last.map(|l| Self::is_stale(l, now, idle));
+        HeavyFlags { sun: s[0], sky: s[1], local: s[2], control: s[3] }
+    }
+
+    pub fn next_release(
+        &self,
+        now: std::time::Instant,
+        idle: std::time::Duration,
+        held: [bool; 4],
+    ) -> Option<std::time::Duration> {
+        self.last
+            .iter()
+            .zip(held)
+            .filter(|(_, held)| *held)
+            .map(|(last, _)| {
+                last.map_or(std::time::Duration::ZERO, |t| idle.saturating_sub(now.saturating_duration_since(t)))
+            })
+            .min()
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AllocationGroup {
+    pub label: String,
+    pub count: u32,
+    pub bytes: u64,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct AllocatorSummary {
+    pub allocated: u64,
+    pub reserved: u64,
+    pub blocks: usize,
+    pub groups: Vec<AllocationGroup>,
+    pub block_use: Vec<(u64, u64)>,
+}
+
+impl AllocatorSummary {
+    pub fn category_bytes(&self) -> Vec<(&'static str, u64)> {
+        let mut out: Vec<(&'static str, u64)> = Vec::new();
+        for g in &self.groups {
+            let c = category_of(&g.label);
+            match out.iter_mut().find(|(n, _)| *n == c) {
+                Some(e) => e.1 += g.bytes,
+                None => out.push((c, g.bytes)),
+            }
+        }
+        out.sort_by_key(|e| std::cmp::Reverse(e.1));
+        out
+    }
+}
+
+pub fn group_label(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut digits = false;
+    for c in name.chars() {
+        if c.is_ascii_digit() {
+            if !digits {
+                out.push('#');
+            }
+            digits = true;
+        } else {
+            digits = false;
+            out.push(c);
+        }
+    }
+    let t = out.trim();
+    if t.is_empty() { "unlabeled".to_owned() } else { t.to_owned() }
+}
+
+pub fn category_of(label: &str) -> &'static str {
+    let l = label.to_ascii_lowercase();
+    let has = |k: &[&str]| k.iter().any(|w| l.contains(w));
+    if has(&["egui", "thumbnail", "thumb", "preview icon", "font"]) {
+        "interface"
+    } else if has(&["staging", "readback", "upload", "mapped"]) {
+        "staging"
+    } else if has(&["lightmap", "compiled", "baked", "bake"]) {
+        "lightmaps"
+    } else if has(&["shadow", "sky cut", "sky visibility", "sky mip"]) {
+        "shadows"
+    } else if has(&["cube", "envmap", "reflection", "probe"]) {
+        "cubemaps_reflections"
+    } else if has(&["ray", "bvh", "rt "]) {
+        "ray_tracing"
+    } else if has(&["particle", "beam", "rope", "sprite"]) {
+        "particles_sprites"
+    } else if has(&["skin", "bone", "anim"]) {
+        "animation"
+    } else if has(&["model", "mdl", "prop", "instance"]) {
+        "models"
+    } else if has(&["texture", "material", "vtf", "mip"]) {
+        "textures"
+    } else if has(&[
+        "depth",
+        "msaa",
+        "hdr",
+        "view color",
+        "view display",
+        "target",
+        "bloom",
+        "post",
+        "pick",
+        "outline",
+        "resolve",
+        "tone",
+        "hiz",
+    ]) {
+        "render_targets"
+    } else if has(&["arena", "vert", "indic", "index", "chunk", "scene", "line", "overlay", "state", "edge"]) {
+        "geometry"
+    } else if has(&["light", "cluster", "cull"]) {
+        "lighting"
+    } else {
+        "other"
+    }
+}
+
+pub fn allocator_summary(device: &wgpu::Device) -> Option<AllocatorSummary> {
+    let report = device.generate_allocator_report()?;
+    let mut groups: Vec<AllocationGroup> = Vec::new();
+    let mut index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for a in &report.allocations {
+        let label = group_label(&a.name);
+        let i = *index.entry(label.clone()).or_insert_with(|| {
+            groups.push(AllocationGroup { label, count: 0, bytes: 0 });
+            groups.len() - 1
+        });
+        groups[i].count += 1;
+        groups[i].bytes += a.size;
+    }
+    groups.sort_by_key(|g| std::cmp::Reverse(g.bytes));
+    let mut block_use: Vec<(u64, u64)> = report
+        .blocks
+        .iter()
+        .map(|b| {
+            let used = report.allocations.get(b.allocations.clone()).map_or(0, |a| a.iter().map(|x| x.size).sum());
+            (b.size, used)
+        })
+        .collect();
+    block_use.sort_by_key(|(size, used)| std::cmp::Reverse(size.saturating_sub(*used)));
+    Some(AllocatorSummary {
+        allocated: report.total_allocated_bytes,
+        reserved: report.total_reserved_bytes,
+        blocks: report.blocks.len(),
+        groups,
+        block_use,
+    })
+}
+
 #[cfg(windows)]
 mod dxgi {
     use windows::Win32::Graphics::Dxgi::{
@@ -232,6 +416,40 @@ mod tests {
         assert!(b.fits(500, 300));
         assert!(!b.fits(500, 301));
         assert!(!b.fits(900, 0), "untracked memory counts");
+    }
+
+    #[test]
+    fn heavy_features_become_stale_after_the_idle_time() {
+        let idle = std::time::Duration::from_secs(8);
+        let t0 = std::time::Instant::now();
+        let mut h = HeavyUse::default();
+        assert_eq!(h.stale(t0, idle), HeavyFlags { sun: true, sky: true, local: true, control: true });
+        h.note_at(t0, [true, false, true, false]);
+        let s = h.stale(t0 + std::time::Duration::from_secs(2), idle);
+        assert!(!s.sun && s.sky && !s.local && s.control);
+        assert!(h.stale(t0 + idle, idle).sun);
+        let wait = h.next_release(t0 + std::time::Duration::from_secs(3), idle, [true, false, false, false]);
+        assert_eq!(wait, Some(std::time::Duration::from_secs(5)));
+        assert_eq!(h.next_release(t0, idle, [false; 4]), None);
+        assert_eq!(h.next_release(t0, idle, [false, true, false, false]), Some(std::time::Duration::ZERO));
+    }
+
+    #[test]
+    fn allocation_labels_group_and_sort_into_categories() {
+        assert_eq!(group_label("egui_texid_Managed(12)"), "egui_texid_Managed(#)");
+        assert_eq!(group_label(""), "unlabeled");
+        assert_eq!(category_of("hp-render lightmap atlas"), "lightmaps");
+        assert_eq!(category_of("hp-render texture"), "textures");
+        assert_eq!(category_of("hp-render sun shadow"), "shadows");
+        let s = AllocatorSummary {
+            groups: vec![
+                AllocationGroup { label: "a texture".into(), count: 1, bytes: 10 },
+                AllocationGroup { label: "b texture".into(), count: 1, bytes: 5 },
+                AllocationGroup { label: "depth".into(), count: 1, bytes: 30 },
+            ],
+            ..AllocatorSummary::default()
+        };
+        assert_eq!(s.category_bytes(), vec![("render_targets", 30), ("textures", 15)]);
     }
 
     #[test]

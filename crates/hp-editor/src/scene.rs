@@ -302,8 +302,12 @@ impl Scene {
     }
 
     pub fn to_map(&self) -> Map {
+        self.to_map_keeping(&|_| true)
+    }
+
+    pub fn to_map_keeping(&self, keep: &(dyn Fn(&SolidNode) -> bool + Sync)) -> Map {
         let (solids, entities) = rayon::join(
-            || self.solids.par_values().map(|n| (n.owner, n.solid.clone())).collect(),
+            || self.solids.par_values().filter(|n| keep(n)).map(|n| (n.owner, n.solid.clone())).collect(),
             || self.entities.par_values().map(|n| n.entity.clone()).collect(),
         );
         self.assemble_map(solids, entities)

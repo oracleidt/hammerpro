@@ -96,7 +96,7 @@ impl Renderer {
         let cc = &mut self.lightmap.color;
         cc.generation += 1;
         cc.view = lut.map(|data| upload_lut(&self.device, &self.queue, data));
-        self.content_gen += 1;
+        self.bump_3d_content();
     }
 
     pub fn has_color_correction(&self) -> bool {
@@ -112,7 +112,7 @@ impl Renderer {
         }
         cc.generation += 1;
         cc.zone = lut.map(|data| upload_lut(&self.device, &self.queue, data));
-        self.content_gen += 1;
+        self.bump_3d_content();
     }
 
     pub fn has_color_zone(&self) -> bool {

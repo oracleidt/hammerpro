@@ -387,6 +387,10 @@ fn presew(doc: &mut Document, faces: &[FaceRef]) -> Result<(), hp_editor::EditEr
 }
 
 pub fn apply(state: &mut AppState, op: SlopeOp, opts: &SlopeOptions) -> usize {
+    super::terraform::mask::guard_state(state, op.label(), |state| apply_unguarded(state, op, opts))
+}
+
+fn apply_unguarded(state: &mut AppState, op: SlopeOp, opts: &SlopeOptions) -> usize {
     if op == SlopeOp::Path && opts.path.len() < 2 {
         state.notify(Severity::Info, t!("disp.slope_path_need"));
         return 0;

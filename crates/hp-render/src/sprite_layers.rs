@@ -16,7 +16,7 @@ impl Renderer {
                 for id in old.refs {
                     self.scene.release_ref(id);
                 }
-                self.content_gen += 1;
+                self.bump_3d_content();
             }
             return;
         }
@@ -41,7 +41,7 @@ impl Renderer {
             l.groups.clear();
         }
         self.sprite_layers.insert(layer, l);
-        self.content_gen += 1;
+        self.bump_3d_content();
     }
 
     pub fn sprite_layer_len(&self, layer: u32) -> usize {

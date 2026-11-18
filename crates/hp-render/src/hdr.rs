@@ -469,7 +469,7 @@ impl Renderer {
         let s = settings.sanitized();
         if self.tone.settings != s {
             self.tone.settings = s;
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
     }
 
@@ -490,7 +490,7 @@ impl Renderer {
         };
         if self.tone.env != env {
             self.tone.env = env;
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
     }
 
@@ -501,14 +501,14 @@ impl Renderer {
     pub fn set_lit_ldr_shading(&mut self, on: bool) {
         if self.tone.lit_ldr_shading != on {
             self.tone.lit_ldr_shading = on;
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
     }
 
     pub fn set_lit_hdr(&mut self, hdr: bool) {
         if self.tone.lit_hdr != hdr {
             self.tone.lit_hdr = hdr;
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
     }
 

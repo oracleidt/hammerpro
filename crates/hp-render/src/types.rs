@@ -654,6 +654,11 @@ impl ModelId {
     pub const fn raw(self) -> u32 {
         self.0
     }
+
+    #[doc(hidden)]
+    pub const fn from_raw(raw: u32) -> Self {
+        Self(raw)
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -1240,6 +1245,14 @@ pub struct RenderStats {
     pub preview_lights: u32,
     pub lights_left_out: u32,
     pub crowded_clusters: u32,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TextureGroup {
+    pub format: String,
+    pub size: u32,
+    pub count: u32,
+    pub bytes: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

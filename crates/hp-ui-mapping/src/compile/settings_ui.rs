@@ -226,6 +226,7 @@ impl PreviewCache {
         let (tx, rx) = mpsc::channel();
         let repaint = ctx.clone();
         let spawned = std::thread::Builder::new().name("hp-compile-auto".into()).spawn(move || {
+            hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
             let _ = tx.send(snapshot::prepare_snapshot(input));
             repaint.request_repaint();
         });

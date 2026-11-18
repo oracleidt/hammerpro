@@ -136,6 +136,10 @@ fn world_uniform(sprite: &WorldSprite, cam: &Camera, hdr: bool) -> Option<(u32, 
     }
     right *= sprite.size[0] * 0.5 * scale;
     up *= sprite.size[1] * 0.5 * scale;
+    let reach = Vec3::splat(2.0 * (right.length() + up.length()) + 1.0);
+    if !cam.aabb_visible(pos - reach, pos + reach) {
+        return None;
+    }
     let radius = sprite.glow_proxy * cam.height / (2.0 * distance * cam.tan_half_fov);
     let exposure = if hdr { sprite.hdr_scale } else { 1.0 };
     let color = sprite.color.map(|v| v.clamp(0.0, 1.0));
@@ -434,7 +438,7 @@ impl Renderer {
         if self.world_sprites != sprites {
             self.world_sprites.clear();
             self.world_sprites.extend_from_slice(sprites);
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
     }
 
@@ -442,14 +446,14 @@ impl Renderer {
         if self.world_beams != beams {
             self.world_beams.clear();
             self.world_beams.extend_from_slice(beams);
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
     }
 
     pub fn set_sun_glow(&mut self, glow: Option<SunGlow>) {
         if self.sun_glow != glow {
             self.sun_glow = glow;
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
     }
 
@@ -611,11 +615,19 @@ impl DrawCtx<'_> {
             multiview_mask: None,
         });
         pass.set_bind_group(0, self.bind_group, &[]);
+        let mut bound: (Option<usize>, Option<u32>) = (None, None);
         for (k, material) in frame.materials.iter().enumerate() {
             let Some(mg) = self.r.mat_gpu.get(*material as usize) else { continue };
-            let Some(pipe) = state.pipes[usize::from(view.samples > 1)][frame.blends[k]].as_ref() else { continue };
-            pass.set_pipeline(pipe);
-            pass.set_bind_group(1, &mg.bind_group, &[]);
+            let blend = frame.blends[k];
+            let Some(pipe) = state.pipes[usize::from(view.samples > 1)][blend].as_ref() else { continue };
+            if bound.0 != Some(blend) {
+                pass.set_pipeline(pipe);
+                bound.0 = Some(blend);
+            }
+            if bound.1 != Some(*material) {
+                pass.set_bind_group(1, &mg.bind_group, &[]);
+                bound.1 = Some(*material);
+            }
             pass.set_bind_group(2, &gpu.bind, &[(k as u64 * state.stride) as u32]);
             pass.draw(0..6, 0..1);
             n.add(2);
@@ -626,6 +638,54 @@ impl DrawCtx<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn world_sprites_outside_the_view_are_not_drawn() {
+        let cam = Camera::new(&crate::ViewParams {
+            game_pixel_grid: false,
+            size: [800, 450],
+            kind: crate::ViewKind::Perspective {
+                eye: [0.0; 3],
+                forward: [1.0, 0.0, 0.0],
+                up: [0.0, 0.0, 1.0],
+                fov_y_deg: 75.0,
+                near: 1.0,
+                far: 20000.0,
+            },
+            mode: crate::RenderMode::Textured,
+            grid: None,
+            background: [0.0; 3],
+            selection_color: [1.0; 4],
+            show_sprites: true,
+            show_models: true,
+            msaa: false,
+        });
+        let sprite = |pos: [f32; 3]| WorldSprite {
+            vertex_color: true,
+            vertex_alpha: false,
+            material_mode: None,
+            object: Default::default(),
+            origin: [0.5, 0.5],
+            srgb_color: false,
+            pos,
+            size: [64.0, 64.0],
+            color: [1.0; 4],
+            material: Default::default(),
+            mode: 5,
+            render_fx: 0,
+            orientation: 2,
+            angles: [0.0; 3],
+            hdr_scale: 1.0,
+            glow_proxy: 2.0,
+        };
+        assert!(world_uniform(&sprite([500.0, 0.0, 0.0]), &cam, false).is_some());
+        assert!(
+            world_uniform(&sprite([500.0, 720.0, 0.0]), &cam, false).is_some(),
+            "a sprite reaching into the view is kept"
+        );
+        assert!(world_uniform(&sprite([500.0, 2000.0, 0.0]), &cam, false).is_none(), "far to the side");
+        assert!(world_uniform(&sprite([-500.0, 0.0, 0.0]), &cam, false).is_none(), "behind the camera");
+    }
 
     #[test]
     fn the_glow_fades_out_at_forty_degrees_from_the_view() {

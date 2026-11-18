@@ -93,6 +93,12 @@ impl Renderer {
         compiled || LightmapPass::surface_drawn(self, is_ortho)
     }
 
+    pub(crate) fn update_surface_bounds(&mut self, view_proj: &glam::Mat4) -> bool {
+        self.surface_bounds =
+            visible_bounds(view_proj, self.scene.decal_ids.iter().filter_map(|id| self.scene.object_aabb(*id)));
+        self.surface_bounds.is_some()
+    }
+
     pub(crate) fn record_surface_light(
         &self,
         cx: &HookContext<'_>,
@@ -123,5 +129,57 @@ impl Renderer {
         });
         LightmapPass::draw_surface(&cx, &mut pass);
         CompiledLightPass::draw_surface_light(&cx, &mut pass);
+    }
+}
+
+pub(crate) const SURFACE_MARGIN: f32 = 16.0;
+
+pub(crate) fn visible_bounds(
+    view_proj: &glam::Mat4,
+    boxes: impl Iterator<Item = (glam::Vec3, glam::Vec3)>,
+) -> Option<(glam::Vec3, glam::Vec3)> {
+    let mut out: Option<(glam::Vec3, glam::Vec3)> = None;
+    for (lo, hi) in boxes {
+        if !(lo.is_finite() && hi.is_finite() && lo.cmple(hi).all()) {
+            continue;
+        }
+        if !crate::lightmap::box_visible(view_proj, lo, hi) {
+            continue;
+        }
+        out = Some(match out {
+            Some((a, b)) => (a.min(lo), b.max(hi)),
+            None => (lo, hi),
+        });
+    }
+    out.map(|(lo, hi)| (lo - glam::Vec3::splat(SURFACE_MARGIN), hi + glam::Vec3::splat(SURFACE_MARGIN)))
+}
+
+pub(crate) fn overlaps(a: (glam::Vec3, glam::Vec3), lo: glam::Vec3, hi: glam::Vec3) -> bool {
+    a.0.cmple(hi).all() && lo.cmple(a.1).all()
+}
+
+#[cfg(test)]
+mod bounds_tests {
+    use glam::{Mat4, Vec3, Vec4};
+
+    use super::*;
+
+    fn looking_down_x() -> Mat4 {
+        Mat4::from_cols(Vec4::W, -Vec4::X, Vec4::Y, Vec4::Z)
+    }
+
+    #[test]
+    fn only_decals_in_view_make_the_surface_pass_run() {
+        let vp = looking_down_x();
+        let behind = (Vec3::new(-120.0, -10.0, -10.0), Vec3::new(-100.0, 10.0, 10.0));
+        assert_eq!(visible_bounds(&vp, [behind].into_iter()), None, "a decal behind the camera costs nothing");
+        let ahead = (Vec3::new(100.0, -10.0, -10.0), Vec3::new(120.0, 10.0, 10.0));
+        let b = visible_bounds(&vp, [behind, ahead].into_iter()).unwrap();
+        assert_eq!(b.0, ahead.0 - Vec3::splat(SURFACE_MARGIN));
+        assert_eq!(b.1, ahead.1 + Vec3::splat(SURFACE_MARGIN));
+        assert!(overlaps(b, Vec3::new(110.0, 0.0, 0.0), Vec3::new(300.0, 5.0, 5.0)));
+        assert!(!overlaps(b, Vec3::new(500.0, 0.0, 0.0), Vec3::new(600.0, 5.0, 5.0)), "far walls are skipped");
+        let broken = (Vec3::splat(f32::NAN), Vec3::ZERO);
+        assert_eq!(visible_bounds(&vp, [broken].into_iter()), None);
     }
 }

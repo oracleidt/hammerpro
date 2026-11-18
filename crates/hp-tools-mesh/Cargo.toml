@@ -11,6 +11,7 @@ hp-app = { path = "../hp-app" }
 hp-editor.workspace = true
 hp-geom.workspace = true
 hp-vmf.workspace = true
+hp-kv.workspace = true
 hp-render.workspace = true
 egui.workspace = true
 glam.workspace = true

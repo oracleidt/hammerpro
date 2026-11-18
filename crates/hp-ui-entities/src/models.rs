@@ -88,6 +88,7 @@ impl ModelTiles {
             let (done_tx, done_rx) = channel();
             let (fs, repaint) = (fs.clone(), ctx.clone());
             let spawned = std::thread::Builder::new().name("hp-model-tiles".to_owned()).spawn(move || {
+                hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
                 while let Ok(path) = rx.recv() {
                     let material = tile_material(&fs, &path);
                     if done_tx.send((path, material)).is_err() {
@@ -563,6 +564,7 @@ impl ModelBrowser {
             let list = Arc::clone(&self.models);
             let repaint = ctx.clone();
             let spawned = std::thread::Builder::new().name("hp-model-index".to_owned()).spawn(move || {
+                hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
                 let (order, top_folders) = index_models(&list);
                 let _ = tx.send(ModelIndex { key, order, top_folders });
                 repaint.request_repaint();
@@ -868,7 +870,7 @@ impl ModelBrowser {
         ui.horizontal(|ui| {
             ui.label(RichText::new(model_file_stem(path)).strong()).on_hover_text(path);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.small_button("{d7}").on_hover_text(t!("common.close")).clicked() {
+                if ui.small_button("✖").on_hover_text(t!("common.close")).clicked() {
                     close = true;
                 }
             });

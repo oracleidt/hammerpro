@@ -3,7 +3,7 @@ use glam::Vec3;
 use crate::camera::{Camera, frustum_planes};
 use crate::gpu::ViewUniform;
 use crate::pipelines::{DEPTH_FORMAT, ShadowPipelines};
-use crate::shadow::{ShadowFit, fit};
+use crate::shadow::{MOTION_GROW, ShadowFit, fit, fit_grown};
 use crate::{Renderer, ShadowControl};
 
 pub(crate) struct ControlShadow {
@@ -13,11 +13,14 @@ pub(crate) struct ControlShadow {
     bind: Option<(u64, wgpu::BindGroup)>,
     pipelines: ShadowPipelines,
     key: Option<([f32; 16], u64)>,
+    kept: Option<ShadowFit>,
+    cams: ahash::AHashMap<u32, (glam::Mat4, u64)>,
 }
 
 impl Renderer {
     pub(crate) fn prepare_control_shadow(
         &mut self,
+        view_id: u32,
         camera: &Camera,
         config: ShadowControl,
     ) -> Option<(ShadowFit, bool)> {
@@ -26,7 +29,7 @@ impl Renderer {
         }
         let direction = Vec3::from_array(config.direction).try_normalize()?;
         let (min, max) = self.scene_bounds();
-        let fitted = fit(camera, direction, min, max, 2048)?;
+        let fresh = fit(camera, direction, min, max, 2048)?;
         if self.control_shadow.is_none() {
             let texture = self.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("hp-render shadow control"),
@@ -51,10 +54,32 @@ impl Renderer {
                     mapped_at_creation: false,
                 }),
                 bind: None,
-                pipelines: ShadowPipelines::new(&self.device, &self.shared),
+                pipelines: ShadowPipelines::shared(&self.device, &self.shared),
                 key: None,
+                kept: None,
+                cams: ahash::AHashMap::default(),
             });
             self.scene_gen += 1;
+        }
+        let serial = self.render_serial;
+        let control = self.control_shadow.as_mut()?;
+        let last = control.cams.get(&view_id).copied();
+        let moving = last.is_some_and(|(vp, _)| vp != camera.view_proj);
+        let resting = last.is_some_and(|(vp, first)| vp == camera.view_proj && first != serial);
+        if last.is_none_or(|(vp, _)| vp != camera.view_proj) {
+            control.cams.insert(view_id, (camera.view_proj, serial));
+        }
+        let stable = !resting && !crate::profile::baseline("shadowfit");
+        let fitted = match control.kept {
+            Some(kept) if moving && stable && kept.covers(&fresh) => kept,
+            Some(_) if moving && stable => fit_grown(camera, direction, min, max, 2048, MOTION_GROW)
+                .filter(|wide| wide.covers(&fresh))
+                .unwrap_or(fresh),
+            _ => fresh,
+        };
+        control.kept = Some(fitted);
+        if fitted != fresh {
+            self.redraw_view(view_id);
         }
         let control = self.control_shadow.as_ref()?;
         let key = (fitted.view_proj.to_cols_array(), self.shadow_epoch);

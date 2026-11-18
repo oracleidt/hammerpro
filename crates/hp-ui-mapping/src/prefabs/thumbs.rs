@@ -172,9 +172,10 @@ impl Thumbs {
             let done = self.done_tx.clone();
             let dir = self.cache_dir.clone().filter(|_| !hp_compile::sandbox::is_sandboxed());
             let repaint = ctx.clone();
-            let spawned = std::thread::Builder::new()
-                .name("hp-prefab-thumbs".to_owned())
-                .spawn(move || worker(rx, done, dir, repaint));
+            let spawned = std::thread::Builder::new().name("hp-prefab-thumbs".to_owned()).spawn(move || {
+                hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
+                worker(rx, done, dir, repaint)
+            });
             match spawned {
                 Ok(_) => self.jobs = Some(tx),
                 Err(e) => {

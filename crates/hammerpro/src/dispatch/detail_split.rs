@@ -179,6 +179,7 @@ pub(crate) fn tick(state: &mut AppState, ctx: &egui::Context) {
     let (tx, rx) = channel();
     let repaint = ctx.clone();
     let spawned = std::thread::Builder::new().name("hp-detail-split".to_owned()).spawn(move || {
+        hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
         let result = run(setup, fs);
         if let Err(e) = &result {
             log::warn!("detail props preview: the faces could not be split like the compile: {e}");

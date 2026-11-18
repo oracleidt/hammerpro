@@ -73,7 +73,8 @@ pub use mesh_disp::MeshDispRuntime;
 pub use optimize::{ANALYSIS_PORTALS, OptimizeRuntime};
 pub use perf::{
     BenchFrame, BenchRequest, BenchResult, FRAME_PHASES, FramePhases, GpuPasses, LONG_FRAME_MS, LONG_FRAMES_KEPT,
-    LongFrame, PerfLevel, PerfPlan, PerfRuntime, PerfSample, Reflections, RepaintCount, Span, ViewCost, take_spans,
+    LOW_END_VRAM, LongFrame, LowEnd, PerfLevel, PerfPlan, PerfRuntime, PerfSample, REDRAW_REASONS, Reflections,
+    RepaintCount, Span, ViewCost, main_spans, mark_main_thread, take_spans,
 };
 pub use placement::{
     CreatePrefabRequest, FileStamp, PlacementRuntime, PrefabCache, PrefabLoad, PrefabTokens, RealDims, UnitDims,

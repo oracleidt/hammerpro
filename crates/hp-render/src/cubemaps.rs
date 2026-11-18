@@ -458,7 +458,7 @@ impl Renderer {
         }
         slot.parallax = parallax;
         self.cubes.info_dirty = true;
-        self.content_gen += 1;
+        self.bump_3d_content();
     }
 
     pub fn cubemap_parallax(&self, id: CubemapId) -> Option<ParallaxBox> {
@@ -485,7 +485,7 @@ impl Renderer {
     }
 
     fn cubemaps_changed(&mut self) {
-        self.content_gen += 1;
+        self.bump_3d_content();
         if !self.instance_list.is_empty() {
             self.pack_instances();
         }
@@ -705,7 +705,7 @@ impl Renderer {
         self.cubes.gpu = new;
         self.cubes.info_dirty = true;
         self.scene_gen += 1;
-        self.content_gen += 1;
+        self.bump_3d_content();
     }
 
     pub(crate) fn write_cube_info(&mut self) {
@@ -924,7 +924,7 @@ impl Renderer {
             s.scale = scale;
         }
         self.cubes.info_dirty = true;
-        self.content_gen += 1;
+        self.bump_3d_content();
     }
 
     fn draw_probe_face(&mut self, cur: Current, source: &Source) {
@@ -970,9 +970,9 @@ impl Renderer {
         self.view_options.insert(PROBE_VIEW, options);
         let scale = 1.0;
         self.probing = true;
-        let content = self.content_gen;
+        let content = (self.content_gen, self.content_gen_3d, self.content_gen_tex);
         self.render_view(PROBE_VIEW, &params, &Overlay::default());
-        self.content_gen = content;
+        (self.content_gen, self.content_gen_3d, self.content_gen_tex) = content;
         self.probing = false;
         self.cubes.faces_rendered += 1;
         self.ensure_staging();

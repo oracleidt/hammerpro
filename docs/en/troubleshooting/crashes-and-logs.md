@@ -10,9 +10,11 @@ Hammer Pro protects your work in several ways:
 
 - **Emergency save.** When the editor catches a crash of its frame, it writes an emergency save of the modified map next to the autosaves (`%LOCALAPPDATA%\HammerPro\autosave\`) and records it in the crash report.
 - **Crash report.** A crash of the main thread writes a report (message, location, thread, backtrace and the last lines of the log) to `%APPDATA%\HammerPro\crash\`.
-- **Native crashes.** A crash outside Rust code (an access violation in the graphics driver, a stack overflow) writes a report too, with the exception, the module it happened in (for example `nvoglv64.dll+0x1234`) and the last lines of the log. When it happens in a background thread, Hammer Pro first saves the modified maps (it waits up to 10 seconds for that).
+- **Native crashes.** A crash outside Rust code (an access violation in the graphics driver, a stack overflow) writes a report too, with the exception code, the module it happened in (for example `nvoglv64.dll+0x1234`), the address read or written for an access violation, the stack of the crashing thread with function names when `hammerpro.pdb` sits next to `hammerpro.exe` (module offsets otherwise), a small minidump (`crash-<time>.dmp`, the 2 newest are kept) and the last lines of the log. When it happens in a background thread, Hammer Pro first saves the modified maps (it waits up to 10 seconds for that).
 - **Out of memory.** Hammer Pro keeps a reserve of memory: when the computer runs out, the reserve is given back, the modified maps are saved and a message asks you to free memory. An allocation that still fails writes a report ("memory allocation of N bytes failed"). See [Out of memory](out-of-memory.md).
-- **Runs that end without a word.** A killed process, or a crash so deep that even the report cannot be written, leaves nothing at that moment. Each run leaves a marker in the crash folder that a normal close removes; on the next start, a marker left by a dead process becomes a report with the end of the previous run's log.
+- **What every report contains.** Besides the log lines, each report says what the editor was doing: the map open (solids, entities, selection, open maps), the render mode, the tool, the camera, the activity (opening a map, compiling), the work the main thread was inside, the memory of the process and of the system (RAM in use, peak, committed, free), the graphics memory used and its budget, and the longest freeze of the run.
+- **Freezes.** A watchdog thread checks that the window answers. When it stops answering for 2 seconds (then 10 and 30), the stack of the main thread is written to the log with the freeze duration; a frame that takes more than 250 ms writes its main thread stack to the log too (one every 2 seconds at most). Even if you end a frozen editor from the Task Manager, the next report shows where it was stuck.
+- **Runs that end without a word.** A killed process, or a crash so deep that even the report cannot be written (a fast fail of the C runtime), leaves nothing at that moment. Each run leaves a marker in the crash folder that a normal close removes, and the watchdog saves the state above every 5 seconds next to it (`blackbox-<process id>.txt`). On the next start, a marker left by a dead process becomes a report with the end of the previous run's log, its last saved state, whether the window was frozen when it ended, and what Windows recorded for that process: the exception code and faulting module of a crash, a hang Windows closed, or nothing (the process was ended from outside: Task Manager, a script, a shutdown).
 
 On the next start, the window **Hammer Pro closed unexpectedly** shows the **Report file:** path and these buttons:
 
@@ -24,7 +26,7 @@ On the next start, the window **Hammer Pro closed unexpectedly** shows the **Rep
 
 Errors of worker threads do not stop the editor: they are logged with their location, and the first few of a run also get a report file whose path is in the log (not offered at the next start).
 
-Automated runs (`--script`, `--screenshot`) never read or write the crash folder.
+Automated runs (`--script`, `--screenshot`) never read or write the crash folder, unless the environment variable `HAMMERPRO_CRASH_DIR` names a folder: their crash handler and watchdog then write there (for tests).
 
 ## Autosaves
 
@@ -53,7 +55,7 @@ A graphics error of one frame (validation, often a driver problem) no longer clo
 
 ### Choosing the graphics API
 
-Hammer Pro renders with wgpu. By default it tries Vulkan, DirectX 12 (and Metal on macOS), preferring a GPU and API that can draw transparent windows (for the rounded window frame), then a dedicated GPU over an integrated one. The adapter chosen is written to the log file ("graphics adapter: ...").
+Hammer Pro renders with wgpu. By default it tries Vulkan, DirectX 12 (and Metal on macOS), preferring a GPU and API that can draw transparent windows (for the rounded window frame), then a dedicated GPU over an integrated one. The adapter chosen is written to the log file ("graphics adapter: ..."). On Windows, when Vulkan offers a dedicated GPU (which always wins over DirectX 12 on the same card), the DirectX 12 adapters are not opened at all: opening them creates a DirectX 12 device per card and could freeze the start for up to a few seconds ("Vulkan offers a dedicated GPU ..., DirectX 12 adapters are not opened" in the log). Setting `HP_ADAPTER` or choosing the API keeps the full search.
 
 To force an API, set the `WGPU_BACKEND` environment variable before starting Hammer Pro, for example in a command prompt:
 

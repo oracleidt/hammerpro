@@ -36,6 +36,7 @@ const HOST_IDLE: f64 = 120.0;
 const PREPARED_IDLE: f64 = 300.0;
 const PREPARE_AFTER_LOAD: f64 = 2.0;
 const PREPARE_IDLE: f64 = 15.0;
+const KEY_WARM_IDLE: f64 = 1.5;
 const PREPARE_INTERVAL: f64 = 60.0;
 const VISIBLE_FIRST_SOLIDS: usize = 6000;
 const VISIBLE_FIRST_RADIUS: f64 = 2048.0;
@@ -290,15 +291,36 @@ fn big_map_radius(state: &mut AppState) -> Option<f64> {
     (map_luxels(state) > limit).then_some(f64::from(s.auto_scope_radius))
 }
 
+static MAP_LUXELS: std::sync::Mutex<Option<(u64, u64, u64)>> = std::sync::Mutex::new(None);
+
 fn map_luxels(state: &mut AppState) -> u64 {
     let revision = state.doc.revision();
     if let Some(b) = state.runtime.lighting.budget.as_ref().filter(|b| b.revision == revision) {
         return b.luxels;
     }
+    let assets = state.assets.lighting_generation();
+    if let Ok(memo) = MAP_LUXELS.lock()
+        && let Some((r, a, luxels)) = *memo
+        && r == revision
+        && a == assets
+    {
+        return luxels;
+    }
+    let t = std::time::Instant::now();
     let kinds = material_kinds(state);
+    let kinds_ms = t.elapsed().as_millis();
     let kind = |m: &str| kinds.get(m).copied().unwrap_or(LightmapKind::Flat);
     let opts = BudgetOptions { styles: 1, top: 0, visible_only: false, tiny_scale: 0.0 };
-    state.doc.lightmap_budget(&opts, &kind).luxels
+    let luxels = state.doc.lightmap_budget(&opts, &kind).luxels;
+    log::info!(
+        "lighting preview: map luxels counted in {} ms ({kinds_ms} ms for {} materials)",
+        t.elapsed().as_millis(),
+        kinds.len()
+    );
+    if let Ok(mut memo) = MAP_LUXELS.lock() {
+        *memo = Some((revision, assets, luxels));
+    }
+    luxels
 }
 
 fn read_lut(fs: Option<&hp_fs::GameFs>, map_dir: Option<&std::path::Path>, name: &str) -> Option<Vec<u8>> {
@@ -786,6 +808,7 @@ fn forget(app: &mut HammerProApp) {
         p.last_scope = None;
         p.lights_revision = 0;
         p.cache = cache::BakeCache::default();
+        p.sent_geometry = None;
     }
     app.state.runtime.lighting.relight = hp_app::runtime::RelightStats::default();
     app.state.runtime.lighting.prepared = hp_app::runtime::PreparedStatus::default();
@@ -926,6 +949,13 @@ impl Package for Lighting {
             app.pkg.lighting.inactive_since = None;
         } else {
             Self::prepare_when_idle(app, ctx, now);
+            if now - app.pkg.lighting.prepare_changed >= KEY_WARM_IDLE
+                && !held
+                && let Some(p) = app.pkg.lighting.preview.as_mut()
+                && p.cache.warm(&app.state.doc)
+            {
+                log::info!("lighting preview: bake keys computed ahead while idle");
+            }
             let pkg = &mut app.pkg.lighting;
             if let Some(p) = pkg.preview.as_mut() {
                 p.hold = true;
@@ -938,6 +968,7 @@ impl Package for Lighting {
                         log::info!("lighting preview: unused for {limit} s, the lighting process is closed");
                         p.worker.release();
                         p.needs_map = true;
+                        p.sent_geometry = None;
                         pkg.inactive_since = None;
                     }
                 }

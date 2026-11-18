@@ -28,8 +28,11 @@ pub(crate) struct SkyRoom {
     pub bounds: (DVec3, DVec3),
 }
 
+const ENV_RESYNC: std::time::Duration = std::time::Duration::from_millis(250);
+
 #[derive(Default)]
 pub(crate) struct EnvState {
+    pub synced: Option<(std::time::Instant, RenderDisplay)>,
     pub sky: Option<(String, [hp_render::MaterialId; 6], Option<[hp_render::MaterialId; 6]>)>,
     pub room: Option<SkyRoom>,
     pub room_dirty: bool,
@@ -268,6 +271,13 @@ impl AssetManager {
         map_changed: bool,
     ) -> (Vec<Id>, Vec<Id>) {
         let env = &mut self.scene.env;
+        if !map_changed
+            && !env.room_dirty
+            && env.synced.is_some_and(|(at, d)| d == *display && at.elapsed() < ENV_RESYNC)
+        {
+            return (Vec::new(), Vec::new());
+        }
+        env.synced = Some((std::time::Instant::now(), *display));
         env.room_dirty |= map_changed;
         let mut changed_solids = Vec::new();
         let mut changed_entities = Vec::new();

@@ -34,6 +34,8 @@ impl VramPressure {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TextureStreaming {
+    pub comfort: u64,
+    pub unknown_model_instances: usize,
     pub enabled: bool,
     pub active: bool,
     pub textures: usize,
@@ -47,6 +49,7 @@ pub struct TextureStreaming {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GpuRelease {
+    Unused,
     BackgroundMaps,
     Caches,
     Textures(u32),
@@ -105,6 +108,11 @@ pub struct GpuRuntime {
     pub texture_limit: u32,
     pub max_texture: u32,
     pub pressure: VramPressure,
+    pub card_pressure: VramPressure,
+    pub card: u64,
+    pub idle_features_freed: u64,
+    pub collect_unused: bool,
+    pub unused_collections: u64,
     pub out_of_memory_events: u64,
     pub releases: u64,
     pub released: GpuReleased,

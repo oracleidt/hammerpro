@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 pub const MARKS: usize = 8;
-const SAMPLES: usize = 6;
+const SAMPLES: usize = 16;
 const STRIDE: u64 = 256;
 const IDLE: u32 = 0;
 const PENDING: u32 = 1;
@@ -58,12 +58,21 @@ pub struct FrameTimes {
     pub reflection_gpu: Option<GpuTimes>,
     pub reflection_cpu_ms: f32,
     pub gpu_supported: bool,
+    pub views_2d_gpu_ms_total: f64,
+    pub views_2d_timed: u64,
 }
 
 struct Sample {
     read: wgpu::Buffer,
     state: Arc<AtomicU32>,
-    reflection: bool,
+    kind: SampleKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SampleKind {
+    Main,
+    Reflection,
+    Ortho,
 }
 
 pub(crate) struct GpuProfiler {
@@ -76,6 +85,8 @@ pub(crate) struct GpuProfiler {
     pub latest_reflection: f32,
     pub latest_reflection_passes: Option<GpuTimes>,
     pub finished: u64,
+    pub ortho_ms_total: f64,
+    pub ortho_timed: u64,
 }
 
 pub fn wanted_features(adapter: &wgpu::Adapter) -> wgpu::Features {
@@ -109,7 +120,7 @@ impl GpuProfiler {
                     mapped_at_creation: false,
                 }),
                 state: Arc::new(AtomicU32::new(IDLE)),
-                reflection: false,
+                kind: SampleKind::Main,
             })
             .collect();
         let period = queue.get_timestamp_period();
@@ -123,6 +134,8 @@ impl GpuProfiler {
             latest_reflection: 0.0,
             latest_reflection_passes: None,
             finished: 0,
+            ortho_ms_total: 0.0,
+            ortho_timed: 0,
         })
     }
 
@@ -158,12 +171,19 @@ impl GpuProfiler {
                         present_ms: ms(5, 6),
                         outline_ms: ms(6, 7),
                     };
-                    if s.reflection {
-                        self.latest_reflection = times.total_ms;
-                        self.latest_reflection_passes = Some(times);
-                    } else {
-                        self.finished += 1;
-                        self.latest = Some(times);
+                    match s.kind {
+                        SampleKind::Reflection => {
+                            self.latest_reflection = times.total_ms;
+                            self.latest_reflection_passes = Some(times);
+                        }
+                        SampleKind::Ortho => {
+                            self.ortho_ms_total += f64::from(times.total_ms);
+                            self.ortho_timed += 1;
+                        }
+                        SampleKind::Main => {
+                            self.finished += 1;
+                            self.latest = Some(times);
+                        }
                     }
                 }
                 FAILED => {
@@ -175,10 +195,10 @@ impl GpuProfiler {
         }
     }
 
-    pub fn begin(&mut self, reflection: bool) {
+    pub fn begin(&mut self, kind: SampleKind) {
         self.active = self.samples.iter().position(|s| s.state.load(Ordering::Acquire) == IDLE);
         if let Some(i) = self.active {
-            self.samples[i].reflection = reflection;
+            self.samples[i].kind = kind;
         }
     }
 

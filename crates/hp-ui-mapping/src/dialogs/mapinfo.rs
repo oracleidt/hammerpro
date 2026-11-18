@@ -117,6 +117,7 @@ impl MapInfoDialog {
         let materials: Vec<String> = self.materials.iter().map(|(m, _)| m.clone()).collect();
         let (tx, rx) = std::sync::mpsc::channel();
         let spawned = std::thread::Builder::new().name("hp-texture-memory".into()).spawn(move || {
+            hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
             let _ = tx.send(texture_memory(&fs, materials));
         });
         if spawned.is_ok() {

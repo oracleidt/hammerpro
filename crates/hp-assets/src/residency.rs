@@ -13,6 +13,10 @@ pub(crate) const LOWER_AFTER: Duration = Duration::from_secs(2);
 pub(crate) const MAX_STREAMING: usize = 24;
 pub(crate) const MIN_VIEW_HEIGHT: f32 = 1080.0;
 const AGGRESSION_STEPS: [f32; 5] = [1.0, 2.0, 4.0, 8.0, 16.0];
+const SCREEN_EXACT: f32 = 2.0;
+const COMFORT_SHARE: u64 = 8;
+const COMFORT_MIN: u64 = 192 << 20;
+const COMFORT_MAX: u64 = 512 << 20;
 const DENSITY_FLOOR: f32 = 1e-3;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -54,6 +58,7 @@ pub(crate) struct ScenePlacements {
     pub objects: AHashMap<ObjectId, Placement>,
     pub instances: Vec<(ObjectId, Placement)>,
     pub unknown_models: bool,
+    pub unknown_instances: usize,
     pub revision: u64,
 }
 
@@ -86,14 +91,16 @@ impl ScenePlacements {
         &mut self,
         items: impl Iterator<Item = (ObjectId, Option<&'a ModelMeta>, &'a [[f32; 4]; 4])>,
     ) {
-        let mut unknown = false;
+        let mut unknown = 0usize;
         let mut out = Vec::new();
         for (object, meta, transform) in items {
             match meta {
                 Some(meta) => out.extend(instance_placement(meta, transform).map(|p| (object, p))),
-                None => unknown = true,
+                None => unknown += 1,
             }
         }
+        self.unknown_instances = unknown;
+        let unknown = unknown > 0;
         if out != self.instances || unknown != self.unknown_models {
             self.instances = out;
             self.unknown_models = unknown;
@@ -458,6 +465,18 @@ pub(crate) fn texture_bytes(bytes: u64, top: u32, dim: u32) -> u64 {
     (bytes as f64 * ratio * ratio) as u64
 }
 
+pub(crate) fn comfort_for(budget: u64) -> u64 {
+    if budget == 0 { 0 } else { (budget / COMFORT_SHARE).clamp(COMFORT_MIN, COMFORT_MAX).min(budget) }
+}
+
+pub(crate) fn aggression_within(budget: u64, comfort: u64, mut total_at: impl FnMut(f32) -> u64) -> f32 {
+    let hard = aggression_for(budget, &mut total_at);
+    if hard >= SCREEN_EXACT || comfort == 0 || total_at(1.0) <= comfort {
+        return hard;
+    }
+    SCREEN_EXACT
+}
+
 pub(crate) fn aggression_for(budget: u64, mut total_at: impl FnMut(f32) -> u64) -> f32 {
     if budget == 0 {
         return 1.0;
@@ -485,16 +504,22 @@ pub(crate) struct Residency {
     pub report: hp_app::runtime::TextureStreaming,
     pub probes: Option<ProbeCache>,
     pub fresh: Option<(Instant, u64)>,
+    pub moved: bool,
+    pub seen_revision: Option<u64>,
 }
 
 impl Residency {
     pub(crate) fn note_view(&mut self, view: u32, params: &ViewParams, frame: u64) {
         match view_cam(params, frame) {
             Some(cam) => {
-                self.views.insert(view, cam);
+                if let Some(old) = self.views.insert(view, cam) {
+                    self.moved |= old.kind != cam.kind;
+                } else {
+                    self.moved = true;
+                }
             }
             None => {
-                self.views.remove(&view);
+                self.moved |= self.views.remove(&view).is_some();
             }
         }
     }
@@ -711,6 +736,20 @@ mod tests {
             Placement { min: [-1.0e5, -1.0e5, 0.0], max: [1.0e5, 1.0e5, 8.0], mats: vec![(1, Density::Scale(4.0))] };
         scene.set_object(3, wide);
         assert!(probe_needs(&scene, &probes, 2)[1].placed, "huge placements are always checked");
+    }
+
+    #[test]
+    fn the_comfort_budget_only_goes_to_screen_resolution() {
+        assert_eq!(comfort_for(0), 0);
+        assert_eq!(comfort_for(3918 << 20), (3918 << 20) / 8);
+        assert_eq!(comfort_for(540 << 20), 192 << 20);
+        assert_eq!(comfort_for(100 << 20), 100 << 20);
+        assert_eq!(comfort_for(16 << 30), 512 << 20);
+        assert_eq!(aggression_within(1000, 600, |a| (500.0 / a) as u64), 1.0, "under the comfort budget");
+        assert_eq!(aggression_within(1000, 400, |a| (500.0 / a) as u64), 2.0, "screen resolution over it");
+        assert_eq!(aggression_within(100, 50, |a| (400.0 / a) as u64), 4.0, "the hard budget still wins");
+        assert_eq!(aggression_within(1000, 0, |a| (500.0 / a) as u64), 1.0);
+        assert_eq!(aggression_within(0, 0, |_| u64::MAX), 1.0);
     }
 
     #[test]

@@ -196,6 +196,24 @@ impl ShadowMaps {
     }
 }
 
+fn image_array(device: &wgpu::Device, size: u32, layers: u32) -> (wgpu::Texture, wgpu::TextureView) {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("hp-render projector textures"),
+        size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: layers },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    let view = texture.create_view(&wgpu::TextureViewDescriptor {
+        dimension: Some(wgpu::TextureViewDimension::D2Array),
+        ..Default::default()
+    });
+    (texture, view)
+}
+
 impl Projectors {
     pub(crate) fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -205,24 +223,7 @@ impl Projectors {
             mapped_at_creation: false,
         });
         queue.write_buffer(&buffer, 0, bytemuck::cast_slice(&[ProjectorGpu::default(); MAX_PROJECTORS]));
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("hp-render projector textures"),
-            size: wgpu::Extent3d {
-                width: PROJECTOR_TEXTURE_SIZE,
-                height: PROJECTOR_TEXTURE_SIZE,
-                depth_or_array_layers: MAX_PROJECTORS as u32,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        let view = texture.create_view(&wgpu::TextureViewDescriptor {
-            dimension: Some(wgpu::TextureViewDimension::D2Array),
-            ..Default::default()
-        });
+        let (texture, view) = image_array(device, 1, 1);
         Self {
             buffer,
             view,
@@ -253,10 +254,19 @@ impl Projectors {
         );
     }
 
+    pub(crate) fn has_image_array(&self) -> bool {
+        self.texture.width() == PROJECTOR_TEXTURE_SIZE
+    }
+
     pub(crate) fn set(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, list: &[Projector]) -> bool {
         let clean: Vec<Projector> = list.iter().take(MAX_PROJECTORS).map(sanitize).collect();
         if clean == self.list {
             return false;
+        }
+        if !self.has_image_array() && clean.iter().any(|p| p.image.is_some()) {
+            (self.texture, self.view) = image_array(device, PROJECTOR_TEXTURE_SIZE, MAX_PROJECTORS as u32);
+            self.layers_with_image = [false; MAX_PROJECTORS];
+            self.list.clear();
         }
         let mut records = [ProjectorGpu::default(); MAX_PROJECTORS];
         let mut next_shadow = 0usize;
@@ -303,10 +313,11 @@ impl Projectors {
 impl Renderer {
     pub fn set_projectors(&mut self, list: &[Projector]) {
         let had_maps = self.projectors.has_shadow_maps();
+        let had_images = self.projectors.has_image_array();
         if self.projectors.set(&self.device, &self.queue, list) {
-            self.content_gen += 1;
+            self.bump_3d_content();
             self.shadow_epoch += 1;
-            if had_maps != self.projectors.has_shadow_maps() {
+            if had_maps != self.projectors.has_shadow_maps() || had_images != self.projectors.has_image_array() {
                 self.scene_gen += 1;
             }
         }
@@ -327,7 +338,7 @@ impl Renderer {
             return (0, 0);
         }
         if self.projectors.pipelines.is_none() {
-            self.projectors.pipelines = Some(ShadowPipelines::new(&self.device, &self.shared));
+            self.projectors.pipelines = Some(ShadowPipelines::shared(&self.device, &self.shared));
         }
         let mut todo: Vec<(usize, Mat4)> = Vec::new();
         let mut slot = 0usize;

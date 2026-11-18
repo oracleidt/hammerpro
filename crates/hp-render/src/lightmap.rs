@@ -129,6 +129,8 @@ struct Draw {
     material: u32,
     first: u32,
     count: u32,
+    lo: Vec3,
+    hi: Vec3,
 }
 
 struct BlockGpu {
@@ -442,7 +444,7 @@ impl Renderer {
             lm.display = display;
             lm.exposure = exposure;
             self.write_lightmap_params();
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
         if display_changed {
             self.refresh_baked_light_delta();
@@ -454,7 +456,7 @@ impl Renderer {
         if self.lightmap.ldr != ldr {
             self.lightmap.ldr = ldr;
             self.write_lightmap_params();
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
     }
 
@@ -637,12 +639,15 @@ impl Renderer {
             }
             let base = verts.len() as u32;
             let first = indices.len() as u32;
+            let (mut draw_lo, mut draw_hi) = (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY));
             for v in b.vertices {
                 let p = Vec3::from(v.pos);
                 let ok = p.is_finite() && v.uv.iter().chain(&v.lm).all(|c| c.is_finite()) && v.alpha.is_finite();
                 if ok {
                     lo = lo.min(p);
                     hi = hi.max(p);
+                    draw_lo = draw_lo.min(p);
+                    draw_hi = draw_hi.max(p);
                 }
                 verts.push(if ok { *v } else { LightmapVertex { face: u32::MAX, ..Default::default() } });
             }
@@ -655,7 +660,7 @@ impl Renderer {
             let count = indices.len() as u32 - first;
             if count > 0 {
                 let material = self.scene.material_slot(b.material);
-                draws.push(Draw { material, first, count });
+                draws.push(Draw { material, first, count, lo: draw_lo, hi: draw_hi });
             }
         }
         self.sync_materials();
@@ -698,12 +703,12 @@ impl Renderer {
         self.lightmap.blocks.insert(id, block);
         self.staging.wrote(&self.device, &self.queue, staged);
         self.cubes.epoch += 1;
-        self.content_gen += 1;
+        self.bump_3d_content();
     }
 
     pub fn remove_lightmap_block(&mut self, id: u32) {
         if self.lightmap.blocks.remove(&id).is_some() {
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
     }
 
@@ -920,7 +925,7 @@ impl Renderer {
             self.lightmap.mark(face);
         }
         self.flush_lightmap_faces();
-        self.content_gen += 1;
+        self.bump_3d_content();
     }
 
     pub fn clear_lightmap_faces(&mut self, faces: &[u32]) {
@@ -952,7 +957,7 @@ impl Renderer {
         lm.face_buf = None;
         lm.atlas = None;
         lm.bind_group = None;
-        self.content_gen += 1;
+        self.bump_3d_content();
     }
 
     pub fn lightmap_stats(&self) -> LightmapStats {
@@ -1016,7 +1021,7 @@ impl Renderer {
             lm.mark_all();
         }
         if lm.upload_dirty(&self.queue) {
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
         if grow {
             self.ensure_lightmap_resources();
@@ -1163,7 +1168,23 @@ fn pipeline(
     })
 }
 
-fn box_visible(view_proj: &Mat4, lo: Vec3, hi: Vec3) -> bool {
+fn box_inside(outer: (Vec3, Vec3), lo: Vec3, hi: Vec3) -> bool {
+    outer.0.cmple(lo).all() && hi.cmple(outer.1).all()
+}
+
+fn box_inside_frustum(view_proj: &Mat4, lo: Vec3, hi: Vec3) -> bool {
+    (0..8).all(|c| {
+        let p = Vec3::new(
+            if c & 1 != 0 { hi.x } else { lo.x },
+            if c & 2 != 0 { hi.y } else { lo.y },
+            if c & 4 != 0 { hi.z } else { lo.z },
+        );
+        let q: Vec4 = *view_proj * p.extend(1.0);
+        q.w > 0.0 && q.x >= -q.w && q.x <= q.w && q.y >= -q.w && q.y <= q.w
+    })
+}
+
+pub(crate) fn box_visible(view_proj: &Mat4, lo: Vec3, hi: Vec3) -> bool {
     let mut outside = [true; 5];
     for c in 0..8 {
         let p = Vec3::new(
@@ -1198,7 +1219,7 @@ impl PassHook for LightmapPass {
             return;
         }
         let set = lm.kit.pipelines(cx.device(), &r.shared, cx.samples, lm.display == LightmapDisplay::Grid);
-        draw_blocks(cx, pass, set);
+        draw_blocks(cx, pass, set, None);
     }
 }
 
@@ -1213,11 +1234,11 @@ impl LightmapPass {
             return;
         }
         let set = r.lightmap.kit.surface_pipelines(cx.device(), &r.shared);
-        draw_blocks(cx, pass, set);
+        draw_blocks(cx, pass, set, r.surface_bounds);
     }
 }
 
-fn draw_blocks(cx: &HookContext<'_>, pass: &mut wgpu::RenderPass<'_>, set: &PipelineSet) {
+fn draw_blocks(cx: &HookContext<'_>, pass: &mut wgpu::RenderPass<'_>, set: &PipelineSet, near: Option<(Vec3, Vec3)>) {
     let r = cx.renderer;
     let lm = &r.lightmap;
     let Some(bind_group) = &lm.bind_group else { return };
@@ -1227,12 +1248,23 @@ fn draw_blocks(cx: &HookContext<'_>, pass: &mut wgpu::RenderPass<'_>, set: &Pipe
     let mut current: Option<(usize, usize)> = None;
     let mut material = u32::MAX;
     for block in lm.blocks.values() {
-        if !box_visible(&view_proj, block.lo, block.hi) {
+        if !box_visible(&view_proj, block.lo, block.hi)
+            || near.is_some_and(|b| !crate::surface_light::overlaps(b, block.lo, block.hi))
+        {
             continue;
         }
         pass.set_vertex_buffer(0, block.vbuf.slice(..));
         pass.set_index_buffer(block.ibuf.slice(..), wgpu::IndexFormat::Uint32);
+        let whole = near.is_none_or(|b| box_inside(b, block.lo, block.hi))
+            && box_inside_frustum(&view_proj, block.lo, block.hi);
         for d in &block.draws {
+            if !whole
+                && (!d.lo.cmple(d.hi).all()
+                    || !box_visible(&view_proj, d.lo, d.hi)
+                    || near.is_some_and(|b| !crate::surface_light::overlaps(b, d.lo, d.hi)))
+            {
+                continue;
+            }
             let desc = r.scene.materials.get(d.material as usize).and_then(|m| m.desc);
             let Some((kind, two_sided)) = classify_with(desc.as_ref(), cx.options.force_opaque, false) else {
                 continue;
@@ -1277,6 +1309,17 @@ mod tests {
         assert_eq!(LightmapRect { bumped: false, ..r }.images(), 1);
         assert_eq!(pack_blend([1.0, 0.0, 0.0, 0.0]), crate::gpu::BLEND_PAINTED);
         assert_eq!(pack_blend([0.0, 1.0, 0.0, 0.0]), 1023 | crate::gpu::BLEND_PAINTED);
+    }
+
+    #[test]
+    fn a_block_fully_in_view_skips_the_per_draw_tests() {
+        let vp = Mat4::from_cols(Vec4::W, -Vec4::X, Vec4::Y, Vec4::Z);
+        assert!(box_inside_frustum(&vp, Vec3::new(100.0, -5.0, -5.0), Vec3::new(110.0, 5.0, 5.0)));
+        assert!(!box_inside_frustum(&vp, Vec3::new(100.0, -500.0, -5.0), Vec3::new(110.0, 5.0, 5.0)), "partly out");
+        assert!(!box_inside_frustum(&vp, Vec3::new(-10.0, -5.0, -5.0), Vec3::new(110.0, 5.0, 5.0)), "behind");
+        let near = (Vec3::splat(-10.0), Vec3::splat(10.0));
+        assert!(box_inside(near, Vec3::splat(-1.0), Vec3::splat(1.0)));
+        assert!(!box_inside(near, Vec3::splat(-1.0), Vec3::splat(11.0)));
     }
 
     #[test]

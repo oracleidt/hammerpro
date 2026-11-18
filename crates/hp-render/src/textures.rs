@@ -6,6 +6,8 @@ use crate::types::{RenderError, TexFormat, TextureUpload};
 pub(crate) struct TexEntry {
     pub view: wgpu::TextureView,
     pub bytes: u64,
+    pub format: wgpu::TextureFormat,
+    pub size: u32,
 }
 
 pub(crate) struct Prepared<'a> {
@@ -257,7 +259,7 @@ pub(crate) fn upload(device: &wgpu::Device, queue: &wgpu::Queue, p: &Prepared<'_
         bytes += need as u64;
     }
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-    TexEntry { view, bytes }
+    TexEntry { view, bytes, format: p.format, size: p.width.max(p.height) }
 }
 
 pub(crate) fn builtin_missing() -> TextureUpload {

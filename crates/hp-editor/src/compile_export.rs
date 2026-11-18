@@ -120,17 +120,26 @@ impl Document {
     pub fn compile_snapshot(&self, export: &CompileExport) -> CompileSnapshot {
         let boxes = if export.cordons { self.cordon_boxes() } else { Vec::new() };
         let excludes = if export.cordons { self.exclude_cordon_boxes() } else { Vec::new() };
-        self.snapshot_in(export, boxes, excludes)
+        self.snapshot_in(export, boxes, excludes, false)
     }
 
     pub fn compile_snapshot_in(&self, export: &CompileExport, boxes: &[Aabb]) -> CompileSnapshot {
         let excludes = if export.cordons { self.exclude_cordon_boxes() } else { Vec::new() };
-        self.snapshot_in(export, boxes.to_vec(), excludes)
+        self.snapshot_in(export, boxes.to_vec(), excludes, true)
     }
 
-    fn snapshot_in(&self, export: &CompileExport, boxes: Vec<Aabb>, excludes: Vec<Aabb>) -> CompileSnapshot {
+    fn snapshot_in(
+        &self,
+        export: &CompileExport,
+        boxes: Vec<Aabb>,
+        excludes: Vec<Aabb>,
+        prefilter: bool,
+    ) -> CompileSnapshot {
         let boxes: Vec<Aabb> = boxes.iter().filter_map(clamp_to_world).collect();
-        let mut map = self.to_map();
+        let outside = |n: &crate::scene::SolidNode| n.owner == Owner::World && !touches_any(&boxes, &n.bounds);
+        let prefilter = prefilter && !boxes.is_empty();
+        let mut map = if prefilter { self.to_map_keeping(&|n| !outside(n)) } else { self.to_map() };
+        let skipped = if prefilter { self.scene().solids().values().filter(|n| outside(n)).count() } else { 0 };
         let scene = self.scene();
         let mut hidden = 0usize;
         match export.visibility {
@@ -161,7 +170,7 @@ impl Document {
             }
         }
 
-        let mut cordoned_out = 0usize;
+        let mut cordoned_out = skipped;
         let mut added_player_start = false;
         if !excludes.is_empty() {
             let cut = |id: Id| scene.solid(id).is_some_and(|n| crate::visibility::box_inside_any(&excludes, &n.bounds));
@@ -431,6 +440,28 @@ entity { "id" "12" "classname" "info_player_start" "origin" "1032 1032 100" }
         let all = d.compile_snapshot_in(&CompileExport::default(), &[]);
         assert_eq!(all.map.world.solids.len(), 2);
         assert!(!all.is_cordoned());
+    }
+
+    #[test]
+    fn a_region_snapshot_skips_the_far_world_but_counts_it() {
+        let d = doc();
+        let around = Aabb::new(DVec3::new(900.0, 900.0, -64.0), DVec3::new(1200.0, 1200.0, 256.0));
+        let snap = d.compile_snapshot_in(&CompileExport::default(), &[around]);
+        let full = d.snapshot_in(&CompileExport::default(), vec![around], Vec::new(), false);
+        let ids = |m: &Map| {
+            let mut v: Vec<Id> = m.world.solids.iter().map(|s| s.id).collect();
+            v.sort_unstable();
+            v
+        };
+        assert_eq!(ids(&snap.map), ids(&full.map), "the same world reaches the lighting");
+        let names = |m: &Map| {
+            let mut v: Vec<(Id, usize)> = m.entities.iter().map(|e| (e.id, e.solids.len())).collect();
+            v.sort_unstable();
+            v
+        };
+        assert_eq!(names(&snap.map), names(&full.map), "the same entities and brush entity solids");
+        assert_eq!(snap.cordoned_out, full.cordoned_out, "the far world is still counted as left out");
+        assert_eq!(snap.kept_after_cordon, full.kept_after_cordon);
     }
 
     #[test]

@@ -941,6 +941,7 @@ impl AssetManager {
         }
         let world_index = world.as_ref().map(|_| std::mem::take(&mut self.play_world.static_props));
         let mut seen: std::collections::HashSet<u32> = std::collections::HashSet::with_capacity(list.len());
+        let mut planned: Vec<(ModelInstance, Option<[f32; 3]>, PlannedLighting)> = Vec::new();
         for inst in list {
             let entity = inst.object & crate::entities::ENTITY_BIT != 0;
             if !(entity || inst.object == crate::player::PLAYER_OBJECT) || !seen.insert(inst.object) {
@@ -955,14 +956,25 @@ impl AssetManager {
             if fresh {
                 continue;
             }
-            let lighting = match (&world, &world_index, &baked) {
-                (Some(w), Some(index), _) => self.instance_lighting(Some(w), &w.light.props, index, inst, at),
+            let plan = match (&world, &world_index, &baked) {
+                (Some(w), Some(index), _) => self.plan_instance_lighting(Some(w), &w.light.props, index, inst, at),
                 (None, _, Some(_)) if !in_region(self.play_world.baked_region, &inst.transform) => continue,
-                (None, _, Some((props, index))) => self.instance_lighting(None, props, index, inst, at),
+                (None, _, Some((props, index))) => self.plan_instance_lighting(None, props, index, inst, at),
                 _ => continue,
             };
-            let (lighting, waits) = lighting;
-            self.play_world.model_lights.insert(inst.object, (inst.model, inst.transform, at, lighting, waits));
+            planned.push((*inst, at, plan));
+        }
+        let props = match (&world, &baked) {
+            (Some(w), _) => Some(&w.light.props),
+            (None, Some((p, _))) => Some(p.as_ref()),
+            (None, None) => None,
+        };
+        if let Some(props) = props {
+            use rayon::prelude::*;
+            let lit: Vec<(ModelLighting, bool)> = planned.par_iter().map(|(_, _, plan)| plan.finish(props)).collect();
+            for ((inst, at, _), (lighting, waits)) in planned.iter().zip(lit) {
+                self.play_world.model_lights.insert(inst.object, (inst.model, inst.transform, *at, lighting, waits));
+            }
         }
         if let Some(index) = world_index {
             self.play_world.static_props = index;
@@ -977,17 +989,17 @@ impl AssetManager {
         }
     }
 
-    fn instance_lighting(
+    fn plan_instance_lighting(
         &mut self,
         world: Option<&BspWorld>,
         props: &world_light::PropLighting,
         index: &StaticPropIndex,
         inst: &ModelInstance,
         lighting_origin: Option<[f32; 3]>,
-    ) -> (ModelLighting, bool) {
+    ) -> PlannedLighting {
         if world.is_some() && inst.object == rope_object() {
             let colors = self.play_world.ropes.as_ref().map(|r| r.colors.clone()).unwrap_or_default();
-            return (
+            return PlannedLighting::Done(
                 ModelLighting {
                     object: inst.object,
                     sample_origin: None,
@@ -1034,7 +1046,6 @@ impl AssetManager {
             (Some(o), _) | (None, Some(o)) => o,
             (None, None) => m.transform_point3(center).to_array(),
         };
-        let lit = props.model_lighting(lighting_origin);
         let colors = prop.and_then(|p| p.colors.as_ref()).and_then(|colors| {
             let data = data.as_ref()?;
             let mut out = Vec::new();
@@ -1062,16 +1073,33 @@ impl AssetManager {
             }
             (!out.is_empty()).then_some(out)
         });
-        let lighting = ModelLighting {
-            object: inst.object,
-            sample_origin: Some(lighting_origin),
-            model: colors.as_ref().map(|_| inst.model),
-            vertex_colors: colors.unwrap_or_default(),
-            ambient: lit.ambient,
-            lights: lit.lights.iter().map(local_light).collect(),
-            styled_lights: lit.styled.iter().map(local_light).collect(),
-        };
-        (lighting, waits)
+        PlannedLighting::Sample { object: inst.object, model: inst.model, origin: lighting_origin, colors, waits }
+    }
+}
+
+enum PlannedLighting {
+    Done(ModelLighting, bool),
+    Sample { object: u32, model: hp_render::ModelId, origin: [f32; 3], colors: Option<Vec<[u8; 4]>>, waits: bool },
+}
+
+impl PlannedLighting {
+    fn finish(&self, props: &world_light::PropLighting) -> (ModelLighting, bool) {
+        match self {
+            PlannedLighting::Done(lighting, waits) => (lighting.clone(), *waits),
+            PlannedLighting::Sample { object, model, origin, colors, waits } => {
+                let lit = props.model_lighting(*origin);
+                let lighting = ModelLighting {
+                    object: *object,
+                    sample_origin: Some(*origin),
+                    model: colors.as_ref().map(|_| *model),
+                    vertex_colors: colors.clone().unwrap_or_default(),
+                    ambient: lit.ambient,
+                    lights: lit.lights.iter().map(local_light).collect(),
+                    styled_lights: lit.styled.iter().map(local_light).collect(),
+                };
+                (lighting, *waits)
+            }
+        }
     }
 }
 

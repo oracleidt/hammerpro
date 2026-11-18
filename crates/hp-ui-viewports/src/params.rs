@@ -60,6 +60,7 @@ impl RenderConfig {
         let sel = rgb_f32(v.selection_color);
         let r = &state.settings.render;
         let plan = state.runtime.render.perf.plan(r.performance_mode);
+        let light = state.runtime.render.perf.lightweight(r.performance_mode);
         let water_detail = match (plan.reflections, r.water_detail.detail()) {
             (Reflections::Simple, _) | (_, hp_render::WaterDetail::Simple) => hp_render::WaterDetail::Simple,
             (Reflections::World, _) | (_, hp_render::WaterDetail::ReflectWorld) => hp_render::WaterDetail::ReflectWorld,
@@ -67,7 +68,7 @@ impl RenderConfig {
         };
         let finite = |x: f32, d: f32| if x.is_finite() { x } else { d };
         let options_3d = ViewOptions {
-            shadow_control: hp_app::runtime::shadow::preview(state),
+            shadow_control: if light { None } else { hp_app::runtime::shadow::preview(state) },
             screen_fade: state.runtime.fade.sample(state).map_or([0.0; 4], |s| s.0),
             fade_modulate: state.runtime.fade.sample(state).is_some_and(|s| s.1),
             grid_3d: r.grid_3d.then(|| Grid3d {
@@ -78,7 +79,7 @@ impl RenderConfig {
             }),
             model_distance: plan.model_distance_for(finite(r.model_distance, 0.0).max(0.0)),
             show_sky: r.sky_preview,
-            show_sky_3d: r.skybox_3d,
+            show_sky_3d: r.skybox_3d && !light,
             sky_see_through: r.sky_see_through,
             water_preview: r.water_preview,
             water_detail,
@@ -504,6 +505,33 @@ mod tests {
         assert!(opts(&state, 1, ViewKind::Top).walk_marks);
         let o3 = opts(&state, 0, ViewKind::Perspective);
         assert!(o3.walk_marks && o3.detail_2d == Detail2d::All, "3D views always show the grid");
+    }
+
+    #[test]
+    fn lightweight_draws_like_hammer_at_full_resolution() {
+        use hp_app::settings::PerformanceMode;
+        let mut state = hp_app::testing::test_state();
+        state.settings.render.performance_mode = PerformanceMode::Lightweight;
+        let light = RenderConfig::from_state(&state);
+        assert_eq!(light.render_scale, 1.0, "full resolution, nothing blurry");
+        assert!(
+            !light.msaa && !light.options_3d.normal_maps && !light.options_3d.cubemaps && !light.options_3d.sun_glow
+        );
+        assert!(!light.options_3d.show_sky_3d && light.options_3d.shadow_control.is_none());
+        assert_eq!(light.options_3d.light_shadows, 0);
+        assert_eq!(light.options_3d.water_detail, hp_render::WaterDetail::Simple);
+        assert_eq!(light.options_3d.model_distance, 0.0, "every prop is still drawn");
+        assert!(light.options_3d.show_sky, "the sky stays");
+        assert_eq!(tone_for(&state.settings.render, &light.plan).bloom, 0.0);
+        state.settings.render.performance_mode = PerformanceMode::Auto;
+        assert!(
+            state.runtime.render.perf.note_low_end(PerformanceMode::Auto, Some(hp_app::runtime::LowEnd::Integrated))
+        );
+        let auto = RenderConfig::from_state(&state);
+        assert!(
+            !auto.msaa && !auto.options_3d.show_sky_3d,
+            "Auto starts in the lightweight mode on a weak graphics card"
+        );
     }
 
     #[test]

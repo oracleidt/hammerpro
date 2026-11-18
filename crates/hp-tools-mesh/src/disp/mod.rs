@@ -18,6 +18,7 @@ pub(crate) mod slope_ui;
 pub(crate) mod smooth;
 pub mod subdivision;
 pub mod tags;
+pub mod terraform;
 pub mod terrain_windows;
 
 use std::cell::{Cell, RefCell};
@@ -79,6 +80,7 @@ struct StrokeState {
     told: bool,
     last_spot: Option<(Pos2, [u64; 5])>,
     grab_anchor: Option<(FaceRef, DVec3)>,
+    terra: terraform::TerraStroke,
 }
 
 fn locked_neighbours(allowed: &[FaceRef], faces: &[FaceRef]) -> Vec<FaceRef> {
@@ -159,6 +161,7 @@ enum PanelAction {
     LoopSmooth,
     LoopHeight,
     LoopClear,
+    Mask(terraform::ui::MaskCommand),
 }
 
 pub struct DisplacementTool {
@@ -174,6 +177,7 @@ pub struct DisplacementTool {
     pub terrain: erode::TerrainOptions,
     pub blend: blend::BlendOptions,
     pub slope: slope::SlopeOptions,
+    pub terraform: terraform::TerraformSettings,
     blend_sets: [Vec<FaceRef>; 2],
     blend_preview: bool,
     preview_cache: slope_ui::PreviewCache,
@@ -208,6 +212,7 @@ impl Default for DisplacementTool {
             terrain: erode::TerrainOptions::default(),
             blend: blend::BlendOptions::default(),
             slope: slope::SlopeOptions::default(),
+            terraform: terraform::TerraformSettings::default(),
             blend_sets: [Vec::new(), Vec::new()],
             blend_preview: true,
             preview_cache: RefCell::new(None),
@@ -571,7 +576,12 @@ impl DisplacementTool {
     }
 
     fn highlight_opts(&self) -> highlight::HighlightOpts {
-        highlight::HighlightOpts { grid: !self.mask_grid, tint: !self.mask_select, removed: true }
+        highlight::HighlightOpts {
+            grid: !self.mask_grid,
+            tint: !self.mask_select,
+            removed: true,
+            terrain_mask: self.terraform.mask_show && self.interaction != Interaction::Select,
+        }
     }
 
     pub(crate) fn begin_stroke(&mut self, state: &mut AppState, view: usize) {
@@ -579,6 +589,8 @@ impl DisplacementTool {
         let label = match self.interaction {
             Interaction::Sculpt => paint::UNDO_SCULPT,
             Interaction::Tag => tags::UNDO_TAG,
+            Interaction::Terraform if self.terraform.op == terraform::TerraOp::Mask => terraform::mask::UNDO_MASK,
+            Interaction::Terraform => terraform::UNDO_TERRAFORM,
             _ => UNDO_STROKE,
         };
         self.begin_stroke_with(state, view, filter, label.to_owned());
@@ -602,6 +614,7 @@ impl DisplacementTool {
             told: false,
             last_spot: None,
             grab_anchor: None,
+            terra: terraform::TerraStroke::default(),
         });
     }
 
@@ -636,6 +649,14 @@ impl DisplacementTool {
         false
     }
 
+    fn terraforming(&self) -> bool {
+        self.interaction == Interaction::Terraform
+    }
+
+    fn terraform_smooths(&self, mods: Modifiers) -> bool {
+        self.terraforming() && mods.shift && self.terraform.op.shift_smooths()
+    }
+
     #[cfg(test)]
     pub(crate) fn paint_at(&mut self, state: &mut AppState, center: DVec3, invert: bool) -> usize {
         let mods = if self.interaction == Interaction::Sculpt || self.relaxing() {
@@ -660,6 +681,7 @@ impl DisplacementTool {
         }
         match self.interaction {
             Interaction::Sculpt => mods.ctrl || mods.command,
+            Interaction::Terraform => mods.shift && !self.terraform.op.shift_smooths(),
             _ => mods.shift,
         }
     }
@@ -700,16 +722,30 @@ impl DisplacementTool {
         if self.smoothing(mods) && (mods.ctrl || mods.command) {
             brush.smooth_boost *= paint::BOOST_KEY_FACTOR;
         }
+        if self.terraforming() && self.terraform.op == terraform::TerraOp::Stamp {
+            brush.radius = (brush.radius * self.terraform.stamp_scale).clamp(1.0, paint::MAX_RADIUS);
+        }
+        if self.terraforming()
+            && self.terraform.op == terraform::TerraOp::Clone
+            && self.terraform.clone_source.is_none()
+            && !mods.shift
+        {
+            self.tell_no_clone_source(state);
+            return 0;
+        }
         let sample = match self.interaction {
-            _ if mods.shift && (self.interaction == Interaction::Sculpt || self.relaxing()) => {
+            _ if mods.shift && (self.interaction == Interaction::Sculpt || self.relaxing())
+                || self.terraform_smooths(mods) =>
+            {
                 let mut smooth = brush.clone();
                 smooth.geo_effect = GeoEffect::Smooth;
                 build_sample(&smooth, Interaction::Geometry, center, false, state.frame.dt)
             }
-            Interaction::Sculpt | Interaction::Tag => None,
+            Interaction::Sculpt | Interaction::Tag | Interaction::Terraform => None,
             _ => build_sample(&brush, self.interaction, center, invert, state.frame.dt),
         };
-        let own_sample = self.relaxing() || matches!(self.interaction, Interaction::Sculpt | Interaction::Tag);
+        let own_sample = self.relaxing()
+            || matches!(self.interaction, Interaction::Sculpt | Interaction::Tag | Interaction::Terraform);
         if sample.is_none() && !own_sample {
             return 0;
         }
@@ -736,7 +772,25 @@ impl DisplacementTool {
             self.tell_unselected(state);
             return 0;
         }
-        let live_sew = brush.autosew && matches!(self.interaction, Interaction::Geometry | Interaction::Sculpt);
+        let live_sew = brush.autosew
+            && matches!(self.interaction, Interaction::Geometry | Interaction::Sculpt | Interaction::Terraform);
+        let guarded = self.interaction != Interaction::Tag
+            && !(self.terraforming() && self.terraform.op == terraform::TerraOp::Mask);
+        let mask_snap = if guarded {
+            let mut probe = filter.clone();
+            if live_sew {
+                for f in filter.clone() {
+                    for g in self.neighbours_of(&state.doc, f) {
+                        if !probe.contains(&g) {
+                            probe.push(g);
+                        }
+                    }
+                }
+            }
+            Some(terraform::mask::snapshot(&state.doc, &probe)).filter(|s| !s.is_empty())
+        } else {
+            None
+        };
         let before: HashMap<FaceRef, Vec<DVec3>> = if live_sew {
             filter
                 .iter()
@@ -770,6 +824,16 @@ impl DisplacementTool {
                 };
                 tags::tag_sample(&mut state.doc, &filter, &b)
             }
+            (None, Some(stroke)) if self.interaction == Interaction::Terraform => terraform::apply::sample(
+                &mut state.doc,
+                &filter,
+                center,
+                &brush,
+                &self.terraform,
+                &mut stroke.terra,
+                invert,
+                dt,
+            ),
             (None, Some(stroke)) => sculpt::sculpt_sample(
                 &mut state.doc,
                 &filter,
@@ -805,6 +869,13 @@ impl DisplacementTool {
                     self.warn(state, text);
                 }
             }
+        }
+        if n > 0
+            && let Some(snap) = mask_snap.as_ref()
+            && let Err(e) = terraform::mask::restore(&mut state.doc, snap, UNDO_STROKE)
+        {
+            let text = tf!("disp.failed", edit_error_text(&e));
+            self.warn(state, text);
         }
         if let Some(s) = self.stroke.as_mut() {
             s.changed += n;
@@ -842,6 +913,17 @@ impl DisplacementTool {
     pub(crate) fn smoothing(&self, mods: Modifiers) -> bool {
         (self.interaction == Interaction::Geometry && self.brush.geo_effect == GeoEffect::Smooth)
             || (mods.shift && (self.interaction == Interaction::Sculpt || self.relaxing()))
+            || self.terraform_smooths(mods)
+    }
+
+    fn tell_no_clone_source(&mut self, state: &mut AppState) {
+        if let Some(stroke) = self.stroke.as_mut() {
+            if stroke.told {
+                return;
+            }
+            stroke.told = true;
+        }
+        self.warn(state, t!("tf.clone.no_source").to_owned());
     }
 
     fn tell_no_project_target(&mut self, state: &mut AppState) {
@@ -1125,7 +1207,11 @@ impl DisplacementTool {
                 self.radius_drag = None;
                 let still = f.pos.is_none_or(|p| p.distance(r.start) <= DRAG_START_PX * 2.0);
                 if !r.right && still && r.radius == self.brush.radius {
-                    self.loop_click(state, view, r.start);
+                    if self.terraforming() && self.terraform.op == terraform::TerraOp::Clone && !view.is_2d() {
+                        self.set_clone_source(state, view, r.start);
+                    } else {
+                        self.loop_click(state, view, r.start);
+                    }
                 }
                 if r.right && still && r.radius == self.brush.radius && !view.is_2d() {
                     self.right_click(state, view, r.start, r.ctrl);
@@ -1210,6 +1296,11 @@ impl DisplacementTool {
             if press.moved <= DRAG_START_PX * 2.0 && !press.sweep {
                 if press.alt {
                     self.loop_click(state, view, press.pos);
+                } else if press.paints && !ctrl && self.terraforming() && self.terraform.op == terraform::TerraOp::Stamp
+                {
+                    self.begin_stroke(state, view.index);
+                    self.paint_at_screen(state, view, press.pos, f.mods);
+                    self.end_stroke(state);
                 } else {
                     if self.pick_path && !view.is_2d() {
                         self.pick_path_point(state, view, press.pos);
@@ -1256,6 +1347,7 @@ impl DisplacementTool {
                 (Interaction::Alpha, "disp.mode.alpha", "disp.mode.alpha_tip"),
                 (Interaction::Sculpt, "disp.mode.sculpt", "disp.mode.sculpt_tip"),
                 (Interaction::Tag, "disp.mode.tag", "disp.mode.tag_tip"),
+                (Interaction::Terraform, "disp.mode.terraform", "disp.mode.terraform_tip"),
             ];
             for (mode, label, tip) in modes {
                 if ui.add(Button::selectable(self.interaction == mode, t!(label))).on_hover_text(t!(tip)).clicked() {
@@ -1430,6 +1522,7 @@ impl DisplacementTool {
             Interaction::Alpha => self.alpha_ui(ui, state.settings.mesh.four_way_blends),
             Interaction::Sculpt => self.sculpt_ui(ui),
             Interaction::Tag => self.tag_ui(ui, state, &mut actions),
+            Interaction::Terraform => self.terraform_ui(ui, state, &mut actions),
         }
         if self.interaction != Interaction::Select {
             self.brush_ui(ui);
@@ -1438,6 +1531,7 @@ impl DisplacementTool {
                 _ if self.relaxing() => t!("disp.hint_relax"),
                 Interaction::Sculpt => t!("disp.hint_sculpt"),
                 Interaction::Tag => t!("disp.hint_tag"),
+                Interaction::Terraform => terraform::ui::hint(self.terraform.op),
                 _ => t!("disp.paint_hint"),
             };
             ui.label(RichText::new(hint).weak());
@@ -2033,7 +2127,7 @@ impl DisplacementTool {
                 self.set_power_with(state, p, self.keep_shape);
             }
             PanelAction::Flatten => {
-                self.flatten(state);
+                terraform::mask::guard_state(state, UNDO_FLATTEN, |s| self.flatten(s));
             }
             PanelAction::Elevation(v) => {
                 self.set_elevation(state, v);
@@ -2081,6 +2175,9 @@ impl DisplacementTool {
                 self.set_loop_height(state);
             }
             PanelAction::LoopClear => self.loops.sel = None,
+            PanelAction::Mask(cmd) => {
+                self.run_mask_on(state, cmd, false);
+            }
             other => self.run_slope(state, other),
         }
     }
@@ -2109,6 +2206,8 @@ impl DisplacementTool {
                 (GeoEffect::Slope, _) => VIEW_WARNING,
                 (GeoEffect::Relax, _) => VIEW_SUCCESS,
             },
+            Interaction::Terraform if self.terraform_smooths(mods) => VIEW_SUCCESS,
+            Interaction::Terraform => terraform::ui::op_color(self.terraform.op, invert),
             Interaction::Sculpt if mods.shift => VIEW_SUCCESS,
             Interaction::Sculpt => match (self.brush.sculpt.op, invert) {
                 (sculpt::SculptOp::Project, _) => VIEW_WARNING,
@@ -2146,6 +2245,8 @@ impl DisplacementTool {
                 (_, TagValue::Off) => t!("disp.tag.off"),
                 (_, TagValue::Auto) => t!("disp.tag.auto"),
             },
+            Interaction::Terraform if self.terraform_smooths(mods) => t!("disp.effect.smooth"),
+            Interaction::Terraform => terraform::ui::op_label(self.terraform.op, invert),
             Interaction::Sculpt if mods.shift => t!("disp.effect.smooth"),
             Interaction::Sculpt => match self.brush.sculpt.op {
                 sculpt::SculptOp::Push => t!("disp.sculpt.push"),
@@ -2329,6 +2430,9 @@ impl Tool for DisplacementTool {
             point(out, c.center, color, 5.0);
         }
         self.level_overlay(state, out);
+        if self.terraforming() {
+            self.terraform_overlay(state, out);
+        }
     }
 
     fn paint(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
@@ -2377,7 +2481,21 @@ impl Tool for DisplacementTool {
             self.run(state, a);
         }
         self.brush.sanitize();
+        self.terraform.sanitize();
         self.save_settings(state);
+    }
+
+    fn wheel(&mut self, state: &mut AppState, view: &ViewInfo, notches: f32, mods: Modifiers) -> ToolFlow {
+        if view.is_2d() || !self.terraforming() || !(mods.shift || mods.alt) || mods.ctrl || !notches.is_finite() {
+            return ToolFlow::Ignored;
+        }
+        if !self.terraform.rotate(f64::from(notches.clamp(-10.0, 10.0)) * terraform::WHEEL_DEGREES) {
+            return ToolFlow::Ignored;
+        }
+        let text = tf!("tf.rotation_now", format!("{:.0}", self.terraform.rotation()));
+        state.toasts.push_keyed("terraform_rotation", Severity::Info, text);
+        self.save_settings(state);
+        ToolFlow::Handled
     }
 
     fn retained_overlay_version(&self, state: &AppState, view: &ViewInfo) -> Option<u64> {
@@ -2429,6 +2547,7 @@ impl Tool for DisplacementTool {
             _ if self.relaxing() => t!("disp.hint_relax").to_owned(),
             Interaction::Sculpt => t!("disp.hint_sculpt").to_owned(),
             Interaction::Tag => t!("disp.hint_tag").to_owned(),
+            Interaction::Terraform => terraform::ui::hint(self.terraform.op).to_owned(),
             _ => t!("disp.hint_paint").to_owned(),
         })
     }
@@ -2463,7 +2582,7 @@ impl Tool for DisplacementTool {
 
     fn option_order(&self, key: &str) -> i32 {
         match key {
-            "tag_selection" | "cast_shadows" | "lightmap_scale" => 1,
+            "tag_selection" | "cast_shadows" | "lightmap_scale" | "mask_clear" | "mask_invert" | "mask_fill" => 1,
             _ => 0,
         }
     }

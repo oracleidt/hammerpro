@@ -383,7 +383,8 @@ pub const EDITOR_TOOLS: &[ToolSpec] = &[
         name: "save_map",
         title: "Save the map",
         description: "Save the map to its file, or as a new .vmf in the folder of the current map file (a file name \
-            like \"my_map_v2.vmf\"). Replacing another existing file needs overwrite true.",
+            like \"my_map_v2.vmf\"); a map that has no file yet (a decompiled map, a new map) is saved by name in \
+            the folder of another open map. Replacing another existing file needs overwrite true.",
         kind: ToolKind::Editor,
         schema: || {
             object(

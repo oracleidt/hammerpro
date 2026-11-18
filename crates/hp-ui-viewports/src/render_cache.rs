@@ -9,13 +9,17 @@ pub struct ViewKey {
     pub animation: u64,
     pub retained: u64,
     pub overlay: u64,
+    pub textures: u64,
 }
 
 #[derive(Debug, Default)]
 pub struct ContentClock {
     own_bumps: u64,
     retained: [u64; 4],
+    textures_2d: [(u64, Option<std::time::Instant>); 4],
 }
+
+pub const TEXTURES_2D_EVERY: std::time::Duration = std::time::Duration::from_millis(750);
 
 impl ContentClock {
     fn own(&mut self, renderer: &mut hp_render::Renderer, change: impl FnOnce(&mut hp_render::Renderer)) {
@@ -51,6 +55,29 @@ impl ContentClock {
     pub fn content(&self, renderer: &hp_render::Renderer) -> u64 {
         renderer.content_generation().wrapping_sub(self.own_bumps)
     }
+
+    pub fn content_2d(&self, renderer: &hp_render::Renderer) -> u64 {
+        renderer.content_generation_2d().wrapping_sub(self.own_bumps)
+    }
+
+    pub fn textures_2d(
+        &mut self,
+        view: usize,
+        generation: u64,
+        now: std::time::Instant,
+    ) -> (u64, Option<std::time::Duration>) {
+        let Some(slot) = self.textures_2d.get_mut(view) else { return (generation, None) };
+        if slot.0 == generation {
+            return (generation, None);
+        }
+        match slot.1.map(|at| now.saturating_duration_since(at)) {
+            Some(age) if age < TEXTURES_2D_EVERY => (slot.0, Some(TEXTURES_2D_EVERY - age)),
+            _ => {
+                *slot = (generation, Some(now));
+                (generation, None)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -63,6 +90,23 @@ pub struct RenderCache {
 impl RenderCache {
     pub fn needs_render(&self, view: usize, key: &ViewKey, has_image: bool) -> bool {
         !has_image || self.keys.get(view).copied().flatten().as_ref() != Some(key)
+    }
+
+    pub fn reason(&self, view: usize, key: &ViewKey, has_image: bool) -> usize {
+        let Some(old) = self.keys.get(view).copied().flatten().filter(|_| has_image) else { return 0 };
+        [
+            old.params != key.params,
+            old.options != key.options,
+            old.content != key.content,
+            old.lighting != key.lighting,
+            old.animation != key.animation,
+            old.retained != key.retained,
+            old.overlay != key.overlay,
+            old.textures != key.textures,
+        ]
+        .iter()
+        .position(|changed| *changed)
+        .map_or(0, |i| i + 1)
     }
 
     pub fn rendered(&mut self, view: usize, key: ViewKey) {
@@ -156,6 +200,19 @@ mod tests {
     }
 
     #[test]
+    fn texture_changes_redraw_2d_views_at_most_every_750_ms() {
+        let mut clock = ContentClock::default();
+        let t0 = std::time::Instant::now();
+        assert_eq!(clock.textures_2d(1, 5, t0), (5, None), "the first change is drawn at once");
+        let soon = t0 + std::time::Duration::from_millis(100);
+        let (shown, wait) = clock.textures_2d(1, 9, soon);
+        assert_eq!(shown, 5, "streaming textures while flying do not redraw the 2D views every frame");
+        assert_eq!(wait, Some(std::time::Duration::from_millis(650)));
+        assert_eq!(clock.textures_2d(1, 9, t0 + TEXTURES_2D_EVERY), (9, None), "then the icons catch up");
+        assert_eq!(clock.textures_2d(2, 9, soon), (9, None), "each view keeps its own clock");
+    }
+
+    #[test]
     fn unchanged_views_are_reused() {
         let mut cache = RenderCache::default();
         let key = ViewKey {
@@ -166,6 +223,7 @@ mod tests {
             animation: 0,
             retained: 0,
             overlay: overlay_hash(&Overlay::default()),
+            textures: 0,
         };
         assert!(cache.needs_render(0, &key, true), "never rendered");
         cache.rendered(0, key);

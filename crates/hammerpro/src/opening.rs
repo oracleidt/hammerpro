@@ -91,6 +91,7 @@ struct Preparing {
     loaded: Loaded,
     remaining: Option<std::collections::VecDeque<hp_app::runtime::PreloadResource>>,
     approved: bool,
+    listing: Option<std::sync::mpsc::Receiver<(Document, Vec<hp_app::runtime::PreloadResource>)>>,
 }
 
 pub fn is_map_file(path: &Path) -> bool {
@@ -327,7 +328,8 @@ mod tests {
         let mut opener = Opener::default();
         opener.start(&path, OpenKind::Map, EditMark::of(&current), None);
         let loaded = opener.wait(Duration::from_secs(30)).unwrap();
-        opener.preparing = Some(Preparing { loaded, remaining: Some(Default::default()), approved: false });
+        opener.preparing =
+            Some(Preparing { loaded, remaining: Some(Default::default()), approved: false, listing: None });
         assert!(opener.is_loading());
         assert_eq!(opener.loading().map(|(path, _)| path.to_owned()), Some(path));
         opener.cancel();
@@ -473,7 +475,7 @@ const MAX_OPEN_QUEUE: usize = 32;
 impl crate::app::HammerProApp {
     pub(crate) fn start_open(&mut self, ctx: &egui::Context, path: &Path, kind: OpenKind, target: OpenTarget) {
         if let Some(held) = self.opener.take_held(path, &kind) {
-            self.opener.preparing = Some(Preparing { loaded: held, remaining: None, approved: true });
+            self.opener.preparing = Some(Preparing { loaded: held, remaining: None, approved: true, listing: None });
             self.open_target = Some(target);
             self.update_open_status();
             return;
@@ -524,7 +526,7 @@ impl crate::app::HammerProApp {
             if loaded.result.is_err() {
                 self.finish_open(loaded);
             } else {
-                self.opener.preparing = Some(Preparing { loaded, remaining: None, approved: false });
+                self.opener.preparing = Some(Preparing { loaded, remaining: None, approved: false, listing: None });
             }
         }
         self.poll_resource_preload(ctx);
@@ -547,6 +549,44 @@ impl crate::app::HammerProApp {
         if !self.state.assets.preload_manifest_ready() {
             ctx.request_repaint_after(Duration::from_millis(25));
             return;
+        }
+        if preparing.remaining.is_none() {
+            if preparing.listing.is_none()
+                && let Some(lister) = self.state.assets.preload_lister()
+                && let Ok(doc) = preparing.loaded.result.as_mut()
+            {
+                let doc = std::mem::take(doc);
+                let (tx, rx) = std::sync::mpsc::channel();
+                let repaint = ctx.clone();
+                let spawned = std::thread::Builder::new().name("hp-preload-list".into()).spawn(move || {
+                    let list =
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| lister(&doc))).unwrap_or_default();
+                    let _ = tx.send((doc, list));
+                    repaint.request_repaint();
+                });
+                match spawned {
+                    Ok(_) => preparing.listing = Some(rx),
+                    Err(e) => log::warn!("preload list: no thread ({e}), built on this frame"),
+                }
+            }
+            if let Some(rx) = preparing.listing.as_ref() {
+                match rx.try_recv() {
+                    Ok((doc, resources)) => {
+                        preparing.listing = None;
+                        if let Ok(slot) = preparing.loaded.result.as_mut() {
+                            *slot = doc;
+                        }
+                        self.state.runtime.startup.resources =
+                            Some(ResourceLoading { total: resources.len().saturating_add(1), ..Default::default() });
+                        preparing.remaining = Some(resources.into());
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => {
+                        ctx.request_repaint_after(Duration::from_millis(25));
+                        return;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => preparing.listing = None,
+                }
+            }
         }
         let remaining = preparing.remaining.get_or_insert_with(|| {
             let doc = preparing.loaded.result.as_ref().expect("a parsed document is prepared");

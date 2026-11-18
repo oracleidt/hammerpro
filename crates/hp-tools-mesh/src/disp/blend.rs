@@ -285,6 +285,11 @@ fn blend_parts(
 }
 
 pub fn apply(state: &mut AppState, sets: &[Vec<FaceRef>], opts: &BlendOptions) -> usize {
+    let faces: Vec<FaceRef> = sets.iter().flat_map(|s| disp_faces_of(&state.doc, s)).collect();
+    super::terraform::mask::guard_state_faces(state, &faces, UNDO_BLEND, |state| apply_unguarded(state, sets, opts))
+}
+
+fn apply_unguarded(state: &mut AppState, sets: &[Vec<FaceRef>], opts: &BlendOptions) -> usize {
     let sets: Vec<Vec<FaceRef>> = sets.iter().map(|s| disp_faces_of(&state.doc, s)).filter(|s| !s.is_empty()).collect();
     if sets.len() < 2 {
         state.notify(Severity::Info, t!("disp.blend_need_sets"));

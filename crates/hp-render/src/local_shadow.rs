@@ -12,6 +12,12 @@ pub(crate) const SHADOW_SIZE_LIGHTS: usize = 8;
 pub const MAX_SHADOWED_LIGHTS: u32 = 64;
 pub(crate) const LAYERS_PER_FRAME: usize = 6;
 
+pub(crate) const MOTION_WINDOW: std::time::Duration = std::time::Duration::from_millis(150);
+
+pub(crate) fn layers_per_frame(level: u8, moving: bool) -> usize {
+    if level >= 1 || moving { LAYERS_PER_FRAME / 2 } else { LAYERS_PER_FRAME }
+}
+
 pub(crate) fn shadow_size(count: usize) -> u32 {
     if count <= SHADOW_SIZE_LIGHTS { LOCAL_SHADOW_SIZE } else { LOCAL_SHADOW_SIZE_MANY }
 }
@@ -67,6 +73,7 @@ pub(crate) struct LocalShadows {
     dirty: bool,
     baked: bool,
     size: u32,
+    pub pending: bool,
 }
 
 impl LocalShadows {
@@ -101,6 +108,7 @@ impl LocalShadows {
             lights_gen: 0,
             written: Vec::new(),
             dirty: false,
+            pending: false,
             baked: false,
             size: LOCAL_SHADOW_SIZE,
         }
@@ -123,11 +131,13 @@ impl LocalShadows {
         self.texture = None;
         self.layers.clear();
         self.dirty = true;
+        self.pending = false;
     }
 
     pub fn release(&mut self, view_id: u32) {
         if self.owner == Some(view_id) {
             self.owner = None;
+            self.pending = false;
         }
     }
 }
@@ -352,9 +362,15 @@ impl Renderer {
             }
         }
         todo.sort_by_key(|t| t.0);
-        let per_frame = if self.governor.level() >= 1 { LAYERS_PER_FRAME / 3 } else { LAYERS_PER_FRAME };
+        let moving = self.last_motion.is_some_and(|t| t.elapsed() < MOTION_WINDOW);
+        let per_frame = layers_per_frame(self.governor.level(), moving);
+        let pending = todo.len() > per_frame;
         let layers: Vec<usize> = todo.into_iter().take(per_frame).map(|t| t.1).collect();
         self.write_local_shadow_lights(&layers);
+        self.local_shadows.pending = pending && owner;
+        if self.local_shadows.pending {
+            self.redraw_view(view_id);
+        }
         layers
     }
 
@@ -421,7 +437,7 @@ impl Renderer {
             return (0, 0);
         }
         if self.local_shadows.pipelines.is_none() {
-            self.local_shadows.pipelines = Some(ShadowPipelines::new(&self.device, &self.shared));
+            self.local_shadows.pipelines = Some(ShadowPipelines::shared(&self.device, &self.shared));
         }
         let scene_gen = self.scene_gen;
         let epoch = self.shadow_epoch;
@@ -538,6 +554,13 @@ mod tests {
             extra: [0.0; 4],
             delta_color: [0.0; 4],
         }
+    }
+
+    #[test]
+    fn fewer_shadow_faces_are_drawn_per_frame_while_the_camera_moves() {
+        assert_eq!(layers_per_frame(0, false), LAYERS_PER_FRAME);
+        assert_eq!(layers_per_frame(0, true), LAYERS_PER_FRAME / 2);
+        assert_eq!(layers_per_frame(2, false), LAYERS_PER_FRAME / 2);
     }
 
     #[test]

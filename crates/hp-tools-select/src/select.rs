@@ -289,7 +289,12 @@ struct SelCache {
     frame: u64,
     bounds: Option<Aabb>,
     brushes: bool,
+    slow: bool,
+    at: std::time::Instant,
 }
+
+const SLOW_SELECTION_BOUNDS: std::time::Duration = std::time::Duration::from_millis(1);
+const SLOW_BOUNDS_REFRESH: std::time::Duration = std::time::Duration::from_secs(2);
 
 pub struct SelectTool {
     handle_mode: HandleMode,
@@ -535,12 +540,20 @@ impl SelectTool {
         let (revision, frame) = (state.doc.revision(), state.frame.index);
         if let Some(c) = self.sel_cache.get()
             && c.revision == revision
-            && c.frame == frame
+            && (c.frame == frame || (c.slow && (!state.assets.busy() || c.at.elapsed() < SLOW_BOUNDS_REFRESH)))
         {
             return Some(c);
         }
+        let started = std::time::Instant::now();
         if let Some(bounds) = element::picked_bounds(state) {
-            let info = SelCache { revision, frame, bounds: Some(bounds), brushes: false };
+            let info = SelCache {
+                revision,
+                frame,
+                bounds: Some(bounds),
+                brushes: false,
+                slow: started.elapsed() > SLOW_SELECTION_BOUNDS,
+                at: started,
+            };
             self.sel_cache.set(Some(info));
             return Some(info);
         }
@@ -561,7 +574,8 @@ impl SelectTool {
                 };
         }
         let bounds = (!b.is_empty()).then_some(b);
-        let info = SelCache { revision, frame, bounds, brushes };
+        let info =
+            SelCache { revision, frame, bounds, brushes, slow: started.elapsed() > SLOW_SELECTION_BOUNDS, at: started };
         self.sel_cache.set(Some(info));
         Some(info)
     }

@@ -37,6 +37,8 @@ const CUBEMAP_BUDGET: Duration = Duration::from_millis(3);
 pub(crate) const MAX_PARKED: usize = 8;
 const INSTANCE_STREAM_INTERVAL: Duration = Duration::from_millis(250);
 const REALIZE_BUDGET: Duration = Duration::from_millis(12);
+const ENTITY_BUDGET: Duration = Duration::from_millis(6);
+pub(crate) const BIG_REBUILD: usize = 2_048;
 
 pub(crate) struct EntState {
     pub desc: EntityDesc,
@@ -82,6 +84,8 @@ pub(crate) struct SceneSync {
     pub game_look: bool,
     pub upload_queue: VecDeque<Id>,
     pub upload_pending: AHashSet<Id>,
+    pub entity_queue: VecDeque<Id>,
+    pub entity_queued: AHashSet<Id>,
     pub upload_total: usize,
     pub prep: Option<UploadPrep>,
     pub env: EnvState,
@@ -479,9 +483,11 @@ fn transform_mesh(mesh: &mut hp_render::ObjectMesh, m: &glam::DMat4) {
 
 impl AssetManager {
     pub(crate) fn sync_scene_impl(&mut self, doc: &mut Document, renderer: &mut Renderer, opts: &SceneOptions) {
+        let mut lap = crate::sync_stats::Lap::new();
         self.note_gpu(renderer);
         self.update_material_hdr(renderer);
         self.poll_results();
+        lap.mark("pre");
         let restored =
             (doc.pending_changes().everything || !self.scene.initialized) && self.restore_scene(doc, renderer);
         let prev = self.scene.opts;
@@ -548,6 +554,7 @@ impl AssetManager {
         let doc: &Document = doc;
         let full = changes.everything || !self.scene.initialized;
         let cube_rebuild = self.sync_editor_cubes(doc, renderer, &changes, full || restored);
+        lap.mark("cubes");
         if full {
             self.full_rebuild(doc, renderer, opts, &changes, &display);
         } else {
@@ -589,6 +596,7 @@ impl AssetManager {
                 }
             }
             if changes.visibility_changed || changes.visgroups_changed || changes.groups_changed || reflag {
+                let _span = hp_app::runtime::Span::new("all_flags");
                 self.refresh_all_flags(doc, renderer, &display);
             } else if changes.selection_changed {
                 self.sync_selection(doc, renderer, &display);
@@ -598,14 +606,19 @@ impl AssetManager {
             }
         }
         if std::mem::take(&mut self.game_hidden_dirty) {
+            let _span = hp_app::runtime::Span::new("game_hidden");
             renderer.set_game_hidden(self.game_hidden.iter().copied().collect());
         }
         if std::mem::take(&mut self.play_hidden_dirty) {
+            let _span = hp_app::runtime::Span::new("play_hidden");
             renderer.set_play_hidden(self.play_hidden.iter().copied().collect());
         }
         self.sync_play_world(doc, renderer, full);
+        lap.mark("play_world");
         self.sync_light_styles(renderer);
+        lap.mark("light_styles");
         self.poll_detail_models();
+        lap.mark("detail_models");
         let moved = std::mem::take(&mut self.play_dirty);
         let physics_moved = std::mem::take(&mut self.physics_dirty);
         if !physics_moved.is_empty() {
@@ -650,8 +663,10 @@ impl AssetManager {
             || !changes.entities_changed.is_empty()
             || !changes.entities_removed.is_empty();
         let (sky_solids, sky_entities) = self.sync_environment(doc, renderer, &display, map_changed);
+        lap.mark("environment");
         let shown_changed = changes.visibility_changed || changes.visgroups_changed || changes.groups_changed;
         self.sync_fog_volumes(doc, renderer, &display, map_changed || shown_changed);
+        lap.mark("fog_volumes");
         let room = self.scene.env.room.as_ref();
         for id in sky_solids {
             if doc.scene().solid(id).is_some() {
@@ -664,27 +679,40 @@ impl AssetManager {
             }
         }
         self.advance_upload(doc, renderer, &display);
+        lap.mark("upload");
         if self.scene.force_entities {
             self.scene.force_entities = false;
-            let ids: Vec<Id> = doc.scene().entities().keys().copied().collect();
-            for id in ids {
-                self.update_entity(doc, renderer, id, opts, &display);
-            }
+            self.queue_entities(doc.scene().entities().keys().copied());
+        }
+        if !full {
+            self.drain_entities(doc, renderer, opts, &display);
         }
         self.realize_loaded_models(doc, renderer, opts, &display);
+        lap.mark("models_loaded");
         self.lods.on |= opts.model_lods;
         self.request_model_lods();
         self.apply_model_lods(renderer);
+        lap.mark("model_lods");
         if !full {
             let pc = ProducerChanges { doc: &changes, full: false, entities: entities_forced };
             self.apply_producers(doc, renderer, opts, &pc);
             let owners: Vec<Id> = changes.entities_changed.iter().copied().collect();
             self.scene.derived.refresh_owner_flags(doc, renderer, &owners);
         }
-        self.rebuild_instances(doc, renderer);
+        let draining = !self.scene.entity_queue.is_empty()
+            && self.scene.instances_built.is_some_and(|t| t.elapsed() < INSTANCE_STREAM_INTERVAL);
+        if !draining {
+            self.rebuild_instances(doc, renderer);
+        }
+        lap.mark("instances");
         self.tick_animated_models(renderer, &display);
-        self.rebuild_sprites(renderer);
+        lap.mark("animated_models");
+        if !draining {
+            self.rebuild_sprites(renderer);
+        }
+        lap.mark("sprites");
         if opts.lighting_preview && (map_changed || self.scene.buried_pending || self.scene.lights_dirty) {
+            let _span = hp_app::runtime::Span::new("buried_lights");
             self.update_buried_lights(doc);
         }
         let rescan = self.scene.see_through_pending && self.scene.see_through_loaded != self.mats.loaded;
@@ -695,9 +723,13 @@ impl AssetManager {
             self.update_see_through(doc, renderer, &display, Some(&ids));
         }
         self.rebuild_lights(doc, renderer, opts, &display);
+        lap.mark("lights");
         self.sync_collision(renderer, &display);
+        lap.mark("collision");
         self.sync_shadow_hulls(renderer, &display);
+        lap.mark("shadow_hulls");
         self.mats.apply_dirty(renderer);
+        lap.mark("materials");
         self.scene.revision = Some(doc.revision());
         let restore = std::mem::take(&mut self.scene.tool_preview.restore);
         for id in restore.into_iter().chain(self.scene.tool_preview.hidden.iter().copied()) {
@@ -716,6 +748,8 @@ impl AssetManager {
                 self.shared.request_repaint();
             }
         }
+        lap.mark("rest");
+        self.sync_stats.add(lap.done());
     }
 
     fn sync_editor_cubes(
@@ -866,10 +900,10 @@ impl AssetManager {
             let built = self.build_solids(doc, &ids, display, true);
             self.upload_solids(renderer, built);
         }
-        let ids: Vec<Id> = scene.entities().keys().copied().collect();
-        for id in ids {
-            self.update_entity(doc, renderer, id, opts, display);
-        }
+        self.scene.entity_queue.clear();
+        self.scene.entity_queued.clear();
+        self.queue_entities(scene.entities().keys().copied());
+        self.drain_entities(doc, renderer, opts, display);
         self.scene.force_entities = false;
         self.scene.initialized = true;
         self.apply_producers(doc, renderer, opts, &ProducerChanges { doc: changes, full: true, entities: true });
@@ -1112,11 +1146,57 @@ impl AssetManager {
     }
 
     fn rebuild_solids(&mut self, doc: &Document, renderer: &mut Renderer, ids: &[Id], display: &RenderDisplay) {
+        if ids.len() > BIG_REBUILD && !self.scene.no_progressive {
+            let (now, later) = ids.split_at(UPLOAD_BATCH);
+            for id in later {
+                if self.scene.upload_pending.insert(*id) {
+                    self.scene.upload_queue.push_back(*id);
+                }
+            }
+            for id in now {
+                self.scene.upload_pending.remove(id);
+            }
+            let built = self.build_solids(doc, now, display, true);
+            self.upload_solids(renderer, built);
+            return;
+        }
         for id in ids {
             self.scene.upload_pending.remove(id);
         }
         let built = self.build_solids(doc, ids, display, true);
         self.upload_solids(renderer, built);
+    }
+
+    fn queue_entities(&mut self, ids: impl IntoIterator<Item = Id>) {
+        for id in ids {
+            if self.scene.entity_queued.insert(id) {
+                self.scene.entity_queue.push_back(id);
+            }
+        }
+    }
+
+    fn drain_entities(
+        &mut self,
+        doc: &Document,
+        renderer: &mut Renderer,
+        opts: &SceneOptions,
+        display: &RenderDisplay,
+    ) {
+        if self.scene.entity_queue.is_empty() {
+            return;
+        }
+        let start = Instant::now();
+        while let Some(id) = self.scene.entity_queue.pop_front() {
+            self.scene.entity_queued.remove(&id);
+            self.update_entity(doc, renderer, id, opts, display);
+            if self.scene.no_progressive || start.elapsed() < ENTITY_BUDGET {
+                continue;
+            }
+            break;
+        }
+        if !self.scene.entity_queue.is_empty() {
+            self.shared.request_repaint();
+        }
     }
 
     fn refresh_wire_colors(&mut self, doc: &Document, renderer: &mut Renderer, display: &RenderDisplay) {
@@ -1613,9 +1693,16 @@ impl AssetManager {
             .chain(details)
             .chain(previewed)
             .collect();
-        self.play_model_lighting(renderer, &list, &origins);
-        self.scene.placements.set_instances(&self.residency.models, &list);
+        {
+            let _span = hp_app::runtime::Span::new("model_lighting");
+            self.play_model_lighting(renderer, &list, &origins);
+        }
+        {
+            let _span = hp_app::runtime::Span::new("model_placements");
+            self.scene.placements.set_instances(&self.residency.models, &list);
+        }
         self.place_animated_models(renderer, &list);
+        let _span = hp_app::runtime::Span::new("model_upload");
         renderer.set_model_instances(&list);
     }
 

@@ -13,7 +13,7 @@ pub(crate) struct ModelParticles {
 impl Renderer {
     pub fn set_particle_models(&mut self, models: &[ModelInstance]) {
         self.upload_particle_models(false, models);
-        self.content_gen += 1;
+        self.bump_3d_content();
     }
 
     pub fn particle_model_count(&self) -> u32 {

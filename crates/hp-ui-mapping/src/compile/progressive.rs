@@ -70,6 +70,7 @@ impl Progressive {
         let (tx, rx) = mpsc::channel();
         let repaint = ctx.clone();
         let spawned = std::thread::Builder::new().name("hp-compile-progressive".into()).spawn(move || {
+            hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
             let send = |e: Event| {
                 let _ = tx.send(e);
                 repaint.request_repaint();

@@ -20,7 +20,7 @@ impl Renderer {
         let had = self.hdr_sky.take().is_some();
         let Some(faces) = faces else {
             if had {
-                self.content_gen += 1;
+                self.bump_3d_content();
             }
             return;
         };
@@ -33,7 +33,7 @@ impl Renderer {
         };
         if !faces.iter().all(ok) {
             if had {
-                self.content_gen += 1;
+                self.bump_3d_content();
             }
             return;
         }
@@ -80,7 +80,7 @@ impl Renderer {
             entries: &entries,
         });
         self.hdr_sky = Some(HdrSky { _textures: textures, bind });
-        self.content_gen += 1;
+        self.bump_3d_content();
     }
 
     pub fn has_hdr_sky(&self) -> bool {

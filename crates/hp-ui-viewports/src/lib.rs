@@ -7,6 +7,7 @@ pub mod layers;
 pub mod layout;
 pub mod logical;
 pub mod menu;
+pub mod motion_scale;
 pub mod overlay;
 pub mod paint;
 pub mod params;
@@ -273,6 +274,7 @@ pub struct Viewports {
     content_clock: ContentClock,
     anim_time: [f32; 4],
     last_cams: [Option<[f64; 5]>; 4],
+    motion_scale: [motion_scale::MotionScale; 4],
     arrow_look_frame: u64,
     trackpad: trackpad::Detector,
     scroll: trackpad::FrameScroll,
@@ -354,6 +356,7 @@ impl Viewports {
             content_clock: ContentClock::default(),
             anim_time: [0.0; 4],
             last_cams: [None; 4],
+            motion_scale: [motion_scale::MotionScale::default(); 4],
             arrow_look_frame: 0,
             trackpad: trackpad::Detector::default(),
             scroll: trackpad::FrameScroll::default(),
@@ -754,7 +757,9 @@ impl Viewports {
         }
         let mut transforms = self.player_doors.animate(dt);
         let height = if p.crouched { player::CROUCH_HEIGHT } else { player::HEIGHT };
+        let span = hp_app::runtime::Span::new("player_io");
         sim.step(state, &mut self.player_doors, p.feet, height, dt);
+        drop(span);
         for (id, input, param) in sim.take_train_inputs() {
             trains.input(id, &input, &param);
         }
@@ -773,7 +778,9 @@ impl Viewports {
         } else {
             None
         };
+        let span = hp_app::runtime::Span::new("player_trains");
         trains.step(dt, sim.hidden());
+        drop(span);
         if !p.noclip {
             trains.move_player(riding, &mut p.feet, &mut state.cameras.cam3d.yaw_deg, height, Some(sim.hidden()));
         }
@@ -895,7 +902,9 @@ impl Viewports {
             }
             state.assets.set_play_hidden(&objs);
         }
+        let span = hp_app::runtime::Span::new("player_props");
         self.player_props.update(state, p.feet, &self.player_doors, trains, &self.player_io_hidden);
+        drop(span);
         let c = player::DocCollider {
             state,
             props: Some(&self.player_props),
@@ -904,7 +913,9 @@ impl Viewports {
             hidden: Some(&self.player_io_hidden),
             trains: Some(&*trains),
         };
+        let span = hp_app::runtime::Span::new("player_move");
         let pushes = player::step(&mut p, m, cam.yaw_deg, cam.pitch_deg, dt, &c);
+        drop(span);
         if let Some(yaw) = player::teleport(state, &mut p, Some(&*trains)) {
             state.cameras.cam3d.yaw_deg = yaw;
         }
@@ -949,13 +960,16 @@ impl Viewports {
             match self.player_counts {
                 Some((k, counts)) if k == key => counts,
                 _ => {
+                    let _span = hp_app::runtime::Span::new("player_counts");
                     let counts = player::world_counts(state, w, aspect, drawn, *stale);
                     self.player_counts = Some((key, counts));
                     counts
                 }
             }
         });
+        let span = hp_app::runtime::Span::new("player_counter_lines");
         let lines = player::counter_lines(state, state.frame.fps, v, &io_log, world);
+        drop(span);
         let painter = ui.painter_at(rect);
         let size = (rect.width() / 75.0).clamp(9.0, 12.0);
         let font = egui::FontId::monospace(size);
@@ -1700,7 +1714,20 @@ impl Viewports {
         if let Some(gfx) = state.gfx.as_mut() {
             let mut params = view_params(&view, cfg);
             if !view.is_2d() {
-                params.size = params::scaled_size(params.size, cfg.render_scale);
+                let lighting = params.mode == hp_render::RenderMode::Lit || self.player_view == Some(i);
+                let c = &state.cameras.cam3d;
+                let now = [c.pos.x, c.pos.y, c.pos.z, c.yaw_deg, c.pitch_deg];
+                let moving = self.last_cams[i].is_some_and(|c| c != now);
+                let auto = state.settings.render.lit_quality == hp_app::settings::LitQuality::Auto;
+                let s = &state.runtime.render.perf.sample;
+                let g = &s.gpu_passes;
+                let gpu =
+                    if s.gpu_supported { g.main_ms + g.effects_ms + g.present_ms + g.outline_ms } else { s.frame_ms };
+                let motion = self.motion_scale[i].update(lighting && moving && auto, gpu);
+                if motion < 1.0 {
+                    ctx.request_repaint();
+                }
+                params.size = params::scaled_size(params.size, cfg.render_scale.min(motion));
             }
             state.assets.note_view(i as u32, &params);
             let mut options = view_options(&view, cfg);
@@ -1714,7 +1741,9 @@ impl Viewports {
                     ctx.request_repaint();
                 }
             }
-            let animate = state.settings.render.animate_materials && state.tool != ToolId::Texture;
+            let animate = state.settings.render.animate_materials
+                && state.tool != ToolId::Texture
+                && !state.runtime.render.perf.lightweight(state.settings.render.performance_mode);
             let shows = gfx.renderer.view_shows_animation(i as u32) || gfx.renderer.view_texture(i as u32).is_none();
             if !view.is_2d()
                 && animate
@@ -1726,8 +1755,11 @@ impl Viewports {
                 }
                 options.time = self.anim_time[i];
             }
-            if !view.is_2d() && state.assets.models_animating() {
-                state.runtime.render.request_animation_frame(ctx);
+            if !view.is_2d()
+                && let Some(step) = state.assets.models_next_step()
+                && let Some(pace) = state.runtime.render.animation
+            {
+                ctx.request_repaint_after(step.max(pace));
             }
             if !view.is_2d() && state.runtime.render.animation.is_some() && state.assets.animated_lights() {
                 ctx.request_repaint_after(next_light_frame(ctx.input(|i| i.time)));
@@ -1743,10 +1775,23 @@ impl Viewports {
             gfx.renderer.set_quality(params::quality_for(&cfg.plan, cfg.adaptive));
             gfx.renderer.set_lazy_exposure(true);
             self.content_clock.set_options(&mut gfx.renderer, i as u32, options);
+            let (textures, texture_wait) = if view.is_2d() {
+                self.content_clock.textures_2d(i, gfx.renderer.texture_generation(), std::time::Instant::now())
+            } else {
+                (0, None)
+            };
+            if let Some(wait) = texture_wait {
+                ctx.request_repaint_after(wait);
+            }
             let key = ViewKey {
                 params,
                 options,
-                content: self.content_clock.content(&gfx.renderer),
+                textures,
+                content: if view.is_2d() {
+                    self.content_clock.content_2d(&gfx.renderer)
+                } else {
+                    self.content_clock.content(&gfx.renderer)
+                },
                 lighting: if view.is_2d() { 0 } else { gfx.renderer.lighting_generation(i as u32) },
                 animation: if view.is_2d() { 0 } else { gfx.renderer.model_animation_generation() },
                 retained: self.content_clock.retained(i),
@@ -1758,6 +1803,11 @@ impl Viewports {
                 preparing = true;
                 ctx.request_repaint_after(std::time::Duration::from_millis(100));
             } else if self.render_cache.needs_render(i, &key, has_image) {
+                let reason = self.render_cache.reason(i, &key, has_image);
+                if let Some(slot) = state.runtime.render.perf.redraw_reasons.get_mut(i).and_then(|r| r.get_mut(reason))
+                {
+                    *slot += 1;
+                }
                 let _span = hp_app::runtime::Span::new(if view.is_2d() { "render_2d" } else { "render_3d" });
                 gfx.renderer.render_view(i as u32, &params, &self.overlay);
                 rendered = true;

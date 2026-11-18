@@ -87,6 +87,7 @@ impl AssetManager {
         live.extend(self.models.variants.values().filter_map(|(m, _)| m.id));
         live.extend(self.particle_draws.live_models());
         live.extend(self.ragdolls.live_models());
+        live.extend(self.anim_models.live_models());
         live
     }
 
@@ -121,15 +122,22 @@ impl AssetManager {
         let now = Instant::now();
         let fresh = self.residency.fresh;
         let interval = if fresh.is_some() { FRESH_INTERVAL } else { UPDATE_INTERVAL };
+        let revision = self.scene.placements.revision;
+        let changed = self.residency.moved
+            || self.residency.seen_revision != Some(revision)
+            || fresh.is_some()
+            || self.residency.preload_until.is_some_and(|t| now < t);
         if let Some(last) = self.residency.last
             && now.duration_since(last) < interval
         {
-            if let Some(ctx) = self.shared.ctx() {
+            if changed && let Some(ctx) = self.shared.ctx() {
                 ctx.request_repaint_after(interval - now.duration_since(last));
             }
             return;
         }
         self.residency.last = Some(now);
+        self.residency.moved = false;
+        self.residency.seen_revision = Some(revision);
         let frame = self.shared.current_frame();
         let enabled = hp_app::runtime::render::render_display().texture_streaming;
         let views = self.residency.live_views(frame);
@@ -209,7 +217,7 @@ impl AssetManager {
             }
         };
         let aggression = if active {
-            residency::aggression_for(self.residency.budget, |a| {
+            residency::aggression_within(self.residency.budget, residency::comfort_for(self.residency.budget), |a| {
                 items
                     .iter()
                     .map(|i| match i.want {
@@ -225,6 +233,8 @@ impl AssetManager {
             enabled,
             active,
             budget: self.residency.budget,
+            comfort: residency::comfort_for(self.residency.budget),
+            unknown_model_instances: self.scene.placements.unknown_instances,
             aggression: aggression as u32,
             ..Default::default()
         };
@@ -310,7 +320,7 @@ impl AssetManager {
 mod tests {
     use super::*;
     use crate::registry::AnaEntry;
-    use crate::residency::{Density, Placement};
+    use crate::residency::{Density, ModelMeta, Placement};
     use crate::texture::TexEntry;
     use std::sync::Arc;
 
@@ -415,6 +425,19 @@ mod tests {
         assets.mats.textures.map.get_mut("t/far").unwrap().stream.lower_since = Some(Instant::now() - LOWER_AFTER);
         refresh(&mut assets);
         assert!(!assets.mats.textures.map["t/far"].stream.pending, "nothing shrinks while the map is still uploading");
+    }
+
+    #[test]
+    fn animated_model_bounds_stay_known_so_model_textures_can_stream() {
+        let (mut assets, _) = manager_with(&[]);
+        let id = ModelId::from_raw(77);
+        assets.residency.models.insert(id, ModelMeta::default());
+        assets.anim_models.note_test_model(id);
+        refresh(&mut assets);
+        assert!(assets.residency.models.contains_key(&id), "an animated model keeps its bounds");
+        assets.residency.models.insert(ModelId::from_raw(78), ModelMeta::default());
+        refresh(&mut assets);
+        assert!(!assets.residency.models.contains_key(&ModelId::from_raw(78)), "a destroyed model is forgotten");
     }
 
     #[test]

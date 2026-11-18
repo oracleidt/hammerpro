@@ -74,6 +74,7 @@ impl StorageRuntime {
         let (tx, rx) = channel();
         let p = progress.clone();
         let spawned = std::thread::Builder::new().name("storage-scan".into()).spawn(move || {
+            hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
             let _ = tx.send(scan_report(&dirs, &p));
         });
         if spawned.is_ok() {

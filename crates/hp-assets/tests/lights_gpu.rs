@@ -57,6 +57,7 @@ fn settle(am: &mut AssetManager, doc: &mut Document, gfx: &mut Gfx, o: &SceneOpt
             && s.textures_loading == 0
             && s.models_loading == 0
             && s.materials_loading == 0
+            && !am.busy()
         {
             am.begin_frame(&ctx, Some(gfx));
             am.sync_scene(doc, gfx, o);

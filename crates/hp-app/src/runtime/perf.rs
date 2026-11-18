@@ -11,14 +11,47 @@ const MAX_GAP: f32 = 0.5;
 pub enum PerfLevel {
     #[default]
     Full,
+    Lightweight,
     Low,
     VeryLow,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum LowEnd {
+    Integrated,
+    SmallVram,
+    Battery,
+}
+
+impl LowEnd {
+    pub const fn id(self) -> &'static str {
+        match self {
+            LowEnd::Integrated => "integrated_graphics",
+            LowEnd::SmallVram => "small_graphics_memory",
+            LowEnd::Battery => "on_battery",
+        }
+    }
+
+    pub fn detect(integrated: bool, dedicated: u64, on_battery: bool) -> Option<LowEnd> {
+        if integrated {
+            Some(LowEnd::Integrated)
+        } else if dedicated > 0 && dedicated < LOW_END_VRAM {
+            Some(LowEnd::SmallVram)
+        } else if on_battery {
+            Some(LowEnd::Battery)
+        } else {
+            None
+        }
+    }
+}
+
+pub const LOW_END_VRAM: u64 = 2560 << 20;
 
 impl PerfLevel {
     pub const fn id(self) -> &'static str {
         match self {
             PerfLevel::Full => "full",
+            PerfLevel::Lightweight => "lightweight",
             PerfLevel::Low => "low",
             PerfLevel::VeryLow => "very_low",
         }
@@ -27,7 +60,7 @@ impl PerfLevel {
     pub fn lower(self) -> Option<PerfLevel> {
         match self {
             PerfLevel::Full => Some(PerfLevel::Low),
-            PerfLevel::Low => Some(PerfLevel::VeryLow),
+            PerfLevel::Lightweight | PerfLevel::Low => Some(PerfLevel::VeryLow),
             PerfLevel::VeryLow => None,
         }
     }
@@ -35,6 +68,23 @@ impl PerfLevel {
     pub fn plan(self) -> PerfPlan {
         match self {
             PerfLevel::Full => PerfPlan::FULL,
+            PerfLevel::Lightweight => PerfPlan {
+                scale: 1.0,
+                msaa: false,
+                light_shadows: 0,
+                sun_shadow_size: 1024,
+                local_shadow_size: 128,
+                bloom: false,
+                texture_limit: 1024,
+                reflections: Reflections::Simple,
+                indirect: false,
+                cubemaps: false,
+                normal_maps: false,
+                fog_volumes: false,
+                sun_glow: false,
+                sky_occlusion: false,
+                model_distance: 0.0,
+            },
             PerfLevel::Low => PerfPlan {
                 scale: 0.75,
                 msaa: false,
@@ -195,6 +245,7 @@ pub struct GpuPasses {
     pub effects_ms: f32,
     pub present_ms: f32,
     pub outline_ms: f32,
+    pub views_2d_ms: f32,
 }
 
 impl GpuPasses {
@@ -206,6 +257,7 @@ impl GpuPasses {
         self.effects_ms += o.effects_ms;
         self.present_ms += o.present_ms;
         self.outline_ms += o.outline_ms;
+        self.views_2d_ms += o.views_2d_ms;
     }
 
     pub fn scaled(&self, k: f32) -> GpuPasses {
@@ -217,6 +269,7 @@ impl GpuPasses {
             effects_ms: self.effects_ms * k,
             present_ms: self.present_ms * k,
             outline_ms: self.outline_ms * k,
+            views_2d_ms: self.views_2d_ms * k,
         }
     }
 }
@@ -277,20 +330,78 @@ thread_local! {
 }
 
 const SPAN_MIN_MS: f32 = 0.5;
+const MAIN_SPAN_DEPTH: usize = 16;
+
+thread_local! {
+    static IS_MAIN_THREAD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+static MAIN_SPAN_NAMES: [std::sync::atomic::AtomicPtr<u8>; MAIN_SPAN_DEPTH] =
+    [const { std::sync::atomic::AtomicPtr::new(std::ptr::null_mut()) }; MAIN_SPAN_DEPTH];
+static MAIN_SPAN_LENS: [std::sync::atomic::AtomicUsize; MAIN_SPAN_DEPTH] =
+    [const { std::sync::atomic::AtomicUsize::new(0) }; MAIN_SPAN_DEPTH];
+static MAIN_SPAN_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+pub fn mark_main_thread() {
+    IS_MAIN_THREAD.with(|m| m.set(true));
+}
+
+pub fn main_spans() -> Vec<&'static str> {
+    use std::sync::atomic::Ordering;
+    let count = MAIN_SPAN_COUNT.load(Ordering::Acquire).min(MAIN_SPAN_DEPTH);
+    (0..count)
+        .filter_map(|i| {
+            let ptr = MAIN_SPAN_NAMES[i].load(Ordering::Acquire);
+            let len = MAIN_SPAN_LENS[i].load(Ordering::Acquire);
+            if ptr.is_null() {
+                return None;
+            }
+            let bytes: &'static [u8] = unsafe { std::slice::from_raw_parts(ptr, len) };
+            std::str::from_utf8(bytes).ok()
+        })
+        .collect()
+}
+
+fn push_main_span(name: &'static str) -> bool {
+    use std::sync::atomic::Ordering;
+    if !IS_MAIN_THREAD.with(std::cell::Cell::get) {
+        return false;
+    }
+    let depth = MAIN_SPAN_COUNT.load(Ordering::Relaxed);
+    if depth < MAIN_SPAN_DEPTH {
+        MAIN_SPAN_LENS[depth].store(name.len(), Ordering::Release);
+        MAIN_SPAN_NAMES[depth].store(name.as_ptr().cast_mut(), Ordering::Release);
+    }
+    MAIN_SPAN_COUNT.store(depth + 1, Ordering::Release);
+    true
+}
+
+fn pop_main_span() {
+    use std::sync::atomic::Ordering;
+    let depth = MAIN_SPAN_COUNT.load(Ordering::Relaxed);
+    if depth > 0 {
+        MAIN_SPAN_COUNT.store(depth - 1, Ordering::Release);
+    }
+}
 
 pub struct Span {
     name: &'static str,
     started: std::time::Instant,
+    on_main: bool,
 }
 
 impl Span {
     pub fn new(name: &'static str) -> Self {
-        Self { name, started: std::time::Instant::now() }
+        let on_main = push_main_span(name);
+        Self { name, started: std::time::Instant::now(), on_main }
     }
 }
 
 impl Drop for Span {
     fn drop(&mut self) {
+        if self.on_main {
+            pop_main_span();
+        }
         let ms = self.started.elapsed().as_secs_f32() * 1000.0;
         if ms < SPAN_MIN_MS {
             return;
@@ -358,8 +469,21 @@ pub struct RepaintCount {
     pub count: u64,
 }
 
+pub const REDRAW_REASONS: [&str; 9] = [
+    "first",
+    "size_or_camera",
+    "view_options",
+    "content",
+    "lighting",
+    "animation",
+    "retained_overlay",
+    "overlay",
+    "textures",
+];
+
 #[derive(Clone, Debug, Default)]
 pub struct PerfRuntime {
+    pub redraw_reasons: [[u64; 9]; 4],
     pub views: [ViewCost; 4],
     pub frame_phases: FramePhases,
     pub worst_frame: FramePhases,
@@ -390,12 +514,15 @@ pub struct PerfRuntime {
     slow_frames: u32,
     pub restore_request: bool,
     pub memory_cap: Option<PerfPlan>,
+    pub low_end: Option<LowEnd>,
+    pub low_end_at: f64,
 }
 
 impl PerfRuntime {
     pub fn level(&self, mode: PerformanceMode) -> PerfLevel {
         match mode {
             PerformanceMode::Off => PerfLevel::Full,
+            PerformanceMode::Lightweight => PerfLevel::Lightweight,
             PerformanceMode::Low => PerfLevel::Low,
             PerformanceMode::VeryLow => PerfLevel::VeryLow,
             PerformanceMode::Auto => self.auto_level,
@@ -407,6 +534,34 @@ impl PerfRuntime {
         match &self.memory_cap {
             Some(cap) => plan.capped(cap),
             None => plan,
+        }
+    }
+
+    pub fn lightweight(&self, mode: PerformanceMode) -> bool {
+        self.level(mode) == PerfLevel::Lightweight
+    }
+
+    pub fn note_low_end(&mut self, mode: PerformanceMode, found: Option<LowEnd>) -> bool {
+        if found == self.low_end {
+            return false;
+        }
+        let was = std::mem::replace(&mut self.low_end, found);
+        if mode != PerformanceMode::Auto || self.auto_locked {
+            return false;
+        }
+        match (was, found) {
+            (_, Some(_)) if self.auto_level == PerfLevel::Full => {
+                self.auto_level = PerfLevel::Lightweight;
+                self.auto_fps = 0.0;
+                self.reset_window();
+                true
+            }
+            (Some(_), None) if self.auto_level == PerfLevel::Lightweight && self.auto_fps == 0.0 => {
+                self.auto_level = PerfLevel::Full;
+                self.reset_window();
+                true
+            }
+            _ => false,
         }
     }
 
@@ -483,6 +638,25 @@ impl PerfRuntime {
 mod tests {
     use super::*;
 
+    #[test]
+    fn spans_of_the_main_thread_are_visible_to_the_crash_watchdog() {
+        std::thread::spawn(|| {
+            let _ignored = Span::new("worker_span");
+            assert!(main_spans().is_empty());
+            mark_main_thread();
+            let outer = Span::new("scene_sync");
+            {
+                let _inner = Span::new("upload");
+                assert_eq!(main_spans(), vec!["scene_sync", "upload"]);
+            }
+            assert_eq!(main_spans(), vec!["scene_sync"]);
+            drop(outer);
+            assert!(main_spans().is_empty());
+        })
+        .join()
+        .unwrap();
+    }
+
     fn run(rt: &mut PerfRuntime, mode: PerformanceMode, secs: f64, dt: f32) -> Option<PerfLevel> {
         let mut last = None;
         for _ in 0..(secs / f64::from(dt)) as u32 {
@@ -491,6 +665,33 @@ mod tests {
             }
         }
         last
+    }
+
+    #[test]
+    fn weak_hardware_starts_in_the_lightweight_mode() {
+        use super::LowEnd;
+        assert_eq!(LowEnd::detect(true, 0, false), Some(LowEnd::Integrated));
+        assert_eq!(LowEnd::detect(false, 2048 << 20, false), Some(LowEnd::SmallVram));
+        assert_eq!(LowEnd::detect(false, 8192 << 20, true), Some(LowEnd::Battery));
+        assert_eq!(LowEnd::detect(false, 8192 << 20, false), None);
+        assert_eq!(LowEnd::detect(false, 0, false), None, "unknown memory is not a reason");
+        let mut rt = PerfRuntime::default();
+        assert!(!rt.note_low_end(PerformanceMode::Off, Some(LowEnd::Integrated)), "Off is never changed");
+        assert_eq!(rt.level(PerformanceMode::Off), PerfLevel::Full);
+        let mut rt = PerfRuntime::default();
+        assert!(rt.note_low_end(PerformanceMode::Auto, Some(LowEnd::Battery)));
+        assert_eq!(rt.level(PerformanceMode::Auto), PerfLevel::Lightweight);
+        assert!(rt.lightweight(PerformanceMode::Auto) && rt.reduced_automatically(PerformanceMode::Auto));
+        assert!(!rt.note_low_end(PerformanceMode::Auto, Some(LowEnd::Battery)), "nothing new");
+        assert!(rt.note_low_end(PerformanceMode::Auto, None), "plugged in again");
+        assert_eq!(rt.level(PerformanceMode::Auto), PerfLevel::Full);
+        rt.note_low_end(PerformanceMode::Auto, Some(LowEnd::Integrated));
+        rt.restore();
+        assert_eq!(rt.level(PerformanceMode::Auto), PerfLevel::Full, "Restore full quality wins");
+        assert_eq!(PerfLevel::Lightweight.lower(), Some(PerfLevel::VeryLow));
+        let plan = PerfLevel::Lightweight.plan();
+        assert!(plan.scale == 1.0 && !plan.msaa && !plan.bloom && plan.light_shadows == 0);
+        assert_eq!(PerformanceMode::Lightweight.id(), "Lightweight");
     }
 
     #[test]

@@ -218,6 +218,7 @@ pub(crate) struct Scene {
     pub sky_3d: u32,
     pub brush_entities: u32,
     pub surface_decals: u32,
+    pub decal_ids: ahash::HashSet<ObjectId>,
     pub selected: ahash::HashSet<ObjectId>,
     pub selected_gen: u64,
     pub state_gen: u64,
@@ -412,6 +413,7 @@ impl Scene {
             sky_3d: 0,
             brush_entities: 0,
             surface_decals: 0,
+            decal_ids: ahash::HashSet::default(),
             selected: ahash::HashSet::default(),
             selected_gen: 1,
             state_gen: 1,
@@ -613,6 +615,10 @@ impl Scene {
         }
     }
 
+    pub(crate) fn object_aabb(&self, id: ObjectId) -> Option<(Vec3, Vec3)> {
+        self.objects.get(&id).and_then(|e| e.stored.as_ref()).map(|s| (s.aabb_min, s.aabb_max))
+    }
+
     pub fn tint(&self, id: ObjectId) -> Option<u32> {
         self.objects.get(&id).map(|e| e.tint)
     }
@@ -636,6 +642,13 @@ impl Scene {
         count(&mut self.sky_3d, ObjectFlags::SKY_3D);
         count(&mut self.brush_entities, ObjectFlags::BRUSH_ENTITY);
         count(&mut self.surface_decals, ObjectFlags::SURFACE_DECAL);
+        if changed & ObjectFlags::SURFACE_DECAL.0 != 0 {
+            if new & ObjectFlags::SURFACE_DECAL.0 != 0 {
+                self.decal_ids.insert(id);
+            } else {
+                self.decal_ids.remove(&id);
+            }
+        }
         if changed & ObjectFlags::SELECTED.0 != 0 {
             if new & ObjectFlags::SELECTED.0 != 0 {
                 self.selected.insert(id);

@@ -162,7 +162,7 @@ The images are stored in the map (`bgimages_plus` block of the VMF), so they tra
 | **Model distance** (`render.model_distance`) | Settings > Rendering | Models farther than this are drawn as boxes (0: no limit). | 0 |
 | `render.lod_distances` | `settings.toml` | Heavy models use their LOD 1 and LOD 2 beyond these distances (0: always the full model). | 0, 0 |
 | **Culling radius** (`render.cull_radius`) | Settings > Rendering | Radius of the radius culling (256 to 65536). | 4096 |
-| **Skip hidden geometry** (`render.occlusion_culling`) | Settings > Rendering | Parts of the map hidden behind closer geometry are not drawn. | On |
+| **Skip hidden geometry** (`render.occlusion_culling`) | Settings > Rendering | Parts of the map hidden behind closer geometry are not drawn. Off since 2.2.4 for everyone: the map parts it tests are large, so it hid almost nothing and cost more than it saved on big maps. Turn it on again to compare on a very closed map. | Off |
 | **Antialiasing (MSAA)** (`view.msaa`) | Settings > Viewports | Smoother edges, more GPU memory. | On |
 
 ## Frame rate
@@ -172,7 +172,7 @@ The images are stored in the map (`bgimages_plus` block of the VMF), so they tra
 | **Frame rate limit** (`render.max_fps`) | Most frames per second (0: no limit; with vertical sync the display limits it). | 0 |
 | **In the background** (`render.unfocused_fps`) | Limit while the window is not active (0: no limit). | 30 |
 | **Animations** (`render.animation_fps`) | Frames per second of animated materials, particle effects and flickering lights while nothing else moves (0: every frame). | 30 |
-| **Pause animations after** (`render.animation_idle_pause_s`) | Animations stop after this many seconds without mouse or keyboard input (0: never). | 120 s |
+| **Pause animations after** (`render.animation_idle_pause_s`) | Animations stop after this many seconds without mouse or keyboard input (0: never). | 10 s |
 | **Animate in the background** (`render.animate_in_background`) | Keep animations running while another window is active. | Off |
 | **Vertical sync** (`render.vsync`) | Waits for the screen refresh (applies immediately). | On |
 

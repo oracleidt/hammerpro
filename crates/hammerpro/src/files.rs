@@ -356,6 +356,7 @@ fn switch_sidecar(state: &mut AppState) {
 
 pub fn new_map(state: &mut AppState, view_size: egui::Vec2) {
     state.doc = Document::new_empty();
+    state.runtime.gpu.collect_unused = true;
     switch_sidecar(state);
     apply_doc_options(state);
     state.doc.mark_everything_changed();
@@ -466,6 +467,7 @@ pub fn announce_import(state: &mut AppState, report: &hp_vmf::import_map::MapImp
 fn install_document(state: &mut AppState, doc: Document, recent: Option<&Path>, view_size: egui::Vec2) {
     let old = std::mem::replace(&mut state.doc, doc);
     drop_in_background(old);
+    state.runtime.gpu.collect_unused = true;
     switch_sidecar(state);
     apply_doc_options(state);
     state.doc.mark_everything_changed();

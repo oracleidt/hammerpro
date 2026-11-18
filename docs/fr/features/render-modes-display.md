@@ -162,7 +162,7 @@ Les images sont enregistrées dans la map (bloc `bgimages_plus` du VMF) et voyag
 | **Distance des modèles** (`render.model_distance`) | Paramètres > Rendu | Les modèles plus loin que cela sont dessinés en boîtes (0 : aucune limite). | 0 |
 | `render.lod_distances` | `settings.toml` | Les modèles lourds passent à leurs LOD 1 et LOD 2 au-delà de ces distances (0 : toujours le modèle complet). | 0, 0 |
 | **Rayon de limite** (`render.cull_radius`) | Paramètres > Rendu | Rayon de la limite circulaire (256 à 65536). | 4096 |
-| **Ignorer la géométrie cachée** (`render.occlusion_culling`) | Paramètres > Rendu | Les parties de la map cachées derrière une géométrie plus proche ne sont pas dessinées. | Activé |
+| **Ignorer la géométrie cachée** (`render.occlusion_culling`) | Paramètres > Rendu | Les parties de la map cachées derrière une géométrie plus proche ne sont pas dessinées. Désactivé depuis 2.2.4 pour tout le monde : les parties de map testées sont grandes, il ne cachait presque rien et coûtait plus qu'il ne faisait gagner sur les grosses maps. Réactivez-le pour comparer sur une map très fermée. | Désactivé |
 | **Anticrénelage (MSAA)** (`view.msaa`) | Paramètres > Vues | Bords plus lisses, plus de mémoire GPU. | Activé |
 
 ## Images par seconde
@@ -172,7 +172,7 @@ Les images sont enregistrées dans la map (bloc `bgimages_plus` du VMF) et voyag
 | **Limite d'images par seconde** (`render.max_fps`) | Nombre maximal d'images par seconde (0 : aucune limite ; avec la synchronisation verticale, l'écran la limite). | 0 |
 | **En arrière-plan** (`render.unfocused_fps`) | Limite quand la fenêtre n'est pas active (0 : aucune limite). | 30 |
 | **Animations** (`render.animation_fps`) | Images par seconde des matériaux animés, des effets de particules et des lumières qui clignotent quand rien d'autre ne bouge (0 : chaque image). | 30 |
-| **Mettre les animations en pause après** (`render.animation_idle_pause_s`) | Les animations s'arrêtent après ce nombre de secondes sans souris ni clavier (0 : jamais). | 120 s |
+| **Mettre les animations en pause après** (`render.animation_idle_pause_s`) | Les animations s'arrêtent après ce nombre de secondes sans souris ni clavier (0 : jamais). | 10 s |
 | **Animer en arrière-plan** (`render.animate_in_background`) | Continuer les animations quand une autre fenêtre est active. | Désactivé |
 | **Synchronisation verticale** (`render.vsync`) | Attend le rafraîchissement de l'écran (s'applique immédiatement). | Activé |
 

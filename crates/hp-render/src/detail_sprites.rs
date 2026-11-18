@@ -161,7 +161,7 @@ impl Renderer {
             let _ = self.scene.material_slot(material);
             self.sync_materials();
         }
-        self.content_gen += 1;
+        self.bump_3d_content();
     }
 
     pub fn set_detail_sprite_colors(&mut self, colors: &[(u32, [u8; 4])]) {
@@ -176,7 +176,7 @@ impl Renderer {
             changed = true;
         }
         if changed {
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
     }
 
@@ -192,7 +192,7 @@ impl Renderer {
         let fade = fade.filter(|f| f.iter().all(|v| v.is_finite() && *v >= 0.0) && f[0] > 0.0);
         if fade.unwrap_or(DEFAULT_FADE) != self.detail.fade.unwrap_or(DEFAULT_FADE) {
             self.detail.pipes.clear();
-            self.content_gen += 1;
+            self.bump_3d_content();
         }
         self.detail.fade = fade;
     }

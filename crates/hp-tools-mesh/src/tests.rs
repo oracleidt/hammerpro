@@ -30,6 +30,7 @@ mod disp_level;
 mod disp_live;
 mod disp_options;
 mod disp_subdivision;
+mod disp_terraform;
 mod edge_loops;
 mod edit_tools;
 mod fuzz;
@@ -152,8 +153,9 @@ fn translation_keys_match_sources() {
     }
     let mut text = String::new();
     sources(&dir, &mut text);
-    let tables: [hp_app::i18n::TrTable; 8] = [
+    let tables: [hp_app::i18n::TrTable; 9] = [
         crate::TR,
+        crate::disp::terraform::tr::TR,
         crate::disp::erode::TR,
         crate::terrain::tr::TR,
         crate::vertex::loops::TR,

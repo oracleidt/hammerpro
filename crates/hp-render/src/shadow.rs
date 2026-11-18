@@ -522,7 +522,7 @@ impl Renderer {
             cut_uniforms: (0..layers).map(|_| uniform()).collect(),
             bind_groups: None,
             cut_bind_groups: None,
-            pipelines: ShadowPipelines::new(&self.device, &self.shared),
+            pipelines: ShadowPipelines::shared(&self.device, &self.shared),
             key: None,
             size,
             cut_size,

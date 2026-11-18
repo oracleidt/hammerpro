@@ -3,7 +3,7 @@ use hp_app::AppState;
 use hp_app::i18n::TrTable;
 use hp_app::tf;
 use hp_app::view::ViewInfo;
-use hp_render::{Overlay, OverlayLine, RenderStats};
+use hp_render::{OverlayLine, RenderStats};
 
 use super::OverlayLayer;
 use crate::overlay::pixel_world_size;
@@ -44,35 +44,50 @@ impl OverlayLayer for Camera2dLayer {
         "camera_2d"
     }
 
-    fn add(&self, state: &AppState, view: &ViewInfo, out: &mut Overlay) {
-        if !view.is_2d() || !state.settings.render.camera_in_2d {
-            return;
+    fn paint(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
+        paint_lines(view, painter, &camera_lines(state, view));
+    }
+}
+
+fn paint_lines(view: &ViewInfo, painter: &egui::Painter, lines: &[OverlayLine]) {
+    for l in lines {
+        let a = DVec3::new(f64::from(l.a[0]), f64::from(l.a[1]), f64::from(l.a[2]));
+        let b = DVec3::new(f64::from(l.b[0]), f64::from(l.b[1]), f64::from(l.b[2]));
+        let (Some(pa), Some(pb)) = (view.world_to_screen(a), view.world_to_screen(b)) else { continue };
+        let c = l.color.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
+        let color = egui::Color32::from_rgba_unmultiplied(c[0], c[1], c[2], c[3]);
+        painter.line_segment([pa, pb], egui::Stroke::new(1.0, color));
+    }
+}
+
+fn camera_lines(state: &AppState, view: &ViewInfo) -> Vec<OverlayLine> {
+    let mut out = Vec::new();
+    if !view.is_2d() || !state.settings.render.camera_in_2d {
+        return out;
+    }
+    let cam = &view.cam3d;
+    let Some(eye) = flatten(view, cam.pos).filter(|e| e.is_finite()) else { return out };
+    let px = pixel_world_size(view, eye);
+    let Some((r, u, _)) = view.kind.axes_2d() else { return out };
+    let mut push = |a: DVec3, b: DVec3, color: [f32; 4]| {
+        if a.is_finite() && b.is_finite() {
+            out.push(OverlayLine { a: f3(a), b: f3(b), color });
         }
-        let cam = &view.cam3d;
-        let Some(eye) = flatten(view, cam.pos).filter(|e| e.is_finite()) else { return };
-        let px = pixel_world_size(view, eye);
-        let Some((r, u, _)) = view.kind.axes_2d() else { return };
-        let mut push = |a: DVec3, b: DVec3, color: [f32; 4]| {
-            if a.is_finite() && b.is_finite() {
-                out.lines_on_top.push(OverlayLine { a: f3(a), b: f3(b), color });
-            }
-        };
-        let radius = CAMERA_EYE_PX * px;
-        let point = |angle: f64| {
-            let mut p = eye;
-            p[r] += radius * angle.cos();
-            p[u] += radius * angle.sin();
-            p
-        };
-        for i in 0..16 {
-            let (a0, a1) = (i as f64 / 16.0 * std::f64::consts::TAU, (i + 1) as f64 / 16.0 * std::f64::consts::TAU);
-            push(point(a0), point(a1), CAMERA_COLOR);
-        }
-        let forward = flatten(view, cam.forward()).unwrap_or(DVec3::ZERO);
-        let len = forward.length();
-        if len < 1e-3 {
-            return;
-        }
+    };
+    let radius = CAMERA_EYE_PX * px;
+    let point = |angle: f64| {
+        let mut p = eye;
+        p[r] += radius * angle.cos();
+        p[u] += radius * angle.sin();
+        p
+    };
+    for i in 0..16 {
+        let (a0, a1) = (i as f64 / 16.0 * std::f64::consts::TAU, (i + 1) as f64 / 16.0 * std::f64::consts::TAU);
+        push(point(a0), point(a1), CAMERA_COLOR);
+    }
+    let forward = flatten(view, cam.forward()).unwrap_or(DVec3::ZERO);
+    let len = forward.length();
+    if len >= 1e-3 {
         let dir = forward / len;
         let ray = CAMERA_RAY_PX * px;
         push(eye + dir * radius, eye + dir * ray, CAMERA_COLOR);
@@ -90,6 +105,7 @@ impl OverlayLayer for Camera2dLayer {
             push(eye, eye + side(sign) * ray * 0.75, faded);
         }
     }
+    out
 }
 
 struct CullRadiusLayer;
@@ -99,26 +115,28 @@ impl OverlayLayer for CullRadiusLayer {
         "cull_radius"
     }
 
-    fn add(&self, state: &AppState, view: &ViewInfo, out: &mut Overlay) {
-        let r = &state.settings.render;
-        let radius = f64::from(r.cull_radius);
-        let usable = radius.is_finite() && radius > 0.0;
-        if !view.is_2d() || !r.radius_culling || !usable {
-            return;
-        }
-        let Some(center) = flatten(view, view.cam3d.pos).filter(|c| c.is_finite()) else { return };
-        let Some((a, b, _)) = view.kind.axes_2d() else { return };
-        let point = |i: usize| {
-            let t = i as f64 / CIRCLE_SEGMENTS as f64 * std::f64::consts::TAU;
-            let mut p = center;
-            p[a] += radius * t.cos();
-            p[b] += radius * t.sin();
-            p
-        };
-        for i in 0..CIRCLE_SEGMENTS {
-            out.lines_on_top.push(OverlayLine { a: f3(point(i)), b: f3(point(i + 1)), color: RADIUS_COLOR });
-        }
+    fn paint(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
+        paint_lines(view, painter, &cull_lines(state, view));
     }
+}
+
+fn cull_lines(state: &AppState, view: &ViewInfo) -> Vec<OverlayLine> {
+    let r = &state.settings.render;
+    let radius = f64::from(r.cull_radius);
+    let usable = radius.is_finite() && radius > 0.0;
+    if !view.is_2d() || !r.radius_culling || !usable {
+        return Vec::new();
+    }
+    let Some(center) = flatten(view, view.cam3d.pos).filter(|c| c.is_finite()) else { return Vec::new() };
+    let Some((a, b, _)) = view.kind.axes_2d() else { return Vec::new() };
+    let point = |i: usize| {
+        let t = i as f64 / CIRCLE_SEGMENTS as f64 * std::f64::consts::TAU;
+        let mut p = center;
+        p[a] += radius * t.cos();
+        p[b] += radius * t.sin();
+        p
+    };
+    (0..CIRCLE_SEGMENTS).map(|i| OverlayLine { a: f3(point(i)), b: f3(point(i + 1)), color: RADIUS_COLOR }).collect()
 }
 
 #[cfg(test)]
@@ -126,6 +144,7 @@ mod tests {
     use super::*;
     use egui::{Rect, pos2, vec2};
     use hp_app::view::{Camera2d, Camera3d, ViewKind};
+    use hp_render::Overlay;
 
     fn view(kind: ViewKind) -> ViewInfo {
         ViewInfo {
@@ -142,40 +161,33 @@ mod tests {
     #[test]
     fn camera_is_drawn_in_2d_views_only() {
         let state = hp_app::testing::test_state();
-        let mut out = Overlay::default();
-        Camera2dLayer.add(&state, &view(ViewKind::Perspective), &mut out);
-        assert!(out.is_empty());
-        Camera2dLayer.add(&state, &view(ViewKind::Top), &mut out);
-        assert_eq!(out.lines_on_top.len(), 16 + 3, "eye circle, direction and field of view");
-        let ray = out.lines_on_top[16];
+        assert!(camera_lines(&state, &view(ViewKind::Perspective)).is_empty());
+        let out = camera_lines(&state, &view(ViewKind::Top));
+        assert_eq!(out.len(), 16 + 3, "eye circle, direction and field of view");
+        let ray = out[16];
         assert!(ray.b[1] > ray.a[1] && (ray.b[0] - ray.a[0]).abs() < 1e-3, "{ray:?}");
         assert!(ray.a[2] == 0.0 && ray.b[2] == 0.0, "flattened on the view plane");
-        let mut side = Overlay::default();
-        Camera2dLayer.add(&state, &view(ViewKind::Side), &mut side);
-        assert_eq!(side.lines_on_top.len(), 16);
+        assert_eq!(camera_lines(&state, &view(ViewKind::Side)).len(), 16);
+        let mut overlay = Overlay::default();
+        Camera2dLayer.add(&state, &view(ViewKind::Top), &mut overlay);
+        assert!(overlay.is_empty(), "painted over the cached image, so moving the 3D camera never redraws a 2D view");
         let mut off = state;
         off.settings.render.camera_in_2d = false;
-        let mut none = Overlay::default();
-        Camera2dLayer.add(&off, &view(ViewKind::Top), &mut none);
-        assert!(none.is_empty());
+        assert!(camera_lines(&off, &view(ViewKind::Top)).is_empty());
     }
 
     #[test]
     fn culling_circle_follows_the_setting() {
         let mut state = hp_app::testing::test_state();
-        let mut out = Overlay::default();
-        CullRadiusLayer.add(&state, &view(ViewKind::Top), &mut out);
-        assert!(out.is_empty(), "off by default");
+        assert!(cull_lines(&state, &view(ViewKind::Top)).is_empty(), "off by default");
         state.settings.render.radius_culling = true;
         state.settings.render.cull_radius = 1000.0;
-        CullRadiusLayer.add(&state, &view(ViewKind::Side), &mut out);
-        assert_eq!(out.lines_on_top.len(), CIRCLE_SEGMENTS);
-        let p = out.lines_on_top[0].a;
+        let out = cull_lines(&state, &view(ViewKind::Side));
+        assert_eq!(out.len(), CIRCLE_SEGMENTS);
+        let p = out[0].a;
         assert!((p[0] - 1100.0).abs() < 1e-3 && (p[2] - 30.0).abs() < 1e-3, "{p:?}");
         state.settings.render.cull_radius = f32::NAN;
-        let mut bad = Overlay::default();
-        CullRadiusLayer.add(&state, &view(ViewKind::Top), &mut bad);
-        assert!(bad.is_empty());
+        assert!(cull_lines(&state, &view(ViewKind::Top)).is_empty());
         crate::register_translations();
         let s = RenderStats { chunks_in_frustum: 12, chunks_occluded: 5, ..Default::default() };
         assert!(culling_line(&s).contains("12") && culling_line(&s).contains('5'));

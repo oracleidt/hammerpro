@@ -155,19 +155,27 @@ impl BakeCache {
         hash_debug(&mut world, &(scene.world(), scene.cordons()));
         let mut total = world.0.finish();
         let mut owners = std::collections::HashSet::new();
-        for (id, node) in scene.solids().iter() {
-            let ptr = node.solid.sides.as_ptr() as usize;
-            let len = node.solid.sides.len();
-            let solid = match self.solids.get(id) {
-                Some(&(p, l, h)) if p == ptr && l == len => h,
-                _ => {
+        let known = &self.solids;
+        let fresh: Vec<(u32, (usize, usize, u64))> = {
+            use rayon::prelude::*;
+            scene
+                .solids()
+                .par_iter()
+                .filter_map(|(id, node)| {
+                    let ptr = node.solid.sides.as_ptr() as usize;
+                    let len = node.solid.sides.len();
+                    if known.get(id).is_some_and(|&(p, l, _)| p == ptr && l == len) {
+                        return None;
+                    }
                     let mut hash = Fingerprint(DefaultHasher::new());
                     hash_debug(&mut hash, &node.solid);
-                    let h = hash.0.finish();
-                    self.solids.insert(*id, (ptr, len, h));
-                    h
-                }
-            };
+                    Some((*id, (ptr, len, hash.0.finish())))
+                })
+                .collect()
+        };
+        self.solids.extend(fresh);
+        for (id, node) in scene.solids().iter() {
+            let solid = self.solids.get(id).map_or(0, |&(_, _, h)| h);
             let owner = match node.owner {
                 hp_editor::Owner::World => 0,
                 hp_editor::Owner::Entity(e) => {
@@ -197,6 +205,7 @@ impl BakeCache {
         match self.geometry.filter(|(revision, _)| *revision == serial) {
             Some((_, key)) => key,
             None => {
+                let _span = hp_app::runtime::Span::new("lighting_geometry_key");
                 let key = self.scene_geometry(doc);
                 self.geometry = Some((serial, key));
                 key
@@ -208,9 +217,15 @@ impl BakeCache {
         let geometry = self.raw_geometry(doc);
         let scene = doc.scene();
         let all = |_: &str| false;
-        let entities = scene.entities().iter().fold(scene.entities().len() as u64, |total, (id, node)| {
-            total.wrapping_add(entity_hash(&node.entity, doc.is_entity_visible(*id), true, &all))
-        });
+        let entities = {
+            use rayon::prelude::*;
+            scene
+                .entities()
+                .par_iter()
+                .map(|(id, node)| entity_hash(&node.entity, doc.is_entity_visible(*id), true, &all))
+                .reduce(|| 0, u64::wrapping_add)
+                .wrapping_add(scene.entities().len() as u64)
+        };
         let mut blocks = Fingerprint(DefaultHasher::new());
         for block in scene.extra_blocks() {
             if !PRESENTATION.iter().any(|name| block.name.eq_ignore_ascii_case(name)) {
@@ -218,6 +233,16 @@ impl BakeCache {
             }
         }
         mix(&[geometry, entities, blocks.0.finish()])
+    }
+
+    pub(super) fn warm(&mut self, doc: &Document) -> bool {
+        let content = doc.content_serial();
+        if self.scene.is_some_and(|(c, _)| c == content) {
+            return false;
+        }
+        let key = self.scene_key(doc);
+        self.scene = Some((content, key));
+        true
     }
 
     pub(super) fn geometry_key(&mut self, state: &AppState) -> u64 {
@@ -254,6 +279,7 @@ impl BakeCache {
         let scene = match self.scene {
             Some((content, key)) if content == stamp.content => key,
             _ => {
+                let _span = hp_app::runtime::Span::new("lighting_scene_key");
                 let key = self.scene_key(doc);
                 self.scene = Some((stamp.content, key));
                 key
@@ -288,6 +314,20 @@ pub(super) fn scope_serial(serial: u64, scope: &Scope) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn warming_the_keys_ahead_gives_the_same_bake_key() {
+        let mut state = hp_app::testing::test_state();
+        let mut cold = BakeCache::default();
+        let expected = cold.resolve(&state, true, 0.0, true).unwrap();
+        let mut warm = BakeCache::default();
+        assert!(warm.warm(&state.doc), "the first warm up computes the keys");
+        assert!(!warm.warm(&state.doc), "nothing to do while the map is unchanged");
+        assert_eq!(warm.resolve(&state, true, 0.0, true), Some(expected));
+        state.doc.create_point_entity("light", glam::DVec3::ZERO, &[]).unwrap();
+        assert!(warm.warm(&state.doc), "an edit warms the keys again");
+        assert_eq!(warm.resolve(&state, true, 0.0, true), cold.resolve(&state, true, 0.0, true));
+    }
 
     #[test]
     fn local_light_changes_and_prop_lighting_origins_keep_the_geometry_bake_key() {

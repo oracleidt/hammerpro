@@ -94,6 +94,7 @@ impl KeywordIndex {
         let (tx, rx) = std::sync::mpsc::channel();
         let repaint = ctx.clone();
         let spawned = std::thread::Builder::new().name("hp-keyword-index".into()).spawn(move || {
+            hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
             let quick = hp_editor::background::run(|| fs.material_keywords_quick());
             let complete = quick.is_complete();
             if tx.send(quick).is_err() {
@@ -183,6 +184,7 @@ impl FlagsIndex {
         let repaint = ctx.clone();
         let threads = hp_sched::background_threads().min(8);
         let spawned = std::thread::Builder::new().name("hp-material-flags".into()).spawn(move || {
+            hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
             let _ = tx.send(MaterialFlagsIndex::build(&fs, &list, threads));
             repaint.request_repaint();
         });

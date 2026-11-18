@@ -43,6 +43,7 @@ impl DisplacementTool {
             Interaction::Alpha => "alpha",
             Interaction::Sculpt => "sculpt",
             Interaction::Tag => "tag",
+            Interaction::Terraform => "terraform",
         };
         let effect = match b.geo_effect {
             GeoEffect::Raise => "raise",
@@ -125,8 +126,8 @@ impl DisplacementTool {
             ToolOption::new(
                 "mode",
                 mode,
-                "select, geometry (paint heights), alpha (paint the blend), sculpt, or tag (paint the walkable, \
-                 buildable and remove triangle tags)",
+                "select, geometry (paint heights), alpha (paint the blend), sculpt, tag (paint the walkable, \
+                 buildable and remove triangle tags) or terraform (the erode, terrace, noise, stamp, cliff, plateau, clone and mask brushes of the terraform option)",
             ),
             ToolOption::new(
                 "effect",
@@ -305,6 +306,7 @@ impl DisplacementTool {
                 "on: changing the power resamples the shape of the displacements (default), off: rebuilds them flat",
             ),
         ];
+        options.extend(self.terraform.values());
         options.extend(self.terrain.values());
         options.extend(self.blend.values());
         options.extend(self.slope.values());
@@ -337,6 +339,7 @@ impl DisplacementTool {
                 "alpha" => Some(Interaction::Alpha),
                 "sculpt" => Some(Interaction::Sculpt),
                 "tag" => Some(Interaction::Tag),
+                "terraform" | "terrain" => Some(Interaction::Terraform),
                 _ => None,
             }
             .map(|m| self.interaction = m)
@@ -541,7 +544,28 @@ impl DisplacementTool {
                 self.tag_selection(state, kind, value);
                 true
             }
-            _ => self.terrain.set(key, value) || self.blend.set(key, value) || self.slope.set(key, value),
+            "mask_clear" | "mask_invert" | "mask_fill" => {
+                let cmd = match key {
+                    "mask_clear" => super::terraform::ui::MaskCommand::Clear,
+                    "mask_invert" => super::terraform::ui::MaskCommand::Invert,
+                    _ => super::terraform::ui::MaskCommand::Fill,
+                };
+                match v.as_str() {
+                    "all" => {
+                        self.run_mask_on(state, cmd, true);
+                        true
+                    }
+                    "selection" | "selected" | "on" | "true" | "1" => {
+                        self.run_mask_on(state, cmd, false);
+                        true
+                    }
+                    _ => false,
+                }
+            }
+            _ => match self.terraform.set(key, value) {
+                Some(done) => done,
+                None => self.terrain.set(key, value) || self.blend.set(key, value) || self.slope.set(key, value),
+            },
         };
         if done {
             self.brush.sanitize();
@@ -552,7 +576,10 @@ impl DisplacementTool {
 
     pub(super) fn script_stroke(&mut self, state: &mut AppState, s: &ScriptedStroke) -> Result<StrokeOutcome, String> {
         if self.interaction == Interaction::Select {
-            return Err("the displacement tool is in select mode: set its mode to geometry, alpha or sculpt".to_owned());
+            return Err(
+                "the displacement tool is in select mode: set its mode to geometry, alpha, sculpt, tag or terraform"
+                    .to_owned(),
+            );
         }
         if s.points.is_empty() || s.points.len() > MAX_STROKE_POINTS {
             return Err(format!("a stroke has 1 to {MAX_STROKE_POINTS} points"));
@@ -581,8 +608,21 @@ impl DisplacementTool {
             return Err("smooth applies to sculpting only".to_owned());
         }
         let sculpting = self.interaction == Interaction::Sculpt || self.relaxing();
+        let terraforming = self.interaction == Interaction::Terraform;
+        if terraforming && s.smooth && !self.terraform.op.shift_smooths() {
+            return Err(format!(
+                "smooth does not apply to the {} terraform brush: use invert",
+                self.terraform.op.name()
+            ));
+        }
+        if terraforming && s.invert && self.terraform.op.shift_smooths() {
+            return Err(format!(
+                "invert does not apply to the {} terraform brush: use smooth",
+                self.terraform.op.name()
+            ));
+        }
         let mods = Modifiers {
-            shift: if sculpting { s.smooth } else { s.invert },
+            shift: if sculpting { s.smooth } else { s.invert || (terraforming && s.smooth) },
             ctrl: (sculpting && s.invert) || s.boost,
             command: (sculpting && s.invert) || s.boost,
             ..Modifiers::default()

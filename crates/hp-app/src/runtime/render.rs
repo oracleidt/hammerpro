@@ -288,10 +288,10 @@ mod tests {
         let mut rt = RenderRuntime::default();
         rt.update_animation(&settings, true, true, 10.0);
         assert!(rt.animation.is_some() && rt.focused);
-        rt.update_animation(&settings, true, false, 129.0);
-        assert!(rt.animation.is_some(), "119 s without input");
-        rt.update_animation(&settings, true, false, 131.0);
-        assert!(rt.animation.is_none(), "idle for more than two minutes");
+        rt.update_animation(&settings, true, false, 19.0);
+        assert!(rt.animation.is_some(), "9 s without input");
+        rt.update_animation(&settings, true, false, 21.0);
+        assert!(rt.animation.is_none(), "idle for more than ten seconds");
         rt.update_animation(&settings, true, true, 132.0);
         assert!(rt.animation.is_some(), "any input wakes it");
         rt.update_animation(&settings, false, true, 133.0);

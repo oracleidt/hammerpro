@@ -9,9 +9,9 @@ pub fn preview(state: &crate::AppState) -> Option<ShadowControl> {
         .entities()
         .iter()
         .filter(|(id, n)| {
-            state.doc.is_entity_visible(**id)
+            n.entity.classname.eq_ignore_ascii_case("shadow_control")
+                && state.doc.is_entity_visible(**id)
                 && options.uses_entity(**id)
-                && n.entity.classname.eq_ignore_ascii_case("shadow_control")
         })
         .max_by_key(|(id, _)| **id)?;
     let e = &node.entity;
