@@ -1028,7 +1028,7 @@ impl Viewports {
             look(&mut state.cameras.cam3d, input.look_delta());
             ctx.set_cursor_icon(CursorIcon::None);
             if self.warp.request(input.focused, input.pointer, input.motion.is_some(), s.rect.center()) {
-                ctx.send_viewport_cmd(egui::ViewportCommand::CursorPosition(s.rect.center()));
+                move_cursor(ctx, s.rect.center());
             }
             return Some(v);
         }
@@ -1041,6 +1041,9 @@ impl Viewports {
                 }
                 if input.z_exit_pressed {
                     input::consume_z(ctx, self.keys.layout, true);
+                }
+                if input.focused && valid {
+                    move_cursor(ctx, ml.anchor);
                 }
                 self.mouselook = None;
                 self.fly_free = false;
@@ -1060,7 +1063,7 @@ impl Viewports {
                 look(&mut state.cameras.cam3d, input.look_delta());
                 ctx.set_cursor_icon(CursorIcon::None);
                 if self.warp.request(input.focused, input.pointer, input.motion.is_some(), ml.anchor) {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::CursorPosition(ml.anchor));
+                    move_cursor(ctx, ml.anchor);
                 }
                 let clickable = hovered == Some(ml.view)
                     && !self.swallow
@@ -1107,7 +1110,7 @@ impl Viewports {
                 self.keys.clear();
                 self.warp.reset();
                 if self.warp.request(input.focused, input.pointer, input.motion.is_some(), s.rect.center()) {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::CursorPosition(s.rect.center()));
+                    move_cursor(ctx, s.rect.center());
                 }
             }
         }
@@ -1146,6 +1149,9 @@ impl Viewports {
                     self.gesture = Some(Gesture::Strafe { view });
                 } else if !input.down[button] {
                     let is_click = !looking && !flew && travel < click_travel && !self.swallow;
+                    if looking && input.focused {
+                        move_cursor(ctx, press);
+                    }
                     self.gesture = None;
                     match click {
                         Click::Menu if is_click && tool_takes_right_click(tool.id(), kind, input.modifiers) => {}
@@ -1175,7 +1181,7 @@ impl Viewports {
                         if looking {
                             ctx.set_cursor_icon(CursorIcon::None);
                             if self.warp.request(input.focused, input.pointer, input.motion.is_some(), press) {
-                                ctx.send_viewport_cmd(egui::ViewportCommand::CursorPosition(press));
+                                move_cursor(ctx, press);
                             }
                         }
                         flew |= !self.keys.fly_input_with(input.modifiers, button != PRIMARY).is_idle();
@@ -2809,3 +2815,11 @@ mod tests_logical;
 mod tests_workflow;
 #[cfg(test)]
 mod trains_tests;
+
+fn move_cursor(ctx: &egui::Context, point: egui::Pos2) {
+    let native = ctx.viewport_id() == egui::ViewportId::ROOT
+        && hp_app::native_window::place_cursor(point, ctx.pixels_per_point());
+    if !native {
+        ctx.send_viewport_cmd(egui::ViewportCommand::CursorPosition(point));
+    }
+}

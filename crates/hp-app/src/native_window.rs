@@ -26,6 +26,19 @@ pub fn main_window_state() -> Option<(bool, bool)> {
     }
 }
 
+pub fn place_cursor(point: egui::Pos2, pixels_per_point: f32) -> bool {
+    #[cfg(windows)]
+    {
+        let handle = MAIN_WINDOW.load(Ordering::Relaxed);
+        handle != 0 && point.is_finite() && pixels_per_point > 0.0 && win::place_cursor(handle, point, pixels_per_point)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (point, pixels_per_point);
+        false
+    }
+}
+
 pub fn prepare_window(handle: isize) {
     #[cfg(windows)]
     {
@@ -391,6 +404,15 @@ mod win {
 
     fn hwnd(handle: isize) -> HWND {
         handle as HWND
+    }
+
+    pub(super) fn place_cursor(window: isize, point: egui::Pos2, pixels_per_point: f32) -> bool {
+        use windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos;
+        let mut p =
+            POINT { x: (point.x * pixels_per_point).round() as i32, y: (point.y * pixels_per_point).round() as i32 };
+        unsafe {
+            IsWindow(hwnd(window)) != 0 && ClientToScreen(hwnd(window), &raw mut p) != 0 && SetCursorPos(p.x, p.y) != 0
+        }
     }
 
     pub(super) fn window_state(window: isize) -> (bool, bool) {
