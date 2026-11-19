@@ -85,7 +85,7 @@ impl PasteSpecialDialog {
         }
     }
 
-    pub(crate) fn clipboard_size(&mut self, text: &str) -> Result<DVec3, String> {
+    pub(crate) fn clipboard_size(&mut self, state: &AppState, text: &str) -> Result<DVec3, String> {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
         text.hash(&mut h);
@@ -95,7 +95,7 @@ impl PasteSpecialDialog {
         {
             return Ok(size);
         }
-        match Document::clipboard_bounds(text) {
+        match Document::clipboard_shape_bounds(text, &|e| state.entity_bounds(e)) {
             Ok(b) => {
                 let size = b.size();
                 self.size_cache = Some((key.0, key.1, size));
@@ -106,8 +106,9 @@ impl PasteSpecialDialog {
         }
     }
 
-    fn offset_from_clipboard(&mut self, axis: usize) {
-        let size = read_clipboard().map_err(|e| tf!("paste.err_clipboard", e)).and_then(|t| self.clipboard_size(&t));
+    fn offset_from_clipboard(&mut self, state: &AppState, axis: usize) {
+        let size =
+            read_clipboard().map_err(|e| tf!("paste.err_clipboard", e)).and_then(|t| self.clipboard_size(state, &t));
         match size {
             Ok(s) => {
                 self.opts.offset[axis] = s[axis];
@@ -267,7 +268,7 @@ impl PasteSpecialDialog {
             ui.end_row();
         });
         if let Some(k) = from_clipboard {
-            self.offset_from_clipboard(k);
+            self.offset_from_clipboard(state, k);
         }
         let o = &mut self.opts;
         ui.add_space(2.0);
@@ -351,7 +352,7 @@ mod tests {
         let mut d = PasteSpecialDialog::default();
         let err = d.paste_text(&mut state, "not a map").expect_err("error");
         assert!(!err.is_empty());
-        assert!(d.clipboard_size("not a map").is_err());
+        assert!(d.clipboard_size(&state, "not a map").is_err());
     }
 
     #[test]
@@ -360,8 +361,8 @@ mod tests {
         let mut state = hp_app::testing::test_state();
         let text = state.doc.copy(&[ObjRef::Solid(3)]);
         let mut d = PasteSpecialDialog::default();
-        assert_eq!(d.clipboard_size(&text).expect("size"), DVec3::new(512.0, 16.0, 128.0));
-        assert_eq!(d.clipboard_size(&text).expect("cached"), DVec3::new(512.0, 16.0, 128.0));
+        assert_eq!(d.clipboard_size(&state, &text).expect("size"), DVec3::new(512.0, 16.0, 128.0));
+        assert_eq!(d.clipboard_size(&state, &text).expect("cached"), DVec3::new(512.0, 16.0, 128.0));
         state.pivot = Some(DVec3::new(1000.0, 264.0, 64.0));
         d.opts = PasteSpecial { copies: 1, rotation: DVec3::new(0.0, 0.0, 90.0), ..PasteSpecial::default() };
         d.paste_text(&mut state, &text).expect("paste");

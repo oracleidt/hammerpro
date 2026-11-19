@@ -290,18 +290,10 @@ impl HammerProApp {
     fn paste_at_cursor(&self, text: &str) -> Option<DVec3> {
         let index = self.state.ui.hovered_view?;
         let point = self.state.hover_world.filter(|p| p.is_finite())?;
-        let bounds = hp_editor::Document::clipboard_bounds(text).ok()?;
-        let center = bounds.center();
+        let bounds = hp_editor::Document::clipboard_shape_bounds(text, &|e| self.state.entity_bounds(e)).ok()?;
         let kind = hp_app::QuadrantView::from_index(self.state.settings.ui.quadrants.get(index).copied().unwrap_or(0))
             .kind()?;
-        let mut offset = match kind.axes_2d() {
-            Some((_, _, depth)) => {
-                let mut o = point - center;
-                o[depth] = 0.0;
-                o
-            }
-            None => DVec3::new(point.x - center.x, point.y - center.y, point.z - bounds.min.z),
-        };
+        let mut offset = hp_editor::cursor_paste_offset(&bounds, point, kind.axes_2d().map(|(_, _, depth)| depth));
         let snapped = if kind.axes_2d().is_some() { 3 } else { 2 };
         for i in 0..snapped {
             offset[i] = self.state.snap(offset[i]);

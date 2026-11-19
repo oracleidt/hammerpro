@@ -53,7 +53,7 @@ mod tests;
 
 pub use array::{ArrayAxis, ArrayFrame, ArrayPlan, ArraySpec, MAX_ARRAY_AXIS_COUNT, MAX_ARRAY_COPIES};
 pub use changes::Changes;
-pub use clipboard::{PREVIEW_MAX_LINES, PastePreview, PasteSpecial};
+pub use clipboard::{PREVIEW_MAX_LINES, PastePreview, PasteSpecial, cursor_paste_offset};
 pub use curve_meta::{CURVE_KEY, CurveRecord, editor_curve_tag};
 pub use document::{Document, EditOptions, ManifestLink, SaveTicket, SnapshotJob};
 pub use glob::{glob_match, glob_replace};

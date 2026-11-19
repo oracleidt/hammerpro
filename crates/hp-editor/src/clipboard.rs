@@ -130,7 +130,23 @@ fn header_groups(text: &str) -> Vec<Group> {
     root.child(HEADER).map(|b| b.children_named("group").filter_map(group_from_block).collect()).unwrap_or_default()
 }
 
+pub fn cursor_paste_offset(bounds: &Aabb, point: DVec3, depth: Option<usize>) -> DVec3 {
+    let center = bounds.center();
+    match depth {
+        Some(depth) => {
+            let mut o = point - center;
+            o[depth] = 0.0;
+            o
+        }
+        None => DVec3::new(point.x - center.x, point.y - center.y, point.z - bounds.min.z),
+    }
+}
+
 fn fragment_bounds(frag: &Fragment) -> Option<Aabb> {
+    fragment_bounds_with(frag, &|_| None)
+}
+
+fn fragment_bounds_with(frag: &Fragment, entity_bounds: &dyn Fn(&hp_vmf::Entity) -> Option<Aabb>) -> Option<Aabb> {
     let mut b = Aabb::EMPTY;
     let solids = frag.solids.iter().chain(frag.entities.iter().flat_map(|e| e.solids.iter()));
     for s in solids {
@@ -140,10 +156,14 @@ fn fragment_bounds(frag: &Fragment) -> Option<Aabb> {
         }
     }
     for e in &frag.entities {
-        if e.solids.is_empty()
-            && let Some(o) = e.origin()
-        {
-            b.extend(o);
+        if !e.solids.is_empty() {
+            continue;
+        }
+        let shape = entity_bounds(e).filter(|s| !s.is_empty() && s.min.is_finite() && s.max.is_finite());
+        match (shape, e.origin()) {
+            (Some(s), _) => b = b.union(&s),
+            (None, Some(o)) => b.extend(o),
+            (None, None) => {}
         }
     }
     (!b.is_empty() && b.min.is_finite() && b.max.is_finite()).then_some(b)
@@ -245,6 +265,14 @@ impl Document {
     pub fn clipboard_bounds(text: &str) -> EditResult<Aabb> {
         let frag = Self::parse_clipboard(text)?;
         fragment_bounds(&frag).ok_or(EditError::EmptyClipboard)
+    }
+
+    pub fn clipboard_shape_bounds(
+        text: &str,
+        entity_bounds: &dyn Fn(&hp_vmf::Entity) -> Option<Aabb>,
+    ) -> EditResult<Aabb> {
+        let frag = Self::parse_clipboard(text)?;
+        fragment_bounds_with(&frag, entity_bounds).ok_or(EditError::EmptyClipboard)
     }
 
     pub fn paste_special_preview(text: &str, opts: &PasteSpecial) -> EditResult<PastePreview> {
@@ -515,5 +543,40 @@ mod tests {
         assert!(header_text("hammerpro_clipboard { \"a\" \"}\" ").is_none());
         assert_eq!(parse_side_list(" 3 x 12  7"), vec![3, 12, 7]);
         assert_eq!(format_side_list(&[3, 12]), "3 12");
+    }
+
+    #[test]
+    fn a_pasted_prop_sits_on_the_surface_by_its_lowest_point() {
+        let text = "entity
+{
+	\"id\" \"9\"
+	\"classname\" \"prop_static\"
+	\"model\" \"models/props_c17/oildrum001.mdl\"
+	\"origin\" \"10 20 30\"
+}
+";
+        let model = |e: &hp_vmf::Entity| {
+            let o = e.origin()?;
+            Some(Aabb::new(o + DVec3::new(-16.0, -16.0, -24.0), o + DVec3::new(16.0, 16.0, 40.0)))
+        };
+        let shape = Document::clipboard_shape_bounds(text, &model).expect("bounds");
+        assert_eq!(shape.min, DVec3::new(-6.0, 4.0, 6.0));
+        assert_eq!(shape.max, DVec3::new(26.0, 36.0, 70.0));
+        let point_only = Document::clipboard_bounds(text).expect("bounds");
+        assert_eq!(point_only.min, DVec3::new(10.0, 20.0, 30.0));
+        let surface = DVec3::new(100.0, 200.0, 64.0);
+        let offset = cursor_paste_offset(&shape, surface, None);
+        let origin = DVec3::new(10.0, 20.0, 30.0) + offset;
+        assert_eq!(origin.z - 24.0, surface.z, "the lowest point of the model touches the surface");
+        assert_eq!(origin.x, surface.x);
+        assert_eq!(origin.y, surface.y);
+        let top = cursor_paste_offset(&shape, surface, Some(2));
+        assert_eq!(top.z, 0.0);
+        assert_eq!(DVec3::new(10.0, 20.0, 30.0).x + top.x, surface.x);
+        let mut doc = Document::new_empty();
+        let objs = doc.paste(text, offset).expect("pasted");
+        let ObjRef::Entity(id) = objs[0] else { panic!("an entity") };
+        let pasted = doc.scene().entity(id).and_then(|e| e.entity.origin()).expect("origin");
+        assert_eq!(pasted, DVec3::new(100.0, 200.0, 88.0));
     }
 }

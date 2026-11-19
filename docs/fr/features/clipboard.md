@@ -23,7 +23,8 @@ Elles sont toutes dans le menu **Édition** et dans le menu du clic droit des vu
 ## Où Coller place les objets
 
 - `Ctrl+V` avec le pointeur sur une vue 2D : le contenu est centré sur le curseur et garde sa profondeur.
-- `Ctrl+V` avec le pointeur sur la vue 3D : le contenu se pose sur la surface sous le curseur.
+- `Ctrl+V` avec le pointeur sur la vue 3D : le contenu se pose sur la surface sous le curseur par sa base, comme dans Hammer. Les props utilisent les limites réelles de leur modèle (tournées et mises à l'échelle comme le prop), donc le point le plus bas du modèle touche la surface quelle que soit la hauteur de son origine ; les entités ponctuelles sans modèle utilisent leur boîte d'aide.
+- Dans les vues 2D, et pour les boutons `<` du **Décalage par copie** du **Collage spécial**, les props sont aussi mesurés par les limites de leur modèle.
 - Le décalage suit la grille : des objets calés sur la grille le restent.
 - Ailleurs (menu, pointeur hors des vues) : les objets sont décalés d'un pas de grille sur X et Y si **Décaler les objets collés** est activé (par défaut), sinon collés à leur place d'origine.
 

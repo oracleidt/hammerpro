@@ -94,7 +94,7 @@ impl SelectTool {
                     }
                 }
                 let rect = screen_rect(view, &moved);
-                self.paint_moved_centers(state, view, painter, &m, color);
+                self.paint_moved_centers(state, view, painter, color);
                 size_labels(painter, view, rect, &moved, hsize);
                 let below = rect.center_bottom() + egui::vec2(0.0, HANDLE_GAP + hsize + 2.0);
                 match &d.op {
@@ -196,30 +196,25 @@ impl SelectTool {
         }
     }
 
-    fn paint_moved_centers(
-        &self,
-        state: &AppState,
-        view: &ViewInfo,
-        painter: &Painter,
-        m: &glam::DMat4,
-        color: Color32,
-    ) {
+    pub(crate) fn moved_center_marks(&self, state: &AppState) -> Vec<DVec3> {
+        let Some(d) = self.drag.as_ref().filter(|d| d.transforms()) else { return Vec::new() };
         if !state.settings.helpers.show_brush_centers {
-            return;
+            return Vec::new();
         }
+        let applied = match self.live {
+            Some(l) if !d.is_clone() => l.matrix,
+            _ => glam::DMat4::IDENTITY,
+        };
+        let correction = d.matrix() * applied.inverse();
+        let bounds = |e: &hp_vmf::Entity| state.assets.entity_bounds(e);
+        center_marks(&state.doc, &d.objs, &bounds).into_iter().map(|c| correction.transform_point3(c)).collect()
+    }
+
+    fn paint_moved_centers(&self, state: &AppState, view: &ViewInfo, painter: &Painter, color: Color32) {
         let clip = view_clip(view.rect);
-        let doc = &state.doc;
         let stroke = Stroke::new(1.5, color);
-        let solids = doc.selected_solid_ids();
-        let entities = doc.selected_objects().into_iter().filter_map(|o| match o {
-            hp_editor::ObjRef::Entity(id) if !doc.scene().is_brush_entity(id) => {
-                doc.scene().entities().get(&id).and_then(|n| n.entity.origin())
-            }
-            _ => None,
-        });
-        let centers = solids.iter().filter_map(|id| doc.scene().solid_bounds(*id).map(|b| b.center())).chain(entities);
-        for c in centers.take(MAX_CENTER_MARKS) {
-            if let Some(s) = view.world_to_screen(m.transform_point3(c)).filter(|s| clip.contains(*s)) {
+        for c in self.moved_center_marks(state) {
+            if let Some(s) = view.world_to_screen(c).filter(|s| clip.contains(*s)) {
                 painter.line_segment([s - egui::vec2(3.5, 3.5), s + egui::vec2(3.5, 3.5)], stroke);
                 painter.line_segment([s - egui::vec2(3.5, -3.5), s + egui::vec2(3.5, -3.5)], stroke);
             }
@@ -230,6 +225,10 @@ impl SelectTool {
         if self.drag.is_some() {
             if !matches!(self.drag.as_ref().map(|d| &d.op), Some(DragOp::FaceStretch { .. })) {
                 self.paint_gizmo(state, view, painter);
+            }
+            if let Some(d) = self.drag.as_ref().filter(|d| d.transforms()) {
+                let color = if d.is_clone() { VIEW_SUCCESS } else { PREVIEW_COLOR };
+                self.paint_moved_centers(state, view, painter, color);
             }
             self.paint_stretch_drag(view, painter);
             return;
@@ -777,11 +776,13 @@ fn size_labels(painter: &Painter, view: &ViewInfo, rect: Rect, b: &Aabb, handle_
     let size = b.size();
     let off = HANDLE_GAP + handle_size + 3.0;
     let clip = view_clip(view.rect);
-    let top = Pos2::new(vis.center().x, rect.top() - off);
+    let mid_x = if (vis.left()..=vis.right()).contains(&rect.center().x) { rect.center().x } else { vis.center().x };
+    let mid_y = if (vis.top()..=vis.bottom()).contains(&rect.center().y) { rect.center().y } else { vis.center().y };
+    let top = Pos2::new(mid_x, rect.top() - off);
     if clip.contains(top) {
         label(painter, top, Align2::CENTER_BOTTOM, &fmt_len(size[r]));
     }
-    let left = Pos2::new(rect.left() - off, vis.center().y);
+    let left = Pos2::new(rect.left() - off, mid_y);
     if clip.contains(left) {
         label(painter, left, Align2::RIGHT_CENTER, &fmt_len(size[u]));
     }
@@ -808,4 +809,19 @@ fn paint_handle(painter: &Painter, p: Pos2, mode: HandleMode, hovered: bool, siz
             painter.add(egui::Shape::convex_polygon(pts, fill, stroke));
         }
     }
+}
+
+pub(crate) fn center_marks(
+    doc: &hp_editor::Document,
+    objs: &[hp_editor::ObjRef],
+    bounds: &dyn Fn(&hp_vmf::Entity) -> Option<Aabb>,
+) -> Vec<DVec3> {
+    let scene = doc.scene();
+    let solids = scene.expand_solids(objs).into_iter().filter_map(|id| scene.solid_bounds(id).map(|b| b.center()));
+    let entities = scene.expand_entities(objs).into_iter().filter(|id| !scene.is_brush_entity(*id)).filter_map(|id| {
+        let entity = &scene.entities().get(&id)?.entity;
+        let center = bounds(entity).filter(|b| !b.is_empty()).map(|b| b.center()).or_else(|| entity.origin())?;
+        center.is_finite().then_some(center)
+    });
+    solids.chain(entities).take(MAX_CENTER_MARKS).collect()
 }

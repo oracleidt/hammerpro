@@ -4,6 +4,8 @@ mod extra;
 mod keys;
 mod live;
 mod options;
+#[cfg(test)]
+pub(crate) use draw::center_marks;
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
@@ -2283,6 +2285,10 @@ impl SelectTool {
 
     pub(crate) fn drag_matrix(&self) -> Option<DMat4> {
         self.drag.as_ref().map(Drag::matrix)
+    }
+
+    pub(crate) fn drop_live_for_tests(&mut self, state: &mut AppState) {
+        self.drop_live(state);
     }
 
     pub(crate) fn hovered_objects(&self) -> &[ObjRef] {

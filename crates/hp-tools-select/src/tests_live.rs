@@ -271,3 +271,46 @@ fn cycle_actions_and_edit_modes() {
     assert_eq!(tool.edit_mode(), EditMode::Gizmo);
     assert!(!tool.set_option(&mut state, "edit_mode", "bogus"));
 }
+
+fn light_origin(state: &AppState) -> DVec3 {
+    state.doc.scene().entities().get(&5).and_then(|n| n.entity.origin()).expect("light origin")
+}
+
+#[test]
+fn the_centre_mark_of_a_point_entity_is_the_centre_of_its_model_bounds() {
+    let state = state();
+    let origin = light_origin(&state);
+    let model = |e: &hp_vmf::Entity| {
+        let o = e.origin()?;
+        Some(hp_geom::Aabb::new(o + DVec3::new(-4.0, -10.0, 0.0), o + DVec3::new(20.0, 10.0, 72.0)))
+    };
+    let marks = crate::select::center_marks(&state.doc, &[LIGHT], &model);
+    assert_eq!(marks, vec![origin + DVec3::new(8.0, 0.0, 36.0)]);
+    let marks = crate::select::center_marks(&state.doc, &[LIGHT], &|_| None);
+    assert_eq!(marks, vec![origin], "without bounds the origin is used");
+}
+
+#[test]
+fn the_centre_mark_follows_the_live_preview_exactly() {
+    let mut state = state();
+    let mut tool = SelectTool::new();
+    let v = top();
+    state.doc.set_selection(&[LIGHT]);
+    let before = state.entity_bounds(&state.doc.scene().entities().get(&5).expect("light").entity).expect("b").center();
+    let start = scr(&v, light_origin(&state));
+    tool.handle_event(&mut state, &v, PointerEvent::DragStart { origin: start, pos: start }, Modifiers::NONE);
+    tool.handle_event(&mut state, &v, PointerEvent::Drag(start + vec2(100.0, 0.0)), Modifiers::NONE);
+    tool.publish_for_tests(&mut state);
+    let d = tool.drag_matrix().expect("dragging");
+    assert!(d.transform_point3(before).x > before.x + 100.0, "the light is moved");
+    assert!(state.doc.in_transaction(), "the move is shown live");
+    let moved = light_origin(&state);
+    let marks = tool.moved_center_marks(&state);
+    assert_eq!(marks.len(), 1);
+    let expected = d.transform_point3(before);
+    assert!((marks[0] - expected).length() < 1e-6, "mark {:?} expected {expected:?}", marks[0]);
+    assert!((marks[0] - moved).length() < 1e-6, "the mark sits on the live entity, not one move further");
+    tool.drop_live_for_tests(&mut state);
+    let marks = tool.moved_center_marks(&state);
+    assert!((marks[0] - expected).length() < 1e-6, "outline preview: the mark still follows the drag");
+}

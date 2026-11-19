@@ -344,6 +344,24 @@ impl KeyRouter {
         hp_app::dialog_keys::finish_frame(ctx);
         let tabs = std::mem::take(&mut self.stashed_tabs);
         if self.blocked(ctx, capture) {
+            if flying_capture(capture)
+                && !self.start.modal
+                && !self.start.popup
+                && !ctx.text_edit_focused()
+                && !egui::Popup::is_any_open(ctx)
+            {
+                let (actions, paste_text) = ctx.input_mut(|i| {
+                    let paste = i.events.iter().find_map(|e| match e {
+                        Event::Paste(text) => Some(text.clone()),
+                        _ => None,
+                    });
+                    (state.keys.take_triggered_where(&mut i.events, works_while_flying), paste)
+                });
+                if !actions.is_empty() {
+                    let paste_text = paste_text.filter(|_| actions.contains(&Action::Paste));
+                    return Routed { actions, paste_text };
+                }
+            }
             let events = ctx.input(|i| i.events.clone());
             let reason = self.reasons(ctx, capture).join(", ");
             self.note_dropped(ctx, state, &events, reason);
@@ -395,6 +413,23 @@ impl KeyRouter {
         let paste_text = paste_text.filter(|_| actions.contains(&Action::Paste));
         Routed { actions, paste_text }
     }
+}
+
+fn flying_capture(capture: AppCapture) -> bool {
+    capture.keyboard && !capture.dialog && !capture.context_menu && capture.reason != "the player view has the keyboard"
+}
+
+fn works_while_flying(action: Action) -> bool {
+    matches!(
+        action,
+        Action::Copy
+            | Action::Cut
+            | Action::Paste
+            | Action::PasteSpecial
+            | Action::Undo
+            | Action::Redo
+            | Action::Delete
+    )
 }
 
 fn text_selected(ctx: &egui::Context) -> bool {
@@ -461,6 +496,7 @@ mod tests {
         dialog: bool,
         dialog_fields: Vec<egui::Id>,
         values: [f64; 3],
+        flying: bool,
     }
 
     impl Harness {
@@ -486,11 +522,17 @@ mod tests {
                 dialog: false,
                 dialog_fields: Vec::new(),
                 values: [0.0; 3],
+                flying: false,
             }
         }
 
         fn capture(&self) -> AppCapture {
-            AppCapture { dialog: self.shell.dialog_open(&self.state), ..AppCapture::default() }
+            AppCapture {
+                dialog: self.shell.dialog_open(&self.state),
+                keyboard: self.flying,
+                reason: if self.flying { "the 3D view is in mouselook" } else { "" },
+                ..AppCapture::default()
+            }
         }
 
         fn frame(&mut self, events: Vec<Event>) {
@@ -548,7 +590,12 @@ mod tests {
                     }
                 }
                 self.shell.dialogs(&ctx, &mut self.state);
-                let capture = AppCapture { dialog: self.shell.dialog_open(&self.state), ..AppCapture::default() };
+                let capture = AppCapture {
+                    dialog: self.shell.dialog_open(&self.state),
+                    keyboard: self.flying,
+                    reason: if self.flying { "the 3D view is in mouselook" } else { "" },
+                    ..AppCapture::default()
+                };
                 let routed = self.router.after_ui(&ctx, &mut self.state, &mut self.tool, capture);
                 self.routed.push(routed);
             });
@@ -890,6 +937,19 @@ mod tests {
         h.frame(vec![]);
         h.frame(vec![]);
         assert!(h.ctx.text_edit_focused(), "one clipped frame (a scroll in progress) is not enough");
+    }
+
+    #[test]
+    fn copy_and_paste_work_while_flying() {
+        let mut h = Harness::new();
+        h.flying = true;
+        h.frame(vec![]);
+        h.frame(vec![key(Key::C, Modifiers::CTRL)]);
+        assert!(h.routed.iter().any(|r| r.actions.contains(&Action::Copy)), "Ctrl+C copies in camera mode");
+        h.frame(vec![release(Key::C), key(Key::V, Modifiers::CTRL)]);
+        assert!(h.routed.iter().any(|r| r.actions.contains(&Action::Paste)), "Ctrl+V pastes in camera mode");
+        h.frame(vec![release(Key::V), key(Key::G, Modifiers::CTRL)]);
+        assert!(!h.routed.iter().any(|r| r.actions.contains(&Action::Group)), "other shortcuts stay blocked");
     }
 
     #[test]

@@ -23,7 +23,8 @@ All are in the **Edit** menu and in the right click menu of the views:
 ## Where Paste puts the objects
 
 - `Ctrl+V` with the pointer over a 2D view: the contents are centered on the cursor and keep their depth.
-- `Ctrl+V` with the pointer over the 3D view: the contents sit on the surface under the cursor.
+- `Ctrl+V` with the pointer over the 3D view: the contents sit on the surface under the cursor by their bottom, like Hammer. Props use the real bounds of their model (rotated and scaled like the prop), so the lowest point of the model touches the surface whatever the height of its origin; point entities without a model use their helper box.
+- In the 2D views, and for the `<` buttons of **Offset per copy** in **Paste Special**, props are measured by their model bounds too.
 - The offset follows the grid, so objects on the grid stay on it.
 - Anywhere else (menu, pointer outside the views): the objects are moved by one grid step on X and Y when **Offset pasted objects** is on (default), else pasted at their original place.
 

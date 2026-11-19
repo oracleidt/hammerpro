@@ -6,7 +6,7 @@ The Selection tool picks objects in the 2D and 3D views and transforms them: Ham
 
 ## Brush centers
 
-A small **x** marks the center of every visible brush in the Top, Front and Side views. It is enabled by default, including with older settings. World brushes and brushes belonging to entities use the center of their axis-aligned bounds. The marker follows edits, hidden objects and cordons; selected brushes use the selection color. Its screen size stays constant while zooming. While you move, rotate, scale or skew a selection, the preview outline also shows an **x** at the new center of every selected brush and point entity, in the preview color.
+A small **x** marks the center of every visible brush in the Top, Front and Side views. It is enabled by default, including with older settings. World brushes and brushes belonging to entities use the center of their axis-aligned bounds. The marker follows edits, hidden objects and cordons; selected brushes use the selection color. Its screen size stays constant while zooming. While you move, rotate, scale or skew a selection, the preview also shows an **x** at the new center of every selected brush and point entity, in the preview color, in the 2D views and in the 3D view. For props the **x** is the center of the real model bounds (rotated and scaled with the prop), not the origin, and it follows the live preview exactly every frame, during gizmo drags, 2D handle drags, `G`, `R`, `E` and `Shift` clone drags.
 
 Toggle **View > Display options > Show brush centers in 2D**, or **Settings > Helpers**. The saved setting is `helpers.show_brush_centers`. This affects the editor display only.
 
