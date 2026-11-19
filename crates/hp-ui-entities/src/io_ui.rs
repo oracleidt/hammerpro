@@ -10,12 +10,14 @@ use hp_vmf::Connection;
 use crate::cx::Cx;
 use crate::edit::{ConnField, Op};
 use crate::names::{MapNames, SPECIAL_TARGETS};
-use crate::smartedit::picker_is_open;
+use crate::pick::{ConnRows, ViewPicks, conn_key};
+use crate::smartedit::{PICK_GLYPH, picker_is_open};
 use crate::values::fmt_num_rounded;
 use crate::view::{Agg, ConnIssues, ConnRow, EntityView, Target};
 use crate::widgets::{
-    CommitAction, CompleteMode, ConnText, FieldOpts, PickerItem, ROW_HEIGHT, TextBuffers, autocomplete_keys,
-    autocomplete_popup, column_widths, empty_note, picker_button, picker_popup, table_header, table_row,
+    CommitAction, CompleteMode, ConnText, FieldOpts, PickerItem, ROW_HEIGHT, SIDE_BUTTON_W, TextBuffers,
+    autocomplete_keys, autocomplete_popup, column_widths, empty_note, icon, picker_button, picker_popup, side_button,
+    table_header, table_row,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -111,7 +113,15 @@ impl IoEditor {
         self.salt.with("target_field")
     }
 
-    pub fn outputs(&mut self, ui: &mut Ui, cx: &mut Cx, view: &EntityView, names: &MapNames, ops: &mut Vec<Op>) {
+    pub fn outputs(
+        &mut self,
+        ui: &mut Ui,
+        cx: &mut Cx,
+        picks: &mut ViewPicks,
+        view: &EntityView,
+        names: &MapNames,
+        ops: &mut Vec<Op>,
+    ) {
         let Target::Entities(ids) = &view.target else {
             empty_note(ui, t!("entities.world_no_outputs"));
             return;
@@ -228,7 +238,7 @@ impl IoEditor {
                 });
         }
         ui.separator();
-        self.output_editor(ui, cx, view, names, ops);
+        self.output_editor(ui, cx, picks, view, names, ops);
     }
 
     fn selected_targets(&self, cx: &Cx, view: &EntityView) -> Vec<EntityId> {
@@ -309,7 +319,15 @@ impl IoEditor {
         }
     }
 
-    fn output_editor(&mut self, ui: &mut Ui, cx: &mut Cx, view: &EntityView, names: &MapNames, ops: &mut Vec<Op>) {
+    fn output_editor(
+        &mut self,
+        ui: &mut Ui,
+        cx: &mut Cx,
+        picks: &mut ViewPicks,
+        view: &EntityView,
+        names: &MapNames,
+        ops: &mut Vec<Op>,
+    ) {
         let rows: Vec<&ConnRow> = self.selected.iter().filter_map(|&i| view.conns.get(i)).collect();
         if rows.is_empty() {
             ui.label(RichText::new(t!("entities.select_output_hint")).weak());
@@ -329,6 +347,13 @@ impl IoEditor {
         let full = ui.available_width();
         let label_w = (full * 0.42).clamp(40.0, 190.0);
         let field_w = (full - label_w - 8.0).max(20.0);
+        let pick_w = (field_w - SIDE_BUTTON_W - 4.0).max(20.0);
+        let param_takes_name = input.value().is_some_and(|i| {
+            input_defs(fgd, names, target.value().unwrap_or(""))
+                .iter()
+                .find(|d| d.name.eq_ignore_ascii_case(i))
+                .is_some_and(|d| takes_entity_name(&d.arg_type))
+        });
 
         let grid = egui::Grid::new(self.salt.with("editor")).num_columns(2).min_col_width(0.0);
         grid.spacing(vec2(6.0, 4.0)).show(ui, |ui| {
@@ -354,23 +379,28 @@ impl IoEditor {
             let color = (!exists).then_some(theme::error());
             let hint = if target.is_mixed() { multiple } else { "" };
             let action = || CommitAction::Conn { rows: refs.clone(), field: ConnText::Target };
-            let resp = self.buffers.field(
-                ui,
-                id,
-                display,
-                FieldOpts { hint, width: field_w, color, ..FieldOpts::default() },
-                action,
-            );
-            let resp = if exists { resp } else { resp.on_hover_text(t!("entities.target_missing")) };
-            if resp.has_focus() || resp.lost_focus() {
-                let typed = self.buffers.live_text(id).unwrap_or(display).to_owned();
-                let mut candidates: Vec<&str> = SPECIAL_TARGETS.to_vec();
-                candidates.extend(names.names().iter().map(String::as_str));
-                if let Some(pick) = autocomplete_popup(ui, &resp, &typed, &candidates, keys, CompleteMode::Complete) {
-                    self.buffers.commit_now(id, pick, action());
-                    ui.memory_mut(|m| m.surrender_focus(id));
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                let resp = self.buffers.field(
+                    ui,
+                    id,
+                    display,
+                    FieldOpts { hint, width: pick_w, color, ..FieldOpts::default() },
+                    action,
+                );
+                let resp = if exists { resp } else { resp.on_hover_text(t!("entities.target_missing")) };
+                if resp.has_focus() || resp.lost_focus() {
+                    let typed = self.buffers.live_text(id).unwrap_or(display).to_owned();
+                    let mut candidates: Vec<&str> = SPECIAL_TARGETS.to_vec();
+                    candidates.extend(names.names().iter().map(String::as_str));
+                    if let Some(pick) = autocomplete_popup(ui, &resp, &typed, &candidates, keys, CompleteMode::Complete)
+                    {
+                        self.buffers.commit_now(id, pick, action());
+                        ui.memory_mut(|m| m.surrender_focus(id));
+                    }
                 }
-            }
+                conn_pick_button(ui, cx, picks, &refs, ConnText::Target);
+            });
             ui.end_row();
 
             ui.add_sized(vec2(label_w, 18.0), egui::Label::new(t!("entities.via_input")).truncate());
@@ -392,13 +422,22 @@ impl IoEditor {
             let live = self.buffers.live_text(id).unwrap_or(param.text()).to_owned();
             let quoted = live.contains('"');
             let color = quoted.then_some(theme::error());
-            self.buffers.field(
-                ui,
-                id,
-                param.text(),
-                FieldOpts { hint, width: field_w, color, ..FieldOpts::default() },
-                || CommitAction::Conn { rows: refs.clone(), field: ConnText::Param },
-            );
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                let width = if param_takes_name { pick_w } else { field_w };
+                self.buffers.field(
+                    ui,
+                    id,
+                    param.text(),
+                    FieldOpts { hint, width, color, ..FieldOpts::default() },
+                    || CommitAction::Conn { rows: refs.clone(), field: ConnText::Param },
+                );
+                if param_takes_name {
+                    conn_pick_button(ui, cx, picks, &refs, ConnText::Param);
+                } else {
+                    picks.cancel(cx.pick, conn_key(ConnText::Param));
+                }
+            });
             ui.end_row();
             if quoted {
                 ui.label("");
@@ -526,6 +565,24 @@ impl IoEditor {
             action = Some(IoAction::GoTo(r.source));
         }
         action
+    }
+}
+
+fn takes_entity_name(kind: &hp_fgd::PropertyType) -> bool {
+    use hp_fgd::PropertyType as P;
+    matches!(kind, P::TargetDestination | P::TargetNameOrClass | P::TargetSource)
+}
+
+pub(crate) fn conn_pick_button(ui: &mut Ui, cx: &mut Cx, picks: &mut ViewPicks, rows: &ConnRows, field: ConnText) {
+    let key = conn_key(field);
+    let waiting = picks.is_waiting(cx.pick, key);
+    let resp = side_button(ui, icon(PICK_GLYPH), waiting).on_hover_text(t!("entities.pick_entity"));
+    if resp.clicked() {
+        if waiting {
+            picks.cancel(cx.pick, key);
+        } else {
+            picks.start_conn(cx.pick, rows.clone(), field);
+        }
     }
 }
 

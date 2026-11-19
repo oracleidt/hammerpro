@@ -509,6 +509,7 @@ impl Viewports {
             .iter()
             .find(|s| (s.response.hovered() && !on_header(s.index)) || (dnd_active && s.response.contains_pointer()))
             .map(|s| s.index);
+        let hovered = fly_hover(hovered, self.mouselook.filter(|_| !self.fly_free).map(|m| m.view), input.focused);
         state.ui.hovered_view = hovered.or(self.mouselook.map(|m| m.view));
         if let Some(h) = hovered
             && input.pressed.iter().any(|&p| p)
@@ -670,6 +671,7 @@ impl Viewports {
             self.player_lights = player::PlayerLights::default();
             state.assets.set_light_styles(&[]);
             state.assets.set_projector_overrides(&[]);
+            state.runtime.lab.player.fires.clear();
             state.runtime.lab.player.light_styles = Default::default();
             state.runtime.lab.player.light_requests.clear();
             self.player_io_hidden.clear();
@@ -845,6 +847,10 @@ impl Viewports {
             }
         };
         state.assets.set_projector_overrides(&sim.projector_overrides());
+        let fires = sim.fire_states();
+        if state.runtime.lab.player.fires != fires {
+            state.runtime.lab.player.fires = fires;
+        }
         state.assets.set_play_world(world.clone(), self.player_groups.clone());
         state.runtime.health.play_portal_states =
             sim.portals.iter().map(|(name, open)| (name.clone(), *open)).collect();
@@ -1065,13 +1071,17 @@ impl Viewports {
                 if self.warp.request(input.focused, input.pointer, input.motion.is_some(), ml.anchor) {
                     move_cursor(ctx, ml.anchor);
                 }
-                let clickable = hovered == Some(ml.view)
-                    && !self.swallow
-                    && self.menu.is_none()
-                    && !dnd_active
-                    && pick::pending(state).is_none()
-                    && !tool_works_while_navigating(tool.id());
+                let free = hovered == Some(ml.view) && !self.swallow && self.menu.is_none() && !dnd_active;
+                let clickable = free && pick::pending(state).is_none() && !tool_works_while_navigating(tool.id());
                 let fly_view = slot_of(ml.view).map(|s| view_info(s.index, s.kind, s.rect, &state.cameras, cfg, ppp));
+                if input.pressed[PRIMARY]
+                    && free
+                    && pick::pending(state).is_some()
+                    && let Some(view) = &fly_view
+                {
+                    let depth = self.depth_2d(state, view.kind);
+                    self.picker.click(state, view, view.rect.center(), input.modifiers, depth);
+                }
                 let mut tool_took_right = false;
                 if input.pressed[SECONDARY]
                     && clickable
@@ -1842,8 +1852,7 @@ impl Viewports {
         let render_ms = costs.elapsed().as_secs_f32() * 1000.0;
         let costs = std::time::Instant::now();
 
-        tool.paint(state, &view, &painter);
-        self.paint_overlays(&painter, state, &view, input, drop_label);
+        self.paint_overlays(&painter, state, &view, input, drop_label, &*tool);
         let focused = state.ui.focused_view == Some(i);
         let border = if focused { hp_app::theme::ACCENT.gamma_multiply(0.55) } else { Color32::from_white_alpha(14) };
         painter.rect_stroke(slot.rect, 0, Stroke::new(1.0, border), StrokeKind::Inside);
@@ -1999,6 +2008,7 @@ impl Viewports {
         view: &ViewInfo,
         input: &FrameInput,
         drop_label: Option<String>,
+        tool: &dyn Tool,
     ) {
         let rect = view.rect;
         paint::axis_gizmo(painter, rect.left_bottom() + vec2(30.0, -30.0), view);
@@ -2018,6 +2028,7 @@ impl Viewports {
         for layer in &self.layers {
             layer.paint(state, view, painter);
         }
+        tool.paint(state, view, painter);
         if let Some(hint) = pick::hint(state, self.picker.faces().len()) {
             paint::text_pill(
                 painter,
@@ -2387,10 +2398,15 @@ impl Viewports {
         match payload {
             DragPayload::Material(name) => drop_material(state, view, &target, name),
             DragPayload::Model { path, skin: dragged_skin } => {
-                let (class, bounds, err) = placement::prop_for_model(state, path);
+                let (auto, bounds, err) = placement::prop_for_model(state, path);
                 if let Some(e) = err {
                     state.log(Severity::Warning, tf!("viewport.model_unavailable", path, e));
                 }
+                let choice = hp_app::runtime::helpers::class_keys::prop_class_for_model(state, path, auto);
+                if let Some(refused) = choice.refused {
+                    state.notify(Severity::Warning, tf!("viewport.prop_type_no_physics", path, refused, choice.class));
+                }
+                let class = choice.class.as_str();
                 let bounds =
                     bounds.unwrap_or((DVec3::splat(-placement::DEFAULT_HALF), DVec3::splat(placement::DEFAULT_HALF)));
                 let skin = if *dragged_skin > 0 { *dragged_skin } else { drop_skin(state, path) };
@@ -2815,6 +2831,13 @@ mod tests_logical;
 mod tests_workflow;
 #[cfg(test)]
 mod trains_tests;
+
+pub(crate) fn fly_hover(hovered: Option<usize>, locked_view: Option<usize>, focused: bool) -> Option<usize> {
+    match locked_view {
+        Some(view) if focused => Some(view),
+        _ => hovered,
+    }
+}
 
 fn move_cursor(ctx: &egui::Context, point: egui::Pos2) {
     let native = ctx.viewport_id() == egui::ViewportId::ROOT

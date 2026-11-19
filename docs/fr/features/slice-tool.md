@@ -32,7 +32,7 @@ Il n'y a ni panneau ni dialogue : la barre d'options et la barre d'état affiche
 - **Espacement des plans.** Le premier plan est à la position. La distance entre la face la plus proche de la sélection et la position est le pas, et les plans répètent ce pas vers l'autre face. Avec la souris à 16 unités du bord gauche et 3 segments, les coupes sont à 16, 32 et 48 unités de ce bord. Un plan qui tomberait sur l'autre face ou au-delà, ou qui laisserait un morceau de moins de 0,25 unité, est abandonné, et la ligne d'aide montre le vrai nombre de coupes.
 - **Centre.** Au départ, et après un clic droit, la position est le centre de l'objet et les coupes le divisent en N+1 blocs égaux (un segment le coupe en deux). La ligne d'aide affiche **(centre)**. La position reste au centre jusqu'à ce que la souris bouge.
 
-L'aperçu dessine chaque plan comme un quad jaune avec sa coordonnée, dans un léger contour des limites de la sélection, dans les vues 3D et 2D.
+L'aperçu dessine la coupe exacte de chaque plan à travers chaque brush sélectionné (y compris tournés, fins ou modifiés au vertex, et loin de l'origine de la carte) comme un polygone jaune rempli avec sa coordonnée, et teinte les blocs obtenus de chaque brush en vert et bleu en alternance, dans un léger contour des limites de la sélection. Il est dessiné par-dessus les faces des brushes, donc jamais caché ni coupé par elles, dans les vues 3D et 2D, dans tous les modes de rendu et avec la caméra dans le brush. Quand la souris arrive sur le bord de la sélection ou au-delà, la dernière coupe reste en place au lieu de disparaître.
 
 ## Souris et touches
 
@@ -68,7 +68,7 @@ L'outil `slice_brushes` fait la même chose sans l'outil : `ids` ou `solid_ids` 
 
 **La molette zoome au lieu de changer les segments.** Dans les vues 2D, utilisez `Maj` + molette. Dans la vue 3D, la molette appartient à l'outil tant qu'il est actif.
 
-**Rien ne se passe quand je clique.** Sélectionnez d'abord des brushes et gardez la souris à l'intérieur de l'objet : une position sur le bord ne donne aucune coupe.
+**Rien ne se passe quand je clique.** Sélectionnez d'abord des brushes. Une souris sur le bord de l'objet ou au-delà garde la dernière coupe affichée, et le clic applique cette coupe.
 
 **Tab déplace le focus du clavier.** `Tab` n'alterne que si aucun champ de texte ni bouton n'avait le focus. Cliquez d'abord dans une vue, ou appuyez sur `O`.
 

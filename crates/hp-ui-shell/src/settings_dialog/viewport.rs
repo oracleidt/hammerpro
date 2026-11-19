@@ -213,6 +213,16 @@ pub(super) fn page(ui: &mut Ui, state: &mut AppState) {
             changed |=
                 ui.checkbox(&mut v.hover_outline, "").on_hover_text(t!("shell.view.hover_outline_tip")).changed();
             ui.end_row();
+            ui.label(t!("shell.view.label_max_px_2d")).on_hover_text(t!("shell.view.label_max_px_2d_tip"));
+            changed |= ui
+                .add(egui::DragValue::new(&mut v.label_max_px_2d).range(6.0..=64.0).speed(0.25).suffix(" px"))
+                .changed();
+            ui.end_row();
+            ui.label(t!("shell.view.label_min_px_2d")).on_hover_text(t!("shell.view.label_min_px_2d_tip"));
+            changed |= ui
+                .add(egui::DragValue::new(&mut v.label_min_px_2d).range(0.0..=64.0).speed(0.25).suffix(" px"))
+                .changed();
+            ui.end_row();
         });
     heading(ui, t!("shell.view.rendering"));
     egui::Grid::new("hp_shell_view_render")
@@ -322,6 +332,18 @@ pub(crate) const TR: TrTable = &[
         "shell.view.hover_outline_tip",
         "Off: only the selected objects are highlighted, when you click them",
         "Désactivé : seuls les objets sélectionnés sont mis en évidence, quand vous cliquez dessus",
+    ),
+    ("shell.view.label_max_px_2d", "Largest 2D label text", "Texte des étiquettes 2D le plus grand"),
+    (
+        "shell.view.label_max_px_2d_tip",
+        "Entity names and notes in the 2D views grow with the zoom up to this size",
+        "Les noms d'entités et les notes des vues 2D grandissent avec le zoom jusqu'à cette taille",
+    ),
+    ("shell.view.label_min_px_2d", "Smallest 2D label text", "Texte des étiquettes 2D le plus petit"),
+    (
+        "shell.view.label_min_px_2d_tip",
+        "Labels that would be smaller than this when zoomed out are hidden (0 keeps them all)",
+        "Les étiquettes qui seraient plus petites en dézoomant sont masquées (0 les garde toutes)",
     ),
     ("shell.view.rendering", "Rendering", "Rendu"),
     ("shell.view.msaa", "Antialiasing (MSAA)", "Anticrénelage (MSAA)"),

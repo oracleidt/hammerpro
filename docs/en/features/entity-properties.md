@@ -18,9 +18,9 @@ The **Entity** tab of the right dock is Hammer's Object Properties: it edits the
 | Element | What it does |
 |---|---|
 | Kind icon | Point entity, brush entity, mixed selection or world. Its color is the class color of the FGD. |
-| Class button | The class of the selection (or "N classes"). Click it to pick another class from a searchable list (point classes for point entities, brush classes for brush entities). Changing the class adds the default keys of the new class that are missing and applies to every selected entity. A brush entity that becomes a class with an `origin` key (`func_tracktrain`, `func_tanktrain`, `func_rotating`...) and has none gets it at the center of its brushes, like Hammer. |
+| Class button | The class of the selection (or "N classes"). Click it to pick another class from a searchable list (point classes for point entities, brush classes for brush entities). Changing the class adds the default keys of the new class that are missing and applies to every selected entity. With **Remove keyvalues the new class does not use** (Settings > Editing, on by default) the keys the new class does not define are removed in the same undo step (a `prop_static` turned into a `light` loses `model`, `skin`, `solid`, `fademindist`..., so the views stop drawing the old model) and a notification lists them; see [Cleaning up keyvalues](#cleaning-up-keyvalues). A brush entity that becomes a class with an `origin` key (`func_tracktrain`, `func_tanktrain`, `func_rotating`...) and has none gets it at the center of its brushes, like Hammer. |
 | **?** | Opens the entity help of the class. |
-| **☰** (**More**) | Menu with **Copy keyvalues**, **Paste keyvalues** (with the name of the copied class and its key count), the **Paste the name (targetname) too** check box, **Find and replace in entities...**, **Set maximum distance...** and **Entity help**. |
+| **☰** (**More**) | Menu with **Copy keyvalues**, **Paste keyvalues** (with the name of the copied class and its key count), the **Paste the name (targetname) too** check box, **Find and replace in entities...**, **Set maximum distance...**, **Clean up keyvalues: remove the ones the class does not use**, **Reset to class defaults**, the **Remove keyvalues the new class does not use** check box and **Entity help**. |
 | **Entities selected: N** | Shown when several entities are edited. |
 | **Move to world** | Shown for brush entities: gives the brushes back to the world and deletes the brush entities (`Ctrl+Shift+W`). |
 | **Description** | Collapsed section with the FGD description of the class. |
@@ -161,9 +161,18 @@ Changes apply live to every selected entity and merge into one undo step per key
 
 ## Copy and paste keyvalues
 
-- **Edit > Copy keyvalues** copies every key of the first selected entity except `id`, `classname`, `origin` and `targetname` (kept apart). The keys also go to the system clipboard as `"key" "value"` lines.
-- **Edit > Paste keyvalues** writes them on every selected entity in one step. The class does not change.
+- **Edit > Keyvalues > Copy keyvalues** copies every key of the first selected entity except `id`, `classname`, `origin` and `targetname` (kept apart). The keys also go to the system clipboard as `"key" "value"` lines.
+- **Edit > Keyvalues > Paste keyvalues** writes them on every selected entity in one step. The class does not change.
 - **Paste the name (targetname) too** (panel menu) or **Settings > Entities and browsers > Paste keyvalues also pastes the name (targetname)** also pastes the name. Off by default (`[entities] paste_targetname`).
+
+## Cleaning up keyvalues
+
+Keys the class of an entity does not define stay in the VMF when the class changes (Hammer keeps them too). Hammer Pro removes them for you:
+
+- **When the class changes** (class button of the panel, MCP `set_entity_class`), if **Remove keyvalues the new class does not use** is on (Settings > Editing and the **☰** menu of the panel, on by default, `[edit] clean_keys_on_class_change`). The removal is part of the class change undo step and a notification lists the removed keys.
+- **On demand**: under the header, **N keyvalues not used by this class** (the tooltip lists them) with a **Clean up** button; **Edit > Keyvalues > Clean up keyvalues: remove the ones the class does not use** and **Edit > Keyvalues > Reset to class defaults** (also in the **☰** menu). Reset to class defaults also removes the unused keys and sets every key the class gives a default back to it. Each is one undo step on every selected entity.
+
+Always kept: `classname`, `origin`, `angles`, `targetname`, `hammerid`, keys starting with `hp_`, outputs, visgroups, groups and editor data (color, comments). `spawnflags` stay when the class has flags. Nothing is removed for a class the FGD does not know, or without an FGD. MCP: `set_entity_class` with `clean_keys` and `reset_defaults` (answers `removed_keys`), `run_action` `clean_entity_keyvalues` and `reset_entity_keyvalues`.
 
 ## Set maximum distance
 
@@ -240,6 +249,7 @@ See [Worldspawn keys](../compiler/worldspawn-keys.md).
 | New outputs use the ESC separator | **Settings > Entities and browsers**, `[entities] io_esc_delimiter` | on |
 | Sound preview volume | **Settings > Entities and browsers**, `[browser] sound_volume` | 80% |
 | Update references when renaming | **Settings > Editing**, right click a name label, `[edit] rename_updates_references` | on |
+| Remove keyvalues the new class does not use | **Settings > Editing**, **☰** menu of the panel, `[edit] clean_keys_on_class_change` | on |
 
 ## Tips
 

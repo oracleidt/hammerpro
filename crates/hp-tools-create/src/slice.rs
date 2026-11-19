@@ -12,8 +12,8 @@ use hp_render::Overlay;
 
 use crate::clip::consume_letter;
 use crate::common::{
-    COLOR_PENDING, Mouse, Ov, active_material, consume_plain_key, consume_tabs, fmt_num, paint_label,
-    plane_box_polygon, rgba, round_to,
+    COLOR_BACK, COLOR_FRONT, COLOR_PENDING, Mouse, Ov, active_material, consume_plain_key, consume_tabs, fmt_num,
+    paint_label, plane_solid_polygon, rgba, round_to,
 };
 
 pub const MAX_SEGMENTS: u32 = 64;
@@ -21,6 +21,10 @@ pub const MAX_SEGMENTS: u32 = 64;
 const MIN_PIECE: f64 = 0.25;
 
 const MAX_LABELS: usize = 24;
+
+const MAX_PREVIEW_SOLIDS: usize = 1024;
+
+const MAX_TINTED_PIECES: usize = 4096;
 
 pub const SLICE_TR: TrTable = &[
     ("slice.left_right", "left to right", "de gauche à droite"),
@@ -225,6 +229,32 @@ impl SliceLayout {
 
     pub fn blocks(&self) -> usize {
         self.positions.len() + 1
+    }
+
+    pub fn cut_polygons(&self, geom: &hp_geom::SolidGeom) -> Vec<Vec<DVec3>> {
+        self.planes().iter().map(|p| plane_solid_polygon(p, geom)).filter(|p| p.len() >= 3).collect()
+    }
+
+    pub fn piece_faces(&self, geom: &hp_geom::SolidGeom) -> Vec<(usize, DVec3, Vec<DVec3>)> {
+        let planes = self.planes();
+        let mut out = Vec::new();
+        for f in &geom.faces {
+            let mut rest = f.vertices.clone();
+            for (k, plane) in planes.iter().enumerate() {
+                if rest.len() < 3 {
+                    break;
+                }
+                let (front, back) = hp_geom::clip_polygon(&rest, plane, 1e-6);
+                if back.len() >= 3 {
+                    out.push((k, f.plane.normal, back));
+                }
+                rest = front;
+            }
+            if rest.len() >= 3 {
+                out.push((planes.len(), f.plane.normal, rest));
+            }
+        }
+        out
     }
 }
 
@@ -498,6 +528,7 @@ impl Tool for SliceTool {
             self.last_pointer = Some(pos);
             if let Some(base) = self.layout(state)
                 && let Some(s) = self.cursor_from_mouse(state, input.view, pos, m.modifiers.alt, &base)
+                && !positions(base.lo, base.hi, Some(s), self.segments).is_empty()
             {
                 self.cursor = Some(s);
             }
@@ -549,16 +580,44 @@ impl Tool for SliceTool {
 
     fn overlay(&self, state: &AppState, view: &ViewInfo, out: &mut Overlay) {
         let Some(layout) = self.layout(state) else { return };
+        let scene = state.doc.scene();
+        let solids: Vec<&hp_geom::SolidGeom> =
+            layout.ids.iter().filter_map(|id| scene.solid(*id)).map(|n| &*n.geom).take(MAX_PREVIEW_SOLIDS).collect();
         let mut ov = Ov::new(out, view);
-        let region = layout.bounds.expand(4.0);
-        let line = rgba(COLOR_PENDING, 0.95);
-        let planes = layout.planes();
-        for plane in &planes {
-            let poly = plane_box_polygon(plane, &region);
-            ov.polygon_fill(&poly, rgba(COLOR_PENDING, 0.12));
-            ov.polygon_outline(&poly, line, true);
-        }
         ov.box_edges(&layout.bounds, rgba(COLOR_PENDING, 0.3), false);
+        if layout.positions.is_empty() {
+            return;
+        }
+        let is_2d = view.is_2d();
+        let eye = view.cam3d.pos;
+        if solids.len().saturating_mul(layout.blocks()) <= MAX_TINTED_PIECES {
+            for geom in &solids {
+                for (k, normal, poly) in layout.piece_faces(geom) {
+                    let color = if k % 2 == 0 { COLOR_FRONT } else { COLOR_BACK };
+                    if is_2d {
+                        ov.polygon_outline(&poly, rgba(color, 0.85), false);
+                        continue;
+                    }
+                    let center = hp_geom::polygon_center(&poly);
+                    if normal.dot(center - eye) >= 0.0 {
+                        continue;
+                    }
+                    ov.polygon_fill(&poly, rgba(color, 0.14));
+                    for (i, a) in poly.iter().enumerate() {
+                        ov.top_line(*a, poly[(i + 1) % poly.len()], rgba(color, 0.7));
+                    }
+                }
+            }
+        }
+        let line = rgba(COLOR_PENDING, 1.0);
+        for geom in &solids {
+            for poly in layout.cut_polygons(geom) {
+                ov.polygon_fill(&poly, rgba(COLOR_PENDING, 0.35));
+                for (i, a) in poly.iter().enumerate() {
+                    ov.top_line(*a, poly[(i + 1) % poly.len()], line);
+                }
+            }
+        }
     }
 
     fn paint(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
@@ -807,6 +866,76 @@ mod tests {
             let edge = (s - base.lo).abs() < 1e-9 || (s - base.hi).abs() < 1e-9;
             assert!(edge || on_grid < 1e-9 || (1.0 - on_grid) < 1e-9, "{s}");
         }
+    }
+
+    fn add_box(state: &mut AppState, min: DVec3, max: DVec3, seed: u32) -> u32 {
+        let pts: Vec<DVec3> = (0..8)
+            .map(|i| {
+                DVec3::new(
+                    if i & 1 == 0 { min.x } else { max.x },
+                    if i & 2 == 0 { min.y } else { max.y },
+                    if i & 4 == 0 { min.z } else { max.z },
+                )
+            })
+            .collect();
+        let mut next = seed;
+        let mut ids = || {
+            next += 1;
+            next
+        };
+        let sides = hp_geom::hull_solid(&pts, "DEV/DEV_MEASUREGENERIC01B", 0.25, 16, &mut ids).expect("box");
+        state.doc.create_solid(sides, hp_editor::Owner::World).expect("solid")
+    }
+
+    #[test]
+    fn preview_covers_every_brush_far_from_the_origin() {
+        use crate::tests_support::{info_2d, info_3d};
+        let mut state = crate::tests_support::settle();
+        let wall = add_box(&mut state, DVec3::new(6000.0, 9000.0, 0.0), DVec3::new(6016.0, 10024.0, 512.0), 71_000);
+        let thin = add_box(&mut state, DVec3::new(-7000.0, 9100.0, 128.0), DVec3::new(-6000.0, 9101.0, 400.0), 72_000);
+        state.doc.set_selection(&[hp_editor::ObjRef::Solid(wall), hp_editor::ObjRef::Solid(thin)]);
+        let mut tool = SliceTool::new();
+        tool.activate(&mut state);
+        assert!(tool.set_option(&mut state, "orientation", "top_bottom"));
+        let layout = tool.layout(&state).expect("layout");
+        let scene = state.doc.scene();
+        let wall_geom = &scene.solid(wall).expect("wall").geom;
+        let thin_geom = &scene.solid(thin).expect("thin").geom;
+        let cut = layout.cut_polygons(wall_geom);
+        assert_eq!(cut.len(), 1);
+        let area = hp_geom::polygon_area_vector(&cut[0]).length();
+        assert!((area - 16.0 * 1024.0).abs() < 1e-3, "{area}");
+        assert_eq!(layout.cut_polygons(thin_geom).len(), 1);
+        let pieces = layout.piece_faces(wall_geom);
+        assert!(pieces.iter().any(|(k, _, _)| *k == 0) && pieces.iter().any(|(k, _, _)| *k == 1));
+        let views = [
+            info_3d(DVec3::new(6200.0, 9500.0, 80.0), 180.0, 0.0),
+            info_3d(DVec3::new(6008.0, 9500.0, 200.0), 90.0, 0.0),
+            info_2d(ViewKind::Front, 0.5),
+        ];
+        for view in &views {
+            let mut out = Overlay::default();
+            tool.overlay(&state, view, &mut out);
+            assert!(out.lines_on_top.len() >= 8, "{:?} {}", view.kind, out.lines_on_top.len());
+            if !view.is_2d() {
+                assert!(!out.triangles_on_top.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn cursor_at_the_edge_keeps_the_last_cut() {
+        use crate::tests_support::info_2d;
+        let mut state = selected_state();
+        let mut tool = SliceTool::new();
+        tool.activate(&mut state);
+        let view = info_2d(ViewKind::Top, 0.5);
+        tool.adopt_view(&state, &view);
+        let base = tool.layout(&state).expect("layout");
+        let far = Pos2::new(view.rect.center().x + 5000.0, view.rect.center().y);
+        let s = tool.cursor_from_mouse(&state, &view, far, false, &base).expect("cursor");
+        assert!(positions(base.lo, base.hi, Some(s), tool.segments).is_empty());
+        assert!(!tool.layout(&state).expect("layout").positions.is_empty());
     }
 
     #[test]

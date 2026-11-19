@@ -4,9 +4,12 @@ use hp_app::state::{PickKind, PickRequest, PickResult, RightTab};
 use hp_app::{AppState, Severity, tf};
 use hp_editor::{Document, EntityQuery, Id};
 
-use crate::edit::{Op, apply};
+use crate::edit::{ConnField, Op, apply};
 use crate::values::{fmt_num_rounded, format_angles, parse_angles};
 use crate::view::Target;
+use crate::widgets::ConnText;
+
+pub(crate) type ConnRows = Vec<Vec<(Id, usize)>>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PickPurpose {
@@ -31,6 +34,7 @@ struct Pending {
     target: Target,
     key: String,
     purpose: PickPurpose,
+    conn: Option<(ConnRows, ConnText)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -41,6 +45,17 @@ pub(crate) struct NamePrompt {
     pub key: String,
     pub name: String,
     pub focus: bool,
+    pub conn: Option<(ConnRows, ConnText)>,
+}
+
+impl NamePrompt {
+    pub fn op(&self) -> Op {
+        let name = self.name.trim().to_owned();
+        match &self.conn {
+            Some((rows, field)) => Op::NameAndConn { named: self.entity, name, rows: rows.clone(), field: *field },
+            None => Op::NameAndSet { named: self.entity, name, target: self.target.clone(), key: self.key.clone() },
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -62,7 +77,15 @@ impl ViewPicks {
     pub fn start(&mut self, pick: &mut Option<PickRequest>, target: Target, key: &str, purpose: PickPurpose) {
         let requester = self.requester(key);
         *pick = Some(PickRequest { kind: purpose.kind(), requester: requester.clone(), result: None });
-        self.pending = Some(Pending { requester, target, key: key.to_owned(), purpose });
+        self.pending = Some(Pending { requester, target, key: key.to_owned(), purpose, conn: None });
+    }
+
+    pub fn start_conn(&mut self, pick: &mut Option<PickRequest>, rows: ConnRows, field: ConnText) {
+        let key = conn_key(field);
+        self.start(pick, Target::Entities(Vec::new()), key, PickPurpose::Target);
+        if let Some(p) = self.pending.as_mut() {
+            p.conn = Some((rows, field));
+        }
     }
 
     pub fn is_waiting(&self, pick: &Option<PickRequest>, key: &str) -> bool {
@@ -92,9 +115,14 @@ impl ViewPicks {
             PickResult::Entity(id) => {
                 let Some(e) = doc.scene().entity(id).map(|n| &n.entity) else { return };
                 match e.get("targetname").map(str::trim).filter(|n| !n.is_empty()) {
-                    Some(name) => {
-                        ops.push(Op::SetKey { target: p.target, key: p.key, value: name.to_owned(), merge: false })
-                    }
+                    Some(name) => match p.conn {
+                        Some((rows, field)) => {
+                            ops.push(Op::ConnEdit { rows, field: conn_field(field, name), merge: false })
+                        }
+                        None => {
+                            ops.push(Op::SetKey { target: p.target, key: p.key, value: name.to_owned(), merge: false })
+                        }
+                    },
                     None => {
                         self.prompt = Some(NamePrompt {
                             entity: id,
@@ -103,6 +131,7 @@ impl ViewPicks {
                             name: suggest_name(doc, &e.classname),
                             key: p.key,
                             focus: true,
+                            conn: p.conn,
                         });
                     }
                 }
@@ -125,6 +154,20 @@ impl ViewPicks {
                 }
             }
         }
+    }
+}
+
+pub(crate) fn conn_key(field: ConnText) -> &'static str {
+    match field {
+        ConnText::Target => "io:target",
+        ConnText::Param => "io:param",
+    }
+}
+
+pub(crate) fn conn_field(field: ConnText, name: &str) -> ConnField {
+    match field {
+        ConnText::Target => ConnField::Target(name.to_owned()),
+        ConnText::Param => ConnField::Param(name.to_owned()),
     }
 }
 
@@ -335,6 +378,40 @@ mod tests {
         let prompt = picks.prompt.clone().expect("prompt");
         assert_eq!(prompt.entity, 4);
         assert_eq!(prompt.name, "info_player_start_1");
+    }
+
+    #[test]
+    fn output_target_pick_fills_the_rows_or_names_the_entity() {
+        let mut s = state();
+        s.doc.add_connection(&[6], &hp_vmf::Connection { output: "OnTrigger".into(), ..Default::default() }).unwrap();
+        let index = s.doc.scene().entity(6).unwrap().entity.connections.len() - 1;
+        let rows: ConnRows = vec![vec![(6, index)]];
+        let mut picks = ViewPicks::new("t");
+        picks.start_conn(&mut s.pick, rows.clone(), ConnText::Target);
+        assert!(picks.is_waiting(&s.pick, conn_key(ConnText::Target)));
+        assert!(!picks.is_waiting(&s.pick, "target"));
+        if let Some(p) = s.pick.as_mut() {
+            p.result = Some(PickResult::Entity(5));
+        }
+        let mut ops = Vec::new();
+        picks.poll(&s.doc, &mut s.pick, &mut ops);
+        assert_eq!(
+            ops,
+            [Op::ConnEdit { rows: rows.clone(), field: ConnField::Target("main_light".into()), merge: false }]
+        );
+        picks.start_conn(&mut s.pick, rows.clone(), ConnText::Param);
+        if let Some(p) = s.pick.as_mut() {
+            p.result = Some(PickResult::Entity(4));
+        }
+        let mut ops = Vec::new();
+        picks.poll(&s.doc, &mut s.pick, &mut ops);
+        assert!(ops.is_empty());
+        let prompt = picks.prompt.clone().expect("prompt");
+        s.doc.clear_history();
+        apply(&mut s.doc, None, prompt.op()).unwrap();
+        assert_eq!(s.doc.scene().entity(4).unwrap().entity.get("targetname"), Some("info_player_start_1"));
+        assert_eq!(s.doc.scene().entity(6).unwrap().entity.connections[index].param, "info_player_start_1");
+        assert_eq!(s.doc.history_len().0, 1, "one undo step");
     }
 
     #[test]

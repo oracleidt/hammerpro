@@ -272,6 +272,111 @@ fn wrap_texture_across_edge() {
     assert!((a - b).length() < 1e-6, "{a:?} {b:?}");
 }
 
+fn face_with_normal(doc: &Document, id: crate::Id, n: DVec3) -> FaceRef {
+    let solid = &doc.scene().solid(id).expect("solid").solid;
+    let i = solid
+        .sides
+        .iter()
+        .position(|s| Plane::from_side(s).is_some_and(|p| p.normal.distance(n) < 1e-6))
+        .expect("face");
+    FaceRef::new(id, i)
+}
+
+#[test]
+fn apply_texture_and_alignment_lines_up_across_brushes() {
+    let mut doc = Document::new_empty();
+    let floor = doc
+        .create_solid(box_sides(DVec3::new(0.0, 0.0, -16.0), DVec3::new(128.0, 128.0, 0.0), "A/SMALL256"), Owner::World)
+        .expect("floor");
+    let wall = doc
+        .create_solid(box_sides(DVec3::new(128.0, 0.0, 0.0), DVec3::new(144.0, 128.0, 128.0), "B/B"), Owner::World)
+        .expect("wall");
+    let src = face_with_normal(&doc, floor, DVec3::Z);
+    let dst = face_with_normal(&doc, wall, DVec3::NEG_X);
+    let coplanar = doc
+        .create_solid(box_sides(DVec3::new(128.0, 0.0, -16.0), DVec3::new(256.0, 64.0, 0.0), "C/C"), Owner::World)
+        .expect("coplanar");
+    let next = face_with_normal(&doc, coplanar, DVec3::Z);
+    let edit = FaceEdit {
+        rotate_by: Some(30.0),
+        u_scale: Some(0.5),
+        v_scale: Some(0.37),
+        u_shift: Some(13.0),
+        v_shift: Some(-5.0),
+        ..FaceEdit::default()
+    };
+    doc.edit_faces(&[src], &edit).expect("edit");
+    let n = check_undo_redo(&mut doc, |d| {
+        d.apply_texture_and_alignment(src, &[dst, next], Some("big/big1024"), true).expect("wrap")
+    });
+    assert_eq!(n, 2);
+    let s = doc.face_side(src).expect("src").clone();
+    for f in [dst, next] {
+        let d = doc.face_side(f).expect("dst").clone();
+        assert_eq!(d.material, "big/big1024");
+        assert_eq!(s.material, "A/SMALL256");
+        assert!(hp_geom::axes_quality(&d, Plane::from_side(&d).expect("plane").normal) > 0.99);
+        for y in [0.0, 17.5, 64.0, 128.0] {
+            let p = DVec3::new(128.0, y, 0.0);
+            let (a, b) = (hp_geom::texel_uv(&s, p), hp_geom::texel_uv(&d, p));
+            assert!((a - b).length() < 1e-6, "edge {y}: {a:?} {b:?}");
+        }
+    }
+    let up = DVec3::new(128.0, 40.0, 50.0);
+    let along = DVec3::new(78.0, 40.0, 0.0);
+    let d = doc.face_side(dst).expect("dst").clone();
+    let fold = (hp_geom::texel_uv(&d, up) - hp_geom::texel_uv(&d, DVec3::new(128.0, 40.0, 0.0))).length();
+    let flat = (hp_geom::texel_uv(&s, along) - hp_geom::texel_uv(&s, DVec3::new(128.0, 40.0, 0.0))).length();
+    assert!(fold > 1.0 && flat > 1.0);
+    let c = doc.face_side(next).expect("next").clone();
+    let far = DVec3::new(200.0, 30.0, 0.0);
+    assert!((hp_geom::texel_uv(&s, far) - hp_geom::texel_uv(&c, far)).length() < 1e-6);
+}
+
+#[test]
+fn apply_texture_and_alignment_without_wrap_copies_values() {
+    let (mut doc, id) = doc_with_cube();
+    let top = FaceRef::new(id, 0);
+    let wall = FaceRef::new(id, 4);
+    doc.edit_faces(&[top], &FaceEdit { u_shift: Some(9.0), v_scale: Some(0.5), ..FaceEdit::default() }).expect("e");
+    check_undo_redo(&mut doc, |d| d.apply_texture_and_alignment(top, &[wall], None, false).expect("copy"));
+    let (s, d) = (doc.face_side(top).expect("s").clone(), doc.face_side(wall).expect("d").clone());
+    assert_eq!(s.material, d.material);
+    assert_eq!((d.uaxis.shift, d.vaxis.scale), (9.0, 0.5));
+    assert!(doc.apply_texture_and_alignment(top, &[wall], Some("  "), true).is_err());
+}
+
+#[test]
+fn wrap_onto_angled_face_continues_at_edge() {
+    let src = hp_vmf::Side {
+        material: "a/a".to_owned(),
+        uaxis: hp_vmf::TexAxis { axis: DVec3::new(0.8, 0.6, 0.0), shift: 3.0, scale: 0.4 },
+        vaxis: hp_vmf::TexAxis { axis: DVec3::new(0.6, -0.8, 0.0), shift: -7.0, scale: 0.3 },
+        ..Default::default()
+    };
+    let edge = DVec3::new(64.0, 0.0, 32.0);
+    let dn = DVec3::new(1.0, 0.0, 1.0).normalize();
+    let mut dst = hp_vmf::Side::default();
+    hp_geom::wrap_texture(&src, DVec3::Z, &mut dst, dn, edge);
+    for t in [-100.0, 0.0, 33.0, 512.0] {
+        let p = edge + DVec3::Y * t;
+        assert!((hp_geom::texel_uv(&src, p) - hp_geom::texel_uv(&dst, p)).length() < 1e-6);
+    }
+    assert!(hp_geom::axes_quality(&dst, dn) > 0.99);
+}
+
+#[test]
+fn apply_material_keeps_texel_scale_for_other_texture_sizes() {
+    let (mut doc, id) = doc_with_cube();
+    let top = FaceRef::new(id, 0);
+    doc.edit_faces(&[top], &FaceEdit { u_shift: Some(5.0), u_scale: Some(0.5), ..FaceEdit::default() }).expect("e");
+    let before = doc.face_side(top).expect("s").clone();
+    doc.apply_material(&[top], "big/big1024").expect("apply");
+    let after = doc.face_side(top).expect("s").clone();
+    assert_eq!(after.material, "big/big1024");
+    assert_eq!((after.uaxis, after.vaxis, after.rotation), (before.uaxis, before.vaxis, before.rotation));
+}
+
 #[test]
 fn clip_modes() {
     let plane = Plane::from_normal_point(DVec3::X, DVec3::new(16.0, 0.0, 0.0)).expect("plane");

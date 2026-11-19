@@ -95,6 +95,7 @@ pub const TR: TrTable = &[
     ("shell.undo.smoothing_groups", "Smoothing groups", "Groupes de lissage"),
     ("shell.undo.paste_prefab", "Paste prefab", "Collage de prefab"),
     ("shell.undo.wrap_texture", "Wrap texture", "Enveloppement de texture"),
+    ("shell.undo.apply_texture_and_alignment", "Apply texture and alignment", "Appliquer la texture et l'alignement"),
     ("shell.undo.edit_flags", "Edit flags", "Modification des flags"),
     ("shell.undo.sew_displacements", "Sew displacements", "Couture des displacements"),
     ("shell.undo.paste_outputs", "Paste outputs", "Collage des sorties"),

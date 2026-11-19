@@ -40,10 +40,21 @@ domain! { "entities and io";
             "update_references": boolean("When key is targetname: also update the references to the old name (default: the setting edit.rename_updates_references)."),
         }, ["key"];
     set_entity_class: Edit, "Change the class of entities",
-        "Change the class of entities (keyvalues stay). A brush entity whose new FGD class has an origin key \
-        (func_tracktrain, func_tanktrain, func_rotating...) and has none gets it at the center of its solids, like \
-        Hammer.",
-        { "ids": ids("Entity ids (default: the selected entities)."), "classname": string("New class.") }, ["classname"];
+        "Change the class of entities. With clean_keys (default: the setting edit.clean_keys_on_class_change, on \
+        unless the user turned it off) the keyvalues the new FGD class does not define (model, skin, solid of a \
+        former prop...) are removed in the same undo step; classname, origin, angles, targetname, hammerid, \
+        outputs, visgroups and editor data always stay, spawnflags stay when the class has them, nothing is \
+        removed when the FGD does not know the class. reset_defaults also sets every key the class defines with \
+        a default back to that default. Answers removed_keys (per entity id) and reset_keys. A brush entity \
+        whose new FGD class has an origin key (func_tracktrain, func_tanktrain, func_rotating...) and has none \
+        gets it at the center of its solids, like Hammer. The same cleanup on entities that keep their class: \
+        run_action clean_entity_keyvalues or reset_entity_keyvalues on the selection.",
+        {
+            "ids": ids("Entity ids (default: the selected entities)."),
+            "classname": string("New class."),
+            "clean_keys": boolean("Remove the keyvalues the new class does not use (default: the setting edit.clean_keys_on_class_change)."),
+            "reset_defaults": boolean("Also reset the keys the class defines to their FGD defaults (default false)."),
+        }, ["classname"];
     set_spawnflags: Edit, "Spawnflags",
         "Switch spawnflags of entities on or off, by bit value or by their FGD name.",
         {
@@ -377,14 +388,27 @@ fn set_entity_class(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let ids = target_entities(state, a, "ids")?;
     let class = class_name(a, "classname")?;
     let origin = hp_app::runtime::helpers::brush_entity_needs_origin(state.assets.fgd(), &class);
-    let n = edit(state, "set_entity_class", |doc| {
+    let clean = a.opt_bool("clean_keys")?.unwrap_or(state.settings.edit.clean_keys_on_class_change);
+    let reset = a.opt_bool("reset_defaults")?.unwrap_or(false);
+    let mut report = hp_ui_entities::KeyCleanup::default();
+    let n = rename_edit(state, "set_entity_class", |doc, fgd| {
         let n = doc.set_entity_class(&ids, &class)?;
         if origin {
             doc.add_missing_origins(&ids)?;
         }
+        if (clean && n > 0) || reset {
+            report = hp_ui_entities::clean_keys(doc, fgd, &ids, reset)?;
+        }
         Ok(n)
     })?;
-    let mut out = json!({ "entities_changed": n, "classname": class });
+    let removed: serde_json::Map<String, Value> =
+        report.removed.iter().filter(|(_, k)| !k.is_empty()).map(|(id, k)| (id.to_string(), json!(k))).collect();
+    let mut out = json!({
+        "entities_changed": n,
+        "classname": class,
+        "removed_keys": removed,
+        "reset_keys": report.reset,
+    });
     if state.assets.fgd().is_some_and(|f| f.class(&class).is_none()) {
         out["warning"] = json!(format!("the FGD has no class {class}"));
     }
@@ -1223,6 +1247,29 @@ mod tests {
             "{issues}"
         );
         assert!(issues.contains("key style") || issues.contains("is not in the FGD"), "{issues}");
+    }
+
+    #[test]
+    fn set_entity_class_cleans_the_keys_the_new_class_does_not_use() {
+        let fgd = "@PointClass = prop_static [ model(studio) : \"Model\" skin(integer) : \"Skin\" : 0 solid(integer) : \"Solid\" : 6 ]
+                   @PointClass = light [ targetname(target_source) : \"Name\" _light(color255) : \"Brightness\" : \"255 255 255 200\" ]";
+        let mut s = hp_app::testing::test_state_with_fgd(fgd);
+        ok(&mut s, "set_entity_class", json!({ "ids": [5], "classname": "prop_static", "clean_keys": false }));
+        ok(&mut s, "set_keyvalue", json!({ "ids": [5], "key": "model", "value": "models/props_c17/oildrum001.mdl" }));
+        ok(&mut s, "set_keyvalue", json!({ "ids": [5], "key": "targetname", "value": "lamp" }));
+        let r = ok(&mut s, "set_entity_class", json!({ "ids": [5], "classname": "light", "reset_defaults": true }));
+        let e = s.doc.scene().entity(5).unwrap().entity.clone();
+        assert!(e.get("model").is_none(), "{e:?}");
+        assert_eq!(e.get("targetname"), Some("lamp"));
+        assert!(e.get("origin").is_some());
+        assert_eq!(e.get("_light"), Some("255 255 255 200"));
+        assert!(r["removed_keys"]["5"].as_array().unwrap().iter().any(|k| k == "model"), "{r}");
+        assert!(s.doc.undo());
+        assert_eq!(s.doc.scene().entity(5).unwrap().entity.get("model"), Some("models/props_c17/oildrum001.mdl"));
+        s.settings.edit.clean_keys_on_class_change = false;
+        let r = ok(&mut s, "set_entity_class", json!({ "ids": [5], "classname": "light" }));
+        assert!(r["removed_keys"].as_object().unwrap().is_empty());
+        assert!(s.doc.scene().entity(5).unwrap().entity.get("model").is_some());
     }
 
     #[test]

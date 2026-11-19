@@ -32,7 +32,7 @@ There is no panel and no dialog: the options bar and the status bar show one hin
 - **How the planes are spaced.** The first plane is at the position. The distance between the nearest face of the selection and the position is the step, and the planes repeat that step toward the other face. With the mouse 16 units from the left edge and 3 segments, the cuts are at 16, 32 and 48 units from that edge. A plane that would fall on or beyond the other face, or leave a piece thinner than 0.25 unit, is dropped, and the hint line shows the real number of cuts.
 - **Center.** At the start, and after a right click, the position is the center of the object and the cuts divide it into N+1 equal blocks (one segment cuts it in half). The hint line shows **(center)**. It stays at the center until the mouse moves.
 
-The preview draws every plane as a yellow quad with its coordinate written on it, inside a faint outline of the selection bounds, in the 3D and 2D views.
+The preview draws the exact cut of every plane through every selected brush (also rotated, thin or vertex edited ones, and brushes far from the map origin) as a yellow filled polygon with its coordinate written on it, and tints the resulting blocks of each brush green and blue in turn, inside a faint outline of the selection bounds. It is drawn on top of the brush faces, so it is never hidden or cut by them, in the 3D and 2D views, in every render mode and with the camera inside the brush. When the mouse goes onto or past the edge of the selection, the last cut stays in place instead of disappearing.
 
 ## Mouse and keys
 
@@ -68,7 +68,7 @@ The tool `slice_brushes` does the same without the tool: `ids` or `solid_ids` (d
 
 **The wheel zooms instead of changing the segments.** In the 2D views use `Shift` + wheel. In the 3D view the wheel belongs to the tool while it is active.
 
-**Nothing happens when I click.** Select brushes first, and keep the mouse inside the object: a position on the edge gives no cut.
+**Nothing happens when I click.** Select brushes first. A mouse on or past the edge of the object keeps the last cut shown, and the click applies that cut.
 
 **Tab moves the keyboard focus.** `Tab` only toggles when no text field or button had the focus. Click in a view first, or press `O`.
 

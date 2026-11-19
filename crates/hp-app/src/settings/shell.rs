@@ -61,6 +61,20 @@ pub struct ViewSettings {
     pub zoom_to_cursor: bool,
     pub hover_outline: bool,
     pub keyboard_layout: KeyboardLayout,
+    pub label_max_px_2d: f32,
+    pub label_min_px_2d: f32,
+}
+
+impl ViewSettings {
+    pub const LABEL_BASE_PX_2D: f32 = 11.5;
+
+    pub fn label_px_2d(&self, base: f32, zoom: f64) -> Option<f32> {
+        let max = if self.label_max_px_2d.is_finite() { self.label_max_px_2d.clamp(6.0, 64.0) } else { 14.0 };
+        let min = if self.label_min_px_2d.is_finite() { self.label_min_px_2d.clamp(0.0, max) } else { 6.0 };
+        let zoom = if zoom.is_finite() && zoom > 0.0 { zoom } else { 1.0 };
+        let px = (base * zoom.sqrt() as f32).min(max);
+        (px >= min && px > 0.0).then_some(px)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,6 +109,8 @@ impl Default for ViewSettings {
             zoom_to_cursor: true,
             hover_outline: false,
             keyboard_layout: KeyboardLayout::Auto,
+            label_max_px_2d: 14.0,
+            label_min_px_2d: 6.0,
         }
     }
 }
@@ -122,6 +138,7 @@ pub struct EditSettings {
     pub new_brush_color: Option<[u8; 3]>,
     pub keep_displacements_on_cut: bool,
     pub rename_updates_references: bool,
+    pub clean_keys_on_class_change: bool,
 }
 
 impl Default for EditSettings {
@@ -147,6 +164,7 @@ impl Default for EditSettings {
             new_brush_color: None,
             keep_displacements_on_cut: true,
             rename_updates_references: true,
+            clean_keys_on_class_change: true,
         }
     }
 }

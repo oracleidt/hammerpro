@@ -130,6 +130,7 @@ pub struct PlayerState {
     pub light_requests: Vec<(String, Option<bool>)>,
     pub place_request: Option<PlayerPlace>,
     pub light_styles: LightStyleReport,
+    pub fires: Vec<(hp_vmf::Id, bool)>,
     pub train_requests: Vec<(Option<String>, Option<bool>)>,
     pub trains: Vec<TrainReport>,
 }
@@ -192,6 +193,7 @@ impl Default for PlayerState {
             light_requests: Vec::new(),
             place_request: None,
             light_styles: LightStyleReport::default(),
+            fires: Vec::new(),
             train_requests: Vec::new(),
             trains: Vec::new(),
         }

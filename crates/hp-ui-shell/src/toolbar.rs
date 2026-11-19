@@ -284,12 +284,22 @@ fn is_checked(state: &AppState, action: Action) -> bool {
 fn action_icon_button(ui: &mut Ui, state: &mut AppState, action: Action, nested: bool) {
     let enabled = action_enabled(state, action);
     let selected = is_checked(state, action);
-    let r = match button_icon(action) {
-        None => ui.add_enabled(
+    let thumb = if action == Action::ApplyCurrentTexture {
+        hp_app::widgets::current_texture_thumb(&ui.ctx().clone(), state)
+    } else {
+        None
+    };
+    let r = match (thumb, button_icon(action)) {
+        (Some(thumb), _) => {
+            let r = ui.add_enabled(enabled, egui::Button::selectable(selected, "").min_size(BUTTON_SIZE));
+            thumb.paint(ui.painter(), r.rect.shrink(5.0), enabled);
+            r
+        }
+        (None, None) => ui.add_enabled(
             enabled,
             egui::Button::selectable(selected, RichText::new(button_glyph(action)).size(15.0)).min_size(BUTTON_SIZE),
         ),
-        Some(icon) => {
+        (None, Some(icon)) => {
             let r = ui.add_enabled(enabled, egui::Button::selectable(selected, "").min_size(BUTTON_SIZE));
             let color = if enabled { ui.style().interact(&r).fg_stroke.color } else { ui.visuals().weak_text_color() };
             crate::icons::paint(ui.painter(), r.rect.center(), color, icon, 0.8);

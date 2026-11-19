@@ -45,6 +45,20 @@ Keyboard, while the pointer is over the list or grid: `Up` / `Down` move the sel
 | **Apply to the property** | Only while picking for a key: writes the model into that key. |
 | **Copy** | Copies the model path to the clipboard. |
 
+## Prop type
+
+The **Prop type** list under the folder row chooses the class of the props you place from the browser: by dragging a model into a view, with **+ Use for new props** or with a double click.
+
+| Choice | Class placed |
+|---|---|
+| **Default** | The automatic choice: `prop_static` for a static prop model; otherwise `prop_dynamic` for a drop and `prop_physics` for **Use for new props**. |
+| `prop_static` | Always `prop_static`. |
+| `prop_physics` | `prop_physics`. |
+| `prop_physics_multiplayer` | Listed when the FGD has it (Garry's Mod, Half-Life 2: Deathmatch). Falls back to `prop_physics` when the FGD does not know it. |
+| `prop_dynamic` | Always `prop_dynamic`. |
+
+A physics prop needs a physics model (a `.phy` file next to the `.mdl`, made by `$collisionmodel`). When the model has none, the details show **No physics model: cannot be a prop_physics** in orange, and placing it uses `prop_static` (static prop models) or `prop_dynamic` instead, with a notification saying so. The choice is saved (`model_prop_class` in `[browser]`, empty for **Default**); MCP: `set_setting` path `browser.model_prop_class`.
+
 ## Choosing a model for a key
 
 The browse button of a model key in the entity panel (see [Entity properties](entity-properties.md)) opens the Models tab with a banner: "Choose a model for *class (key)*, then double click it or press Apply." The model the key already has is selected. Double click a model, press `Enter`, or click **Apply** to write it (with the preview skin when the key is `model` and the skin is not 0); the panel goes back to the **Entity** tab. **Cancel** leaves this mode. Writing is one undo step.
@@ -124,6 +138,7 @@ Two toggles of **View > Display options** show the collisions of props:
 | `[browser] model_grid_view` | Grid instead of list. | `true` |
 | `[browser] tile_size` | Grid tile size (48 to 256). | `96` |
 | `[browser] gmod_only` | Garry's Mod content only (models, sounds, particles). | `false` |
+| `[browser] model_prop_class` | Prop type of placed models: empty (Default), `prop_static`, `prop_physics`, `prop_physics_multiplayer` or `prop_dynamic`. | empty |
 | `[entities] crowbar_exe` | Crowbar chosen from the inspector. | none |
 | `[render] collision_models` | Collision models over props. | `false` |
 | `[render] collision_only` | Collision models instead of models. | `false` |
@@ -142,7 +157,7 @@ Two toggles of **View > Display options** show the collisions of props:
 
 **Why is "Compile a QC..." greyed out?** studiomdl was not found in the `bin` folder of the configured Garry's Mod install, or the model compiler set in **Settings > Compile** does not exist.
 
-**Dragging gives a `prop_dynamic`, double click a `prop_physics`: why?** A drop uses `prop_dynamic` for models that are not static props, while **Use for new props** uses `prop_physics`. Change the class in the entity panel if you need another one.
+**Dragging gives a `prop_dynamic`, double click a `prop_physics`: why?** With the **Default** prop type, a drop uses `prop_dynamic` for models that are not static props, while **Use for new props** uses `prop_physics`. Pick a [prop type](#prop-type) to get the same class everywhere (for example `prop_physics` to drop physics props directly).
 
 ## Related pages
 

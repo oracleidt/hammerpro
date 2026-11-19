@@ -459,6 +459,7 @@ fn rope_entities(entities: &[hp_bsp::entities::Entity]) -> Vec<hp_vmf::Entity> {
 
 fn particle_entities(entities: &[hp_bsp::entities::Entity]) -> Vec<hp_vmf::Entity> {
     let is_system = |e: &hp_bsp::entities::Entity| e.classname().trim().eq_ignore_ascii_case("info_particle_system");
+    let is_fire = |e: &hp_bsp::entities::Entity| hp_app::runtime::helpers::fire::is_fire(e.classname());
     let mut targets: std::collections::HashSet<String> = std::collections::HashSet::new();
     for e in entities.iter().filter(|e| is_system(e)) {
         for (k, v) in &e.pairs {
@@ -470,7 +471,9 @@ fn particle_entities(entities: &[hp_bsp::entities::Entity]) -> Vec<hp_vmf::Entit
     entities
         .iter()
         .filter(|e| {
-            is_system(e) || e.get("targetname").is_some_and(|n| targets.contains(&n.trim().to_ascii_lowercase()))
+            is_system(e)
+                || is_fire(e)
+                || e.get("targetname").is_some_and(|n| targets.contains(&n.trim().to_ascii_lowercase()))
         })
         .map(|e| hp_vmf::Entity {
             classname: e.classname().to_owned(),

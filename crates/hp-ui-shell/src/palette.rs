@@ -237,6 +237,7 @@ impl CommandPalette {
                 ui.label(RichText::new(t!("shell.palette.no_results")).color(ui.visuals().weak_text_color()));
                 ui.add_space(6.0);
             } else {
+                let thumb = hp_app::widgets::current_texture_thumb(ctx, state);
                 egui::ScrollArea::vertical().max_height(400.0).auto_shrink([false, true]).show(ui, |ui| {
                     for (row, &ei) in self.results.iter().enumerate() {
                         let Some(entry) = self.entries.get(ei) else { continue };
@@ -244,7 +245,11 @@ impl CommandPalette {
                             EntryKind::Action(a) => action_enabled(state, a),
                             _ => true,
                         };
-                        let r = palette_row(ui, entry, row == self.selected, enabled);
+                        let row_thumb = match entry.kind {
+                            EntryKind::Action(Action::ApplyCurrentTexture) => thumb,
+                            _ => None,
+                        };
+                        let r = palette_row(ui, entry, row == self.selected, enabled, row_thumb);
                         if row == self.selected && self.scroll_to_selected {
                             r.scroll_to_me(None);
                         }
@@ -280,7 +285,13 @@ impl CommandPalette {
     }
 }
 
-fn palette_row(ui: &mut egui::Ui, entry: &Entry, selected: bool, enabled: bool) -> egui::Response {
+fn palette_row(
+    ui: &mut egui::Ui,
+    entry: &Entry,
+    selected: bool,
+    enabled: bool,
+    thumb: Option<hp_app::widgets::TextureThumb>,
+) -> egui::Response {
     let height = 24.0;
     let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), egui::Sense::CLICK);
     if ui.is_rect_visible(rect) {
@@ -304,13 +315,21 @@ fn palette_row(ui: &mut egui::Ui, entry: &Entry, selected: bool, enabled: bool) 
         let small = egui::TextStyle::Small.resolve(ui.style());
         let mono = egui::TextStyle::Monospace.resolve(ui.style());
         let y = rect.center().y;
-        painter.text(
-            egui::pos2(rect.left() + 16.0, y),
-            egui::Align2::CENTER_CENTER,
-            entry.icon,
-            body.clone(),
-            if selected { accent_text(visuals) } else { weak },
-        );
+        match thumb {
+            Some(thumb) => {
+                let cell = egui::Rect::from_center_size(egui::pos2(rect.left() + 16.0, y), egui::vec2(18.0, 18.0));
+                thumb.paint(painter, cell, enabled);
+            }
+            None => {
+                painter.text(
+                    egui::pos2(rect.left() + 16.0, y),
+                    egui::Align2::CENTER_CENTER,
+                    entry.icon,
+                    body.clone(),
+                    if selected { accent_text(visuals) } else { weak },
+                );
+            }
+        }
         let label_rect =
             painter.text(egui::pos2(rect.left() + 34.0, y), egui::Align2::LEFT_CENTER, &entry.label, body, text_color);
         let mut right = rect.right() - 8.0;

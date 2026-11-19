@@ -966,6 +966,59 @@ pub const TR: TrTable = &[
         "A texture light file for this map, read like the -lights option (after the game's lights.rad, before <map>.rad): a path relative to the game folder or to the map's folder, or a full path.",
         "Un fichier de lumières de textures pour cette map, lu comme l'option -lights (après le lights.rad du jeu, avant <map>.rad) : un chemin relatif au dossier du jeu ou au dossier de la map, ou un chemin complet.",
     ),
+    (
+        "entities.class_keys_removed",
+        "Class changed to {0}: removed the keyvalues it does not use ({1})",
+        "Classe changée en {0} : keyvalues qu'elle n'utilise pas retirées ({1})",
+    ),
+    (
+        "entities.clean_keys_nothing",
+        "Every keyvalue is used by the class",
+        "Toutes les keyvalues sont utilisées par la classe",
+    ),
+    (
+        "entities.clean_keys_done",
+        "Removed keyvalues the class does not use: {0}.",
+        "Keyvalues inutilisées par la classe retirées : {0}.",
+    ),
+    (
+        "entities.reset_keys_done",
+        "{0} keyvalues reset to the class defaults.",
+        "{0} keyvalues remises aux valeurs par défaut de la classe.",
+    ),
+    (
+        "entities.unused_keys_hint",
+        "{0} keyvalues not used by this class",
+        "{0} keyvalues non utilisées par cette classe",
+    ),
+    ("entities.clean_keys_button", "Clean up", "Nettoyer"),
+    (
+        "entities.clean_keys_toggle",
+        "Remove keyvalues the new class does not use",
+        "Retirer les keyvalues que la nouvelle classe n'utilise pas",
+    ),
+    (
+        "entities.clean_keys_toggle_tip",
+        "When the class changes, the keys the new class does not define are removed in the same undo step (also in Settings > Editing).",
+        "Quand la classe change, les clés que la nouvelle classe ne définit pas sont retirées dans la même étape d'annulation (aussi dans Paramètres > Édition).",
+    ),
+    ("entities.prop_type", "Prop type", "Type de prop"),
+    (
+        "entities.prop_type_tip",
+        "Class used when you drag a model into a view, use it for new props or double click it. Default keeps the automatic choice (static models as prop_static).",
+        "Classe utilisée quand vous glissez un modèle dans une vue, l'utilisez pour les nouveaux props ou double cliquez dessus. Par défaut garde le choix automatique (modèles statiques en prop_static).",
+    ),
+    ("entities.prop_type_default", "Default", "Par défaut"),
+    (
+        "entities.prop_type_no_physics",
+        "{0} has no physics model (.phy), so it cannot be a {1}: placed as {2}",
+        "{0} n'a pas de modèle physique (.phy), il ne peut pas être un {1} : placé en {2}",
+    ),
+    (
+        "entities.prop_type_no_physics_short",
+        "No physics model: cannot be a prop_physics",
+        "Pas de modèle physique : ne peut pas être un prop_physics",
+    ),
 ];
 
 #[cfg(test)]

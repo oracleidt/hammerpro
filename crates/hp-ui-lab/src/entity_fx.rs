@@ -25,6 +25,9 @@ pub enum FxKind {
     Cloud,
     Motes,
     Steam,
+    Plasma,
+    FireTrail,
+    FireSmoke,
 }
 
 impl FxKind {
@@ -35,6 +38,7 @@ impl FxKind {
             "func_dustcloud" => Some(FxKind::Cloud),
             "func_dustmotes" => Some(FxKind::Motes),
             "env_steam" | "env_steamjet" => Some(FxKind::Steam),
+            "env_fire_trail" => Some(FxKind::FireTrail),
             _ => None,
         }
     }
@@ -46,6 +50,8 @@ impl FxKind {
             FxKind::Cloud => "func_dustcloud",
             FxKind::Motes => "func_dustmotes",
             FxKind::Steam => "env_steam",
+            FxKind::Plasma | FxKind::FireSmoke => "env_fire",
+            FxKind::FireTrail => "env_fire_trail",
         }
     }
 
@@ -55,6 +61,9 @@ impl FxKind {
             FxKind::Embers => &["particle/fire"],
             FxKind::Cloud | FxKind::Motes => &["particle/sparkles"],
             FxKind::Steam => &["particle/particle_smokegrenade"],
+            FxKind::FireSmoke => &["particle/particle_smokegrenade", "particle/smokesprites_0001"],
+            FxKind::Plasma => &["sprites/plasma1", "sprites/fire1", "particle/fire"],
+            FxKind::FireTrail => &["sprites/flamelet1", "sprites/fire1", "particle/fire"],
         }
     }
 }
@@ -125,8 +134,89 @@ fn grid_for(ext: DVec3, spacing: f64) -> [usize; 3] {
     }
 }
 
+pub fn is_fire_kind(kind: FxKind) -> bool {
+    matches!(kind, FxKind::Plasma | FxKind::FireTrail | FxKind::FireSmoke)
+}
+
+fn fire_fx(id: Id, kind: FxKind, origin: DVec3, size: f32, on: bool) -> Fx {
+    let size = size.clamp(1.0, 4096.0);
+    let mut fx = Fx {
+        id,
+        kind,
+        min: origin,
+        max: origin + DVec3::splat(1.0),
+        color_a: [1.0; 3],
+        color_b: [1.0; 3],
+        count: 18,
+        size: [size * 0.35, size * 0.1],
+        life: [0.6, 1.0],
+        speed: size * 1.3,
+        fall: 0.0,
+        alpha: 1.0,
+        reach: MAX_DISTANCE,
+        material: String::new(),
+        spin: 40.0,
+        grid: [1, 1, 1],
+        dist_max: MAX_DISTANCE,
+        enabled: on,
+        frozen: false,
+        wind: false,
+        direction: DVec3::Z,
+        spread: size * 0.22,
+        heatwave: false,
+        emissive: false,
+    };
+    match kind {
+        FxKind::Plasma => fx.color_a = [0.75, 0.85, 1.0],
+        FxKind::FireTrail => {
+            fx.count = 12;
+            fx.life = [0.3, 0.6];
+        }
+        _ => {
+            fx.count = 14;
+            fx.size = [size * 0.3, size * 1.1];
+            fx.life = [2.5, 3.5];
+            fx.speed = size * 1.1;
+            fx.alpha = 0.22;
+            fx.color_a = [0.35; 3];
+            fx.color_b = [0.5; 3];
+            fx.min = origin + DVec3::Z * f64::from(size) * 0.8;
+            fx.max = fx.min + DVec3::splat(1.0);
+        }
+    }
+    fx.color_b = if kind == FxKind::FireSmoke { fx.color_b } else { fx.color_a };
+    fx
+}
+
+pub fn fires(id: Id, e: &hp_vmf::Entity, lit: &dyn Fn(bool) -> bool) -> Vec<Fx> {
+    use hp_app::runtime::helpers::fire;
+    if let Some(f) = fire::fire(e) {
+        if f.kind != fire::FireKind::Plasma || f.size <= 0.0 {
+            return Vec::new();
+        }
+        let on = lit(f.start_on);
+        let size = f.size as f32;
+        return vec![
+            fire_fx(id, FxKind::Plasma, f.origin, size, on),
+            fire_fx(id, FxKind::FireSmoke, f.origin, size, on),
+        ];
+    }
+    if fire::is_fire_trail(&e.classname) {
+        let Some(origin) = e.origin().filter(|o| o.is_finite()) else { return Vec::new() };
+        let on = lit(true);
+        return vec![
+            fire_fx(id, FxKind::FireTrail, origin, 24.0, on),
+            fire_fx(id, FxKind::FireSmoke, origin, 16.0, on),
+        ];
+    }
+    Vec::new()
+}
+
 pub fn build(id: Id, e: &hp_vmf::Entity, bounds: Option<(DVec3, DVec3)>) -> Option<Fx> {
     let kind = FxKind::of(&e.classname)?;
+    if is_fire_kind(kind) {
+        return fires(id, e, &|_| true).into_iter().next();
+    }
     let bounds = if kind == FxKind::Steam {
         let origin = e.origin().filter(|p| p.is_finite()).unwrap_or(DVec3::ZERO);
         Some((origin, origin + DVec3::splat(1.0)))
@@ -216,6 +306,7 @@ pub fn build(id: Id, e: &hp_vmf::Entity, bounds: Option<(DVec3, DVec3)>) -> Opti
                 fx.count = (rate as usize).min(MAX_PER_ENTITY);
             }
         }
+        FxKind::Plasma | FxKind::FireTrail | FxKind::FireSmoke => {}
         FxKind::Steam => {
             fx.color_a = color(e, "rendercolor");
             fx.color_b = fx.color_a;
@@ -292,6 +383,7 @@ fn particles_in_view(fx: &Fx, time: f64, scale: f32, eye: DVec3, forward: DVec3,
             ),
             FxKind::Embers => ember(fx, seed, time, ext, rgb, out),
             FxKind::Steam => steam(fx, seed, time, rgb, out),
+            FxKind::Plasma | FxKind::FireTrail | FxKind::FireSmoke => flame(fx, seed, time, rgb, out),
             FxKind::Cloud | FxKind::Motes => dust(fx, seed, time, ext, eye, forward, rgb, out),
         }
     }
@@ -376,6 +468,30 @@ fn steam(fx: &Fx, seed: u64, time: f64, rgb: [f32; 3], out: &mut Vec<Pt>) {
         radius: lerp(fx.size[0], fx.size[1], age).max(0.0),
         color: [rgb[0], rgb[1], rgb[2], fx.alpha * (phase * std::f32::consts::PI).sin()],
         roll: rnd(seed, 4) * std::f32::consts::TAU + age * fx.spin.to_radians() * (rnd(seed, 5) * 2.0 - 1.0),
+        yaw: 0.0,
+    });
+}
+
+fn flame(fx: &Fx, seed: u64, time: f64, rgb: [f32; 3], out: &mut Vec<Pt>) {
+    let life = lerp(fx.life[0], fx.life[1], rnd(seed, 0)).max(0.05);
+    let t = time / f64::from(life) + f64::from(rnd(seed, 1));
+    let phase = t.rem_euclid(1.0) as f32;
+    let s = mix(seed ^ (t.floor() as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15));
+    let angle = f64::from(rnd(s, 2)) * std::f64::consts::TAU;
+    let r = f64::from(rnd(s, 3).sqrt() * fx.spread * (1.0 - phase));
+    let rise = f64::from(fx.speed * phase * lerp(0.7, 1.0, rnd(s, 4)));
+    let sway = f64::from(fx.spread * 0.3 * phase) * (time * 3.0 + f64::from(rnd(seed, 5)) * 6.0).sin();
+    let pos = fx.min + DVec3::new(angle.cos() * r + sway, angle.sin() * r, rise);
+    let fade = if fx.kind == FxKind::FireSmoke {
+        (phase * std::f32::consts::PI).sin()
+    } else {
+        (phase * 6.0).min(1.0) * (1.0 - phase).powf(0.7)
+    };
+    out.push(Pt {
+        pos: pos.as_vec3().to_array(),
+        radius: lerp(fx.size[0], fx.size[1], phase).max(0.5),
+        color: [rgb[0], rgb[1], rgb[2], (fx.alpha * fade).clamp(0.0, 1.0)],
+        roll: rnd(s, 6) * std::f32::consts::TAU + phase * fx.spin.to_radians() * (rnd(s, 7) * 2.0 - 1.0),
         yaw: 0.0,
     });
 }
@@ -520,6 +636,7 @@ pub struct EntityFxLayer {
     chosen: HashMap<(FxKind, String), String>,
     looked: HashSet<String>,
     dust: HashMap<Id, Dust>,
+    fire_key: (bool, bool, Vec<(Id, bool)>),
 }
 
 impl EntityFxLayer {
@@ -534,6 +651,7 @@ impl EntityFxLayer {
             chosen: HashMap::new(),
             looked: HashSet::new(),
             dust: HashMap::new(),
+            fire_key: (true, false, Vec::new()),
         }
     }
 
@@ -542,17 +660,30 @@ impl EntityFxLayer {
     }
 
     fn refresh(&mut self, state: &AppState) {
+        let player = &state.runtime.lab.player;
+        let fire_key = (state.settings.view.show_helpers, player.active, player.fires.clone());
         let key = (state.sidecar.serial(), state.doc.revision());
-        if self.key == Some(key) {
+        if self.key == Some(key) && self.fire_key == fire_key {
             return;
         }
         self.key = Some(key);
+        self.fire_key = fire_key;
         let scene = state.doc.scene();
+        let (shown, playing, states) = &self.fire_key;
+        let mut fire_list: Vec<Fx> = Vec::new();
+        if *shown {
+            for (id, node) in scene.entities() {
+                let lit = |start_on: bool| hp_app::runtime::helpers::fire::lit(start_on, *id, states, *playing);
+                fire_list.extend(fires(*id, &node.entity, &lit));
+            }
+        }
         self.sources = scene
             .entities()
             .iter()
             .filter_map(|(id, node)| {
-                FxKind::of(&node.entity.classname)?;
+                if is_fire_kind(FxKind::of(&node.entity.classname)?) {
+                    return None;
+                }
                 let bounds = scene
                     .entity_solid_ids(*id)
                     .into_iter()
@@ -563,7 +694,8 @@ impl EntityFxLayer {
                 build(*id, &node.entity, bounds)
             })
             .collect();
-        self.sources.sort_by_key(|s| s.id);
+        self.sources.extend(fire_list);
+        self.sources.sort_by_key(|s| (s.id, s.kind as u8));
         self.dust.retain(|id, dust| self.sources.iter().any(|fx| fx.id == *id && *fx == dust.source));
     }
 
@@ -644,12 +776,16 @@ impl EntityFxLayer {
                     color: [p.color[0], p.color[1], p.color[2], p.color[3].clamp(0.0, 1.0)],
                     bright: look.brightness(),
                     add_self: look.blend_parameter(),
-                    orient: if matches!(fx.kind, FxKind::Smoke | FxKind::Steam) && !fx.heatwave {
+                    orient: if matches!(fx.kind, FxKind::Smoke | FxKind::Steam | FxKind::FireSmoke) && !fx.heatwave {
                         if fx.emissive { ParticleOrient::ScreenEmissive } else { ParticleOrient::ScreenLit }
                     } else {
                         ParticleOrient::Screen
                     },
-                    blend: look.blend(),
+                    blend: if matches!(fx.kind, FxKind::Plasma | FxKind::FireTrail) {
+                        hp_render::ParticleBlend::Additive
+                    } else {
+                        look.blend()
+                    },
                     screen_fade: look.fade_size,
                     refraction_blur: look.refraction_blur,
                     no_fog: look.no_fog,
@@ -1152,6 +1288,30 @@ mod tests {
         let shared = handle.lock().unwrap();
         assert!(!shared.fx_active);
         assert!(shared.fx_sprites.is_empty());
+    }
+
+    #[test]
+    fn plasma_fire_and_fire_trail_flicker_and_follow_their_state() {
+        let mut plasma = entity("env_fire", &[("origin", "0 0 0"), ("firetype", "1"), ("firesize", "100")]);
+        plasma.id = 3;
+        let on = fires(3, &plasma, &|_| true);
+        assert_eq!(on.iter().map(|f| f.kind).collect::<Vec<_>>(), vec![FxKind::Plasma, FxKind::FireSmoke]);
+        assert!(on.iter().all(|f| f.enabled));
+        assert!(fires(3, &plasma, &|start_on| start_on).iter().all(|f| !f.enabled), "Start On unchecked");
+        assert!(
+            fires(3, &entity("env_fire", &[("origin", "0 0 0")]), &|_| true).is_empty(),
+            "natural fire uses the PCF"
+        );
+        let trail = fires(4, &entity("env_fire_trail", &[("origin", "0 0 64")]), &|_| true);
+        assert_eq!(trail.len(), 2);
+        let (mut a, mut b) = (Vec::new(), Vec::new());
+        particles(&on[0], 1.0, 1.0, eye(), &mut a);
+        particles(&on[0], 1.2, 1.0, eye(), &mut b);
+        assert_eq!(a.len(), on[0].count);
+        assert!(a.iter().zip(&b).any(|(p, q)| p.pos != q.pos), "the flames move");
+        assert!(a.iter().all(|p| p.pos[2] >= 0.0 && p.pos[2] <= 131.0 && p.radius > 0.0));
+        assert_eq!(pick_material(None, FxKind::Plasma, ""), "sprites/plasma1");
+        assert_eq!(pick_material(None, FxKind::FireTrail, ""), "sprites/flamelet1");
     }
 
     #[test]

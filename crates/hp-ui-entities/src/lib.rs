@@ -37,8 +37,10 @@ mod tests;
 
 pub use cx::{MAX_RECENT_MODELS, ModelPick, model_pick, push_recent_model, recent_models, set_model_pick};
 pub use dialogs::{EntityDialogs, FindMode, KindFilter};
-pub use edit::{Applied, ConnField, Op, apply, entities_using};
-pub use keyvalues::{can_paste_keyvalues, copy_keyvalues, paste_keyvalues};
+pub use edit::{
+    Applied, ConnField, KeyCleanup, Op, apply, apply_clean_keys, change_class_report, clean_keys, entities_using,
+};
+pub use keyvalues::{can_paste_keyvalues, clean_selected_keyvalues, copy_keyvalues, paste_keyvalues};
 pub use models::ModelBrowser;
 pub use particles::ParticleBrowser;
 pub use pick::{asset_value, entities_matching_target, finish_asset_pick, is_vrad_light};

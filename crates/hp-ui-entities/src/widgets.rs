@@ -14,7 +14,7 @@ use crate::view::Target;
 pub(crate) const ROW_HEIGHT: f32 = 18.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ConnText {
+pub enum ConnText {
     Target,
     Param,
 }
@@ -537,9 +537,19 @@ struct CompleteState {
     highlight: Option<usize>,
     open: bool,
     shown: Vec<String>,
+    rows: Vec<egui::Rect>,
 }
 
 impl CompleteState {
+    fn pointer_pick(&self, ui: &Ui) -> Option<String> {
+        if !self.open {
+            return None;
+        }
+        let at = ui.input(|i| if i.pointer.any_pressed() { i.pointer.interact_pos() } else { None })?;
+        let row = self.rows.iter().position(|r| r.contains(at))?;
+        self.shown.get(row).cloned()
+    }
+
     fn key_pick(&self, keys: CompleteKeys, mode: CompleteMode, list: &[String]) -> Option<String> {
         let index = if keys.enter {
             self.highlight
@@ -591,7 +601,7 @@ pub(crate) fn autocomplete_popup(
     let st_id = field.id.with("complete");
     let mut st: CompleteState = ui.data(|d| d.get_temp(st_id)).unwrap_or_default();
     if !field.has_focus() {
-        let picked = st.key_pick(keys, mode, &st.shown);
+        let picked = st.key_pick(keys, mode, &st.shown).or_else(|| st.pointer_pick(ui));
         ui.data_mut(|d| d.insert_temp(st_id, CompleteState::default()));
         return picked;
     }
@@ -615,7 +625,8 @@ pub(crate) fn autocomplete_popup(
         }
         st.highlight = st.highlight.map(|h| h.min(n - 1));
     }
-    let mut picked = st.key_pick(keys, mode, &shown);
+    let mut picked = st.key_pick(keys, mode, &shown).or_else(|| st.pointer_pick(ui));
+    let mut rows = Vec::new();
     if st.open && picked.is_none() {
         let popup_id = field.id.with("complete_popup");
         Popup::new(popup_id, ui.ctx().clone(), field, field.layer_id)
@@ -624,7 +635,9 @@ pub(crate) fn autocomplete_popup(
             .show(|ui| {
                 ui.set_min_width(field.rect.width().max(180.0));
                 for (row, name) in shown.iter().enumerate() {
-                    if list_row(ui, name, "", st.highlight == Some(row), false).clicked() {
+                    let resp = list_row(ui, name, "", st.highlight == Some(row), false);
+                    rows.push(resp.rect);
+                    if resp.clicked() {
                         picked = Some(name.clone());
                     }
                 }
@@ -640,8 +653,10 @@ pub(crate) fn autocomplete_popup(
         st.open = false;
         st.highlight = None;
         st.shown.clear();
+        st.rows.clear();
     } else {
         st.shown = shown;
+        st.rows = rows;
         if st.open && (mode == CompleteMode::Complete || st.highlight.is_some()) {
             let filter = EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: false };
             ui.memory_mut(|m| m.set_focus_lock_filter(field.id, filter));

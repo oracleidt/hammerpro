@@ -38,12 +38,14 @@ pub enum ClickKind {
     Apply,
     Nodraw,
     Wrap,
+    ApplyAlignment,
 }
 
 pub fn click_kind(secondary: bool, m: egui::Modifiers) -> ClickKind {
     let ctrl = m.command || m.ctrl;
     match (secondary, m.alt, m.shift, ctrl) {
-        (true, true, _, _) => ClickKind::Wrap,
+        (true, true, true, _) => ClickKind::ApplyAlignment,
+        (true, true, false, _) => ClickKind::Wrap,
         (true, false, _, true) => ClickKind::Nodraw,
         (true, false, _, false) => ClickKind::Apply,
         (false, true, _, _) => ClickKind::Eyedropper,
@@ -70,13 +72,17 @@ pub fn click_face(state: &mut AppState, face: FaceRef, kind: ClickKind) {
         ClickKind::Select => {
             state.doc.select_faces(&[face], SelectOp::Replace);
             pick_material(state, face);
+            state.runtime.selection.lifted_face = Some(face);
         }
         ClickKind::Toggle => state.doc.select_faces(&[face], SelectOp::Toggle),
         ClickKind::SelectSolid { add } => {
             let all = state.doc.all_faces_of(&[ObjRef::Solid(face.solid)]);
             state.doc.select_faces(&all, if add { SelectOp::Add } else { SelectOp::Replace });
         }
-        ClickKind::Eyedropper => pick_material(state, face),
+        ClickKind::Eyedropper => {
+            pick_material(state, face);
+            state.runtime.selection.lifted_face = Some(face);
+        }
         ClickKind::Apply | ClickKind::Nodraw => {
             let material =
                 if kind == ClickKind::Nodraw { "tools/toolsnodraw".to_owned() } else { state.current_material.clone() };
@@ -84,18 +90,22 @@ pub fn click_face(state: &mut AppState, face: FaceRef, kind: ClickKind) {
                 state.notify(Severity::Error, tf!("tex.tool.apply_failed", e));
             }
         }
-        ClickKind::Wrap => {
-            let src = state.doc.selection().faces.iter().copied().find(|f| *f != face);
-            match src {
-                Some(src) => {
-                    if let Err(e) = state.doc.wrap_texture(src, &[face]) {
-                        state.notify(Severity::Error, tf!("tex.tool.wrap_failed", e));
-                    }
+        ClickKind::Wrap | ClickKind::ApplyAlignment => match alignment_source(state, face) {
+            Some(src) => {
+                let material = state.current_material.clone();
+                let wrap = kind == ClickKind::Wrap;
+                if let Err(e) = state.doc.apply_texture_and_alignment(src, &[face], Some(&material), wrap) {
+                    state.notify(Severity::Error, tf!("tex.tool.wrap_failed", e));
                 }
-                None => state.notify(Severity::Warning, t!("tex.tool.wrap_needs_source")),
             }
-        }
+            None => state.notify(Severity::Warning, t!("tex.tool.wrap_needs_source")),
+        },
     }
+}
+
+pub fn alignment_source(state: &AppState, face: FaceRef) -> Option<FaceRef> {
+    let selected = state.doc.selection().faces.iter().rev().copied().find(|f| *f != face);
+    selected.or_else(|| state.runtime.selection.lifted_face.filter(|f| *f != face && state.doc.face_side(*f).is_some()))
 }
 
 fn pick_material(state: &mut AppState, face: FaceRef) {
@@ -118,8 +128,8 @@ fn paint_face(state: &mut AppState, stroke: &mut RightPaint, face: FaceRef) {
         return;
     }
     stroke.done.push(face);
-    if stroke.kind == ClickKind::Wrap {
-        if state.doc.selection().faces.is_empty() {
+    if matches!(stroke.kind, ClickKind::Wrap | ClickKind::ApplyAlignment) {
+        if alignment_source(state, face).is_none() {
             if stroke.done.len() == 1 {
                 state.notify(Severity::Warning, t!("tex.tool.wrap_needs_source"));
             }
@@ -306,11 +316,12 @@ impl TextureTool {
                             state.ui.show_material_editor = true;
                         }
                         let current = state.current_material.clone();
-                        if ui
-                            .button(t!("tex.face.apply_current"))
-                            .on_hover_text(tf!("tex.face.apply_current_tip", current))
-                            .clicked()
-                        {
+                        let side = egui::TextStyle::Button.resolve(ui.style()).size + 2.0;
+                        let apply = match hp_app::widgets::current_texture_thumb(&ui.ctx().clone(), state) {
+                            Some(thumb) => egui::Button::new((thumb.atom(side), t!("tex.face.apply_current"))),
+                            None => egui::Button::new(t!("tex.face.apply_current")),
+                        };
+                        if ui.add(apply).on_hover_text(tf!("tex.face.apply_current_tip", current)).clicked() {
                             let r = state.doc.apply_material(&faces, &current);
                             Self::report(state, r);
                         }
@@ -1048,6 +1059,26 @@ mod tests {
         assert_eq!(click_kind(true, egui::Modifiers::COMMAND), ClickKind::Nodraw);
         assert_eq!(click_kind(true, egui::Modifiers::ALT), ClickKind::Wrap);
         assert_eq!(click_kind(true, egui::Modifiers { alt: true, ctrl: true, ..none }), ClickKind::Wrap);
+        assert_eq!(click_kind(true, egui::Modifiers { alt: true, shift: true, ..none }), ClickKind::ApplyAlignment);
+    }
+
+    #[test]
+    fn lifted_face_is_the_alignment_source() {
+        let mut state = hp_app::testing::test_state();
+        let (src, dst, other) = (FaceRef::new(2, 0), FaceRef::new(3, 0), FaceRef::new(3, 1));
+        state.doc.edit_faces(&[src], &FaceEdit { u_shift: Some(11.0), ..FaceEdit::default() }).unwrap();
+        state.doc.clear_face_selection();
+        click_face(&mut state, src, ClickKind::Eyedropper);
+        assert!(state.doc.selected_faces().is_empty());
+        assert_eq!(alignment_source(&state, dst), Some(src));
+        assert_eq!(alignment_source(&state, src), None);
+        state.use_material("brick/brickwall001a");
+        click_face(&mut state, dst, ClickKind::ApplyAlignment);
+        let (s, d) = (state.doc.face_side(src).unwrap().clone(), state.doc.face_side(dst).unwrap().clone());
+        assert_eq!(d.material, "brick/brickwall001a");
+        assert_eq!((d.uaxis, d.vaxis), (s.uaxis, s.vaxis));
+        state.doc.select_faces(&[other, dst], SelectOp::Replace);
+        assert_eq!(alignment_source(&state, src), Some(dst));
     }
 
     #[test]

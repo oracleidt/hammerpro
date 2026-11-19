@@ -444,10 +444,15 @@ domain! { "editing";
             "up": vec3("Texture up axis (with right)."),
         }, [];
     wrap_texture: Edit, "Wrap texture",
-        "Wrap the texture of a source face onto other faces so it continues across edges (Hammer++ alt+right click).",
+        "Wrap the texture of a source face onto other faces so it continues across edges (Hammer alt+right click in \
+        the texture tool). material applies another material with the same alignment (the texture tool uses the \
+        current material). wrap false copies the alignment values unchanged instead of folding them across the edge \
+        (shift+alt+right click).",
         {
             "source": faces("The source face (one item)."),
             "faces": faces("Faces that get the texture."),
+            "material": string("Material to apply with the alignment (default the source material)."),
+            "wrap": boolean("Fold the alignment across the shared edge (default true)."),
         }, ["source", "faces"];
     replace_materials: Edit, "Replace materials",
         "Replace a material (pattern with * and ?) with another on every face of the map, of the selection, or of \
@@ -1829,7 +1834,9 @@ fn wrap_texture(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     if dst.is_empty() {
         return Err("faces must name faces other than the source".to_owned());
     }
-    let n = edit(state, "wrap_texture", |doc| doc.wrap_texture(src, &dst))?;
+    let material = a.opt_str("material", MAX_NAME)?.map(|m| m.trim().replace('\\', "/"));
+    let wrap = a.opt_bool("wrap")?.unwrap_or(true);
+    let n = edit(state, "wrap_texture", |doc| doc.apply_texture_and_alignment(src, &dst, material.as_deref(), wrap))?;
     Ok(ToolResult::json(json!({ "faces": n })))
 }
 
@@ -2778,6 +2785,15 @@ mod tests {
             "wrap_texture",
             json!({ "source": [{ "solid": 3, "side": 0 }], "faces": [{ "solid": 3, "side": 2 }] }),
         );
+        ok(
+            &mut s,
+            "wrap_texture",
+            json!({ "source": [{ "solid": 3, "side": 0 }], "faces": [{ "solid": 3, "side": 1 }], "material": "dev/dev_blendmeasure", "wrap": false }),
+        );
+        let src = s.doc.face_side(hp_editor::FaceRef::new(3, 0)).unwrap().clone();
+        let dst = s.doc.face_side(hp_editor::FaceRef::new(3, 1)).unwrap().clone();
+        assert_eq!(dst.material, "dev/dev_blendmeasure");
+        assert_eq!((dst.uaxis.shift, dst.uaxis.scale), (src.uaxis.shift, src.uaxis.scale));
         let r = ok(&mut s, "replace_materials", json!({ "find": "concrete/*", "replace": "dev/dev_blendmeasure" }));
         assert!(r["faces"].as_u64().unwrap() >= 6);
         let r = ok(&mut s, "list_used_materials", json!({}));

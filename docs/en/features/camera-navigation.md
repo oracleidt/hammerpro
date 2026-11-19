@@ -49,7 +49,7 @@ You do not have to leave mouselook to work on the brush you look at:
 
 | Input | Effect |
 |---|---|
-| Left click | The active tool acts at the crosshair: the Selection and Camera tools select the object (`Ctrl+click` adds or removes it); the [Face edit tool](texture-tool.md) selects the face and picks its material (`Ctrl+click` adds or removes the face, `Shift+click` selects the whole brush) |
+| Left click | The active tool acts at the crosshair: the Selection and Camera tools select the object (`Ctrl+click` adds or removes it); the [Face edit tool](texture-tool.md) selects the face and picks its material (`Ctrl+click` adds or removes the face, `Shift+click` selects the whole brush) The click always lands on the crosshair, even when the hidden cursor drifted off the 3D view, and it is never sent to another view. While an entity eyedropper waits, the click picks the entity at the crosshair. |
 | Right click with the Face edit tool | Applies the current material to the targeted face like a right click of the tool (`Ctrl`: nodraw; `Shift`: the whole brush) |
 | Hold `Alt` | Frees the cursor: the camera stops turning, the crosshair hides and the mouse works like outside mouselook, so you can drag the gizmo, the handles or the face arrows of the selection, draw with the active tool or click anywhere in the view. Release `Alt` to fly again (a drag started with `Alt` held goes on until you release the button) |
 

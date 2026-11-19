@@ -583,8 +583,7 @@ pub(crate) fn plane_box_polygon(plane: &Plane, b: &Aabb) -> Vec<DVec3> {
     if b.is_empty() {
         return Vec::new();
     }
-    let half = (b.size().length() * 2.0).max(64.0);
-    let mut poly: Vec<DVec3> = hp_geom::base_polygon(plane, half).to_vec();
+    let mut poly = centered_base_polygon(plane, b.center(), b.size().length());
     let faces = [
         (DVec3::X, b.max.x),
         (DVec3::NEG_X, -b.min.x),
@@ -596,6 +595,26 @@ pub(crate) fn plane_box_polygon(plane: &Plane, b: &Aabb) -> Vec<DVec3> {
     for (n, d) in faces {
         let Some(p) = Plane::new(n, d) else { continue };
         poly = hp_geom::clip_polygon(&poly, &p, 1e-6).1;
+        if poly.len() < 3 {
+            return Vec::new();
+        }
+    }
+    poly
+}
+
+pub(crate) fn centered_base_polygon(plane: &Plane, center: DVec3, size: f64) -> Vec<DVec3> {
+    let half = (size * 2.0).max(64.0);
+    let shift = plane.project(center) - plane.normal * plane.dist;
+    hp_geom::base_polygon(plane, half).iter().map(|v| *v + shift).collect()
+}
+
+pub(crate) fn plane_solid_polygon(plane: &Plane, geom: &hp_geom::SolidGeom) -> Vec<DVec3> {
+    if geom.aabb.is_empty() || geom.faces.len() < 4 {
+        return Vec::new();
+    }
+    let mut poly = centered_base_polygon(plane, geom.aabb.center(), geom.aabb.size().length());
+    for f in &geom.faces {
+        poly = hp_geom::clip_polygon(&poly, &f.plane, 1e-6).1;
         if poly.len() < 3 {
             return Vec::new();
         }
@@ -633,6 +652,10 @@ impl<'a> Ov<'a> {
         } else {
             self.out.lines.push(l);
         }
+    }
+
+    pub(crate) fn top_line(&mut self, a: DVec3, b: DVec3, color: [f32; 4]) {
+        self.out.lines_on_top.push(OverlayLine { a: f3(a), b: f3(b), color });
     }
 
     pub(crate) fn xray_line(&mut self, a: DVec3, b: DVec3, color: [f32; 4]) {
@@ -919,6 +942,11 @@ mod tests {
         }
         let miss = Plane::from_normal_point(DVec3::X, DVec3::new(50.0, 0.0, 0.0)).expect("plane");
         assert!(plane_box_polygon(&miss, &b).is_empty());
+        let far = Aabb::new(DVec3::new(-8.0, 9000.0, -4000.0), DVec3::new(8.0, 9010.0, 4000.0));
+        let poly = plane_box_polygon(&p, &far);
+        assert_eq!(poly.len(), 4);
+        let area = hp_geom::polygon_area_vector(&poly).length();
+        assert!((area - 10.0 * 8000.0).abs() < 1e-3, "{area}");
     }
 
     #[test]

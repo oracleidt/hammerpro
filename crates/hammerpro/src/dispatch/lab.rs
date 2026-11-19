@@ -1231,7 +1231,11 @@ fn particles_tick(app: &mut HammerProApp, ctx: &egui::Context) {
         }
     }
     if active {
-        ctx.request_repaint();
+        if app.state.runtime.lab.particle_preview.open {
+            ctx.request_repaint();
+        } else {
+            app.state.runtime.render.request_animation_frame(ctx);
+        }
     }
     if !lab.pcf_jobs.is_empty() || !lab.pcf_queue.is_empty() {
         ctx.request_repaint_after(Duration::from_millis(100));

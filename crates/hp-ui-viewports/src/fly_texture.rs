@@ -91,6 +91,7 @@ pub fn run(state: &mut AppState, op: FlyTextureOp) -> bool {
         FlyTextureOp::Pick => match state.doc.face_side(face).map(|s| s.material.clone()) {
             Some(name) if !name.trim().is_empty() => {
                 state.use_material(name.trim());
+                state.runtime.selection.lifted_face = Some(face);
                 let shown = state.current_material.clone();
                 state.toasts.push_keyed("fly_pick", Severity::Info, tf!("viewport.fly_tex.picked", shown));
                 true

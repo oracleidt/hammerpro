@@ -89,7 +89,7 @@ When a copy, paste, duplicate, clone or array contains named entities whose name
 
 ## Copy and paste keyvalues
 
-Select one entity and use **Edit > Copy keyvalues**, then select other entities and use **Edit > Paste keyvalues**: every key is pasted except `id`, `classname`, `origin` and `targetname`, in one undo step. Copy keyvalues also puts the keys on the system clipboard as `"key" "value"` lines, readable in a text editor. The same two commands are in the menu of the entity panel. Turn on **Paste keyvalues also pastes the name (targetname)** (page **Entities and browsers**, off by default) to paste the name too. See [Entity properties](entity-properties.md).
+Select one entity and use **Edit > Keyvalues > Copy keyvalues**, then select other entities and use **Edit > Keyvalues > Paste keyvalues**: every key is pasted except `id`, `classname`, `origin` and `targetname`, in one undo step. Copy keyvalues also puts the keys on the system clipboard as `"key" "value"` lines, readable in a text editor. The same two commands are in the menu of the entity panel. Turn on **Paste keyvalues also pastes the name (targetname)** (page **Entities and browsers**, off by default) to paste the name too. See [Entity properties](entity-properties.md).
 
 ## Settings
 

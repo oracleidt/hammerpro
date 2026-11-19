@@ -109,6 +109,16 @@ impl<'a> Cx<'a> {
                 {
                     Op::Targetname { target, value, update_references: self.settings.edit.rename_updates_references }
                 }
+                Op::ChangeClass { ids, class, clean: true } => {
+                    self.change_class_cleaned(&ids, &class);
+                    last = Some(Applied::Changed);
+                    continue;
+                }
+                Op::CleanKeys { ids, reset } => {
+                    self.clean_keys(&ids, reset);
+                    last = Some(Applied::Changed);
+                    continue;
+                }
                 op => op,
             };
             match apply(self.doc, self.fgd, op) {
@@ -126,6 +136,43 @@ impl<'a> Cx<'a> {
             }
         }
         last
+    }
+}
+
+impl Cx<'_> {
+    fn change_class_cleaned(&mut self, ids: &[hp_editor::Id], class: &str) {
+        match crate::edit::change_class_report(self.doc, self.fgd, ids, class, true) {
+            Ok((_, report)) => {
+                let names = report.removed_names();
+                if !names.is_empty() {
+                    self.notify(Severity::Info, tf!("entities.class_keys_removed", class, names.join(", ")));
+                }
+            }
+            Err(e) => self.notify(Severity::Error, tf!("entities.edit_failed", e)),
+        }
+    }
+
+    fn clean_keys(&mut self, ids: &[hp_editor::Id], reset: bool) {
+        let result = crate::edit::apply_clean_keys(self.doc, self.fgd, ids, reset);
+        match result {
+            Ok(report) => {
+                let text = clean_report_text(&report);
+                self.notify(Severity::Info, text);
+            }
+            Err(e) => self.notify(Severity::Error, tf!("entities.edit_failed", e)),
+        }
+    }
+}
+
+pub fn clean_report_text(report: &crate::edit::KeyCleanup) -> String {
+    let names = report.removed_names();
+    match (names.is_empty(), report.reset) {
+        (true, 0) => t!("entities.clean_keys_nothing").to_owned(),
+        (false, 0) => tf!("entities.clean_keys_done", names.join(", ")),
+        (true, n) => tf!("entities.reset_keys_done", n),
+        (false, n) => {
+            format!("{} {}", tf!("entities.clean_keys_done", names.join(", ")), tf!("entities.reset_keys_done", n))
+        }
     }
 }
 

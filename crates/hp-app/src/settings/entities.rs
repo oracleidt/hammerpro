@@ -22,6 +22,7 @@ pub struct BrowserSettings {
     pub gmod_only: bool,
     pub sound_volume: f32,
     pub sound_autoplay: bool,
+    pub model_prop_class: String,
 }
 
 impl Default for BrowserSettings {
@@ -43,6 +44,7 @@ impl Default for BrowserSettings {
             gmod_only: false,
             sound_volume: 0.8,
             sound_autoplay: true,
+            model_prop_class: String::new(),
         }
     }
 }

@@ -21,12 +21,15 @@ domain! { "assets";
         "Search the particle systems of the game content (name, file).",
         { "query": string("Text or pattern."), "limit": limit(), "offset": offset() }, ["query"];
     list_particle_systems: Read, "Particle systems of the map",
-        "The info_particle_system entities of the map with their effect and how the particle preview of the 3D \
-        views does with it: playing, loaded (not playing: too far, too many or not selected with \"selected \
+        "The info_particle_system and env_fire entities of the map with their effect and how the particle preview \
+        of the 3D views does with it (an env_fire plays the engine system env_fire_tiny, small, medium or large, \
+        with _smoke unless Smokeless, picked from firesize like the game; plasma fires draw plasma sprites with the \
+        volume effects; its fire object gives the keys, the orange glow light radius and, in player view, whether \
+        StartFire or Extinguish left it burning; fire previews hide with the helpers): playing, loaded (not playing: too far, too many or not selected with \"selected \
         only\"), loading, not_found (no particle file of the content defines it), the particle file and the \
         operators the preview does not simulate. Also the preview settings (lab.show_particles, \
         lab.particles_selected_only, lab.show_entity_fx for the volume preview of func_smokevolume, env_embers, \
-        func_dustcloud and func_dustmotes: change them with set_setting or the toggle_particles, \
+        func_dustcloud, func_dustmotes, env_steam, plasma env_fire and env_fire_trail: change them with set_setting or the toggle_particles, \
         toggle_particles_selected and toggle_entity_fx actions), its caps and whether the particle preview window \
         (action particle_preview: it opens on the effect of the selected info_particle_system and draws it with the \
         same renderer as the 3D views) is open and which system it plays.",
@@ -443,18 +446,24 @@ fn list_particle_systems(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let mut systems: Vec<Value> = Vec::new();
     for (id, node) in state.doc.scene().entities() {
         let e = &node.entity;
-        if !e.classname.eq_ignore_ascii_case("info_particle_system") {
+        let fire = hp_app::runtime::helpers::fire::fire(e);
+        if !e.classname.eq_ignore_ascii_case("info_particle_system") && fire.is_none() {
             continue;
         }
-        let effect = e.get("effect_name").map(str::trim).unwrap_or("");
+        let effect = match &fire {
+            Some(f) => hp_app::runtime::helpers::fire::particle_system(f).unwrap_or(""),
+            None => e.get("effect_name").map(str::trim).unwrap_or(""),
+        };
         let key = effect.to_ascii_lowercase();
         let name = e.get("targetname").unwrap_or("");
         if !q.is_empty() && !key.contains(&q) && !name.to_ascii_lowercase().contains(&q) {
             continue;
         }
-        let status = if key.is_empty() {
+        let status = if fire.as_ref().is_some_and(|f| f.kind == hp_app::runtime::helpers::fire::FireKind::Plasma) {
+            if settings.show_entity_fx { "plasma_sprites" } else { "preview_off" }
+        } else if key.is_empty() {
             "no_effect"
-        } else if !settings.show_particles {
+        } else if !settings.show_particles || (fire.is_some() && !state.settings.view.show_helpers) {
             "preview_off"
         } else if report.playing.iter().any(|(pid, _)| pid == id) {
             "playing"
@@ -472,8 +481,26 @@ fn list_particle_systems(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
                     .map(|v| json!({ "point": k, "target": v }))
             })
             .collect();
+        let fire_json = fire.map(|f| {
+            json!({
+                "firesize": f.size,
+                "fireattack": f.attack,
+                "health": f.health,
+                "plasma": f.kind == hp_app::runtime::helpers::fire::FireKind::Plasma,
+                "smoke": f.smoke,
+                "glow": f.glow,
+                "start_on": f.start_on,
+                "infinite": f.infinite,
+                "glow_radius": hp_app::runtime::helpers::fire::glow_radius(&f),
+                "lit_in_player_view": state.runtime.lab.player.active.then(|| {
+                    hp_app::runtime::helpers::fire::lit(f.start_on, *id, &state.runtime.lab.player.fires, true)
+                }),
+            })
+        });
         systems.push(json!({
             "id": id,
+            "classname": e.classname,
+            "fire": fire_json,
             "targetname": name,
             "effect_name": effect,
             "origin": e.origin().map(v3),

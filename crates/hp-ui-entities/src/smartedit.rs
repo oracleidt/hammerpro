@@ -20,7 +20,7 @@ use crate::values::{
 };
 use crate::view::{Agg, EntityView, PropRow, Target};
 use crate::widgets::{
-    CLICK, CommitAction, CompleteMode, FieldOpts, PickerItem, PickerOpts, TextBuffers, autocomplete_keys,
+    CLICK, CommitAction, CompleteMode, ConnText, FieldOpts, PickerItem, PickerOpts, TextBuffers, autocomplete_keys,
     autocomplete_popup, empty_note, fit_scroll_content, icon, picker_popup, picker_popup_with, search_box, side_button,
     thumbnail, yaw_dial,
 };
@@ -123,7 +123,12 @@ impl SmartEdit {
             .corner_radius(egui::CornerRadius::same(4))
             .inner_margin(egui::Margin::same(6))
             .show(ui, |ui| {
-                let text = tf!("entities.name_prompt", prompt.class, prompt.key);
+                let place = match &prompt.conn {
+                    Some((_, ConnText::Target)) => t!("entities.target_entities").to_owned(),
+                    Some((_, ConnText::Param)) => t!("entities.param_override").to_owned(),
+                    None => prompt.key.clone(),
+                };
+                let text = tf!("entities.name_prompt", prompt.class, place);
                 ui.add(Label::new(RichText::new(text).color(theme::accent())).wrap());
                 ui.horizontal(|ui| {
                     let w = (ui.available_width() - 2.0 * 70.0).max(60.0);
@@ -144,12 +149,7 @@ impl SmartEdit {
                 });
             });
         if accept && is_valid_name(&prompt.name) {
-            ops.push(Op::NameAndSet {
-                named: prompt.entity,
-                name: prompt.name.trim().to_owned(),
-                target: prompt.target.clone(),
-                key: prompt.key.clone(),
-            });
+            ops.push(prompt.op());
             done = true;
         }
         if done {

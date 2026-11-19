@@ -70,6 +70,30 @@ pub fn paste_keyvalues(state: &mut AppState) -> usize {
     }
 }
 
+pub fn clean_selected_keyvalues(state: &mut AppState, reset: bool) -> usize {
+    let ids = SelectionSummary::of(&state.doc).entities;
+    if ids.is_empty() {
+        state.notify(Severity::Warning, t!("entities.kv_nothing_selected"));
+        return 0;
+    }
+    let fgd = state.assets.fgd();
+    if fgd.is_none() {
+        state.notify(Severity::Warning, t!("entities.no_fgd"));
+        return 0;
+    }
+    match crate::edit::apply_clean_keys(&mut state.doc, fgd, &ids, reset) {
+        Ok(report) => {
+            let n = report.removed.iter().filter(|(_, k)| !k.is_empty()).count();
+            state.notify(Severity::Info, crate::cx::clean_report_text(&report));
+            if report.reset > 0 { ids.len() } else { n }
+        }
+        Err(e) => {
+            state.notify(Severity::Error, tf!("entities.edit_failed", e));
+            0
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -59,6 +59,8 @@ const HANDLED: &[Action] = &[
     Action::EntityHelp,
     Action::EditSoundscapes,
     Action::SetMaxDistance,
+    Action::CleanEntityKeyvalues,
+    Action::ResetEntityKeyvalues,
     Action::RenameUpdateReferences,
     Action::PathInsertPoint,
     Action::PathRemovePoint,
@@ -101,6 +103,9 @@ impl Package for Entities {
                 }
             }
             Action::SetMaxDistance => app.state.runtime.entities.set_max_distance = true,
+            Action::CleanEntityKeyvalues | Action::ResetEntityKeyvalues => {
+                hp_ui_entities::clean_selected_keyvalues(&mut app.state, action == Action::ResetEntityKeyvalues);
+            }
             Action::RenameUpdateReferences => app.state.runtime.entities.rename_references = true,
             Action::EditSoundscapes => app.state.runtime.entities.show_soundscapes = true,
             Action::PathInsertPoint => {

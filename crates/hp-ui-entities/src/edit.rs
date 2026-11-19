@@ -52,7 +52,8 @@ pub enum Op {
     ResetKey { target: Target, key: String, default: Option<String> },
     Targetname { target: Target, value: String, update_references: bool },
     SetFlag { ids: Vec<Id>, key: String, bit: u32, on: bool },
-    ChangeClass { ids: Vec<Id>, class: String },
+    ChangeClass { ids: Vec<Id>, class: String, clean: bool },
+    CleanKeys { ids: Vec<Id>, reset: bool },
     Comments { ids: Vec<Id>, text: String },
     DisplayColor { objs: Vec<ObjRef>, change: hp_editor::display_color::DisplayColor, merge: bool },
     ConnAdd { ids: Vec<Id>, conn: Connection },
@@ -66,6 +67,7 @@ pub enum Op {
     Visgroup { ids: Vec<Id>, group: Id, add: bool },
     ReplaceAllUses { key: String, old: String, new: String },
     NameAndSet { named: Id, name: String, target: Target, key: String },
+    NameAndConn { named: Id, name: String, rows: Vec<Vec<(Id, usize)>>, field: crate::widgets::ConnText },
 }
 
 impl Op {
@@ -83,10 +85,12 @@ impl Op {
             Op::ConnPaste { conns, .. } => conns.iter().any(conn_has_quote),
             Op::ConnEdit { field, .. } => field.text().is_some_and(q),
             Op::NameAndSet { name, key, .. } => q(name) || q(key),
+            Op::NameAndConn { name, .. } => q(name),
             Op::SetPerEntity { values } => values.iter().flat_map(|(_, kv)| kv).any(|(k, v)| q(k) || q(v)),
             Op::ReplaceAllUses { key, new, .. } => q(key) || q(new),
             Op::RemoveKey { .. }
             | Op::SetFlag { .. }
+            | Op::CleanKeys { .. }
             | Op::DisplayColor { .. }
             | Op::ConnDelete { .. }
             | Op::MoveToWorld { .. }
@@ -182,7 +186,8 @@ pub fn apply(doc: &mut Document, fgd: Option<&ResolvedFgd>, op: Op) -> EditResul
             set_targetname(doc, fgd, &target, &value, update_references)
         }
         Op::SetFlag { ids, key, bit, on } => set_flag(doc, &ids, &key, bit, on).map(changed),
-        Op::ChangeClass { ids, class } => change_class(doc, fgd, &ids, &class).map(changed),
+        Op::ChangeClass { ids, class, clean } => change_class(doc, fgd, &ids, &class, clean).map(changed),
+        Op::CleanKeys { ids, reset } => apply_clean_keys(doc, fgd, &ids, reset).map(|r| changed(r.any())),
         Op::Comments { ids, text } => in_tx(doc, LABEL_ENTITY, None, |doc| {
             let mut any = false;
             let value = (!text.trim().is_empty()).then(|| text.clone());
@@ -271,6 +276,29 @@ pub fn apply(doc: &mut Document, fgd: Option<&ResolvedFgd>, op: Op) -> EditResul
             in_tx(doc, label(&target), None, |doc| {
                 let mut any = doc.set_entity_key(&[named], "targetname", &name)? > 0;
                 any |= set_key_raw(doc, &target, &key, &name)?;
+                Ok(any)
+            })
+            .map(changed)
+        }
+        Op::NameAndConn { named, name, rows, field } => {
+            let name = name.trim().to_owned();
+            if name.is_empty() {
+                return Err(EditError::Invalid("empty entity name".to_owned()));
+            }
+            let field = crate::pick::conn_field(field, &name);
+            in_tx(doc, "Edit output", None, |doc| {
+                let mut any = doc.set_entity_key(&[named], "targetname", &name)? > 0;
+                for (id, index) in rows.iter().flatten() {
+                    let Some(current) = doc.scene().entity(*id).and_then(|n| n.entity.connections.get(*index)) else {
+                        continue;
+                    };
+                    let mut c = current.clone();
+                    field.apply(&mut c);
+                    if c != *current {
+                        doc.set_connection(*id, *index, c)?;
+                        any = true;
+                    }
+                }
                 Ok(any)
             })
             .map(changed)
@@ -365,13 +393,102 @@ fn set_flag(doc: &mut Document, ids: &[Id], key: &str, bit: u32, on: bool) -> Ed
     })
 }
 
-fn change_class(doc: &mut Document, fgd: Option<&ResolvedFgd>, ids: &[Id], class: &str) -> EditResult<bool> {
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct KeyCleanup {
+    pub removed: Vec<(Id, Vec<String>)>,
+    pub reset: usize,
+}
+
+impl KeyCleanup {
+    pub fn any(&self) -> bool {
+        self.reset > 0 || self.removed.iter().any(|(_, k)| !k.is_empty())
+    }
+
+    pub fn removed_names(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for key in self.removed.iter().flat_map(|(_, k)| k) {
+            if !out.iter().any(|k| k.eq_ignore_ascii_case(key)) {
+                out.push(key.clone());
+            }
+        }
+        out
+    }
+}
+
+type KeyPlan = (Id, Vec<String>, Vec<(String, String)>);
+
+pub fn clean_keys(doc: &mut Document, fgd: Option<&ResolvedFgd>, ids: &[Id], reset: bool) -> EditResult<KeyCleanup> {
+    use hp_app::runtime::helpers::class_keys;
+    let mut report = KeyCleanup::default();
+    let Some(fgd) = fgd else { return Ok(report) };
+    let mut plans: Vec<KeyPlan> = Vec::new();
+    for id in ids {
+        let Some(node) = doc.scene().entity(*id) else { continue };
+        let Some(class) = fgd.class(node.entity.classname.trim()) else { continue };
+        let removed = class_keys::unused_keys(&node.entity, class);
+        let resets = if reset { class_keys::default_resets(&node.entity, class) } else { Vec::new() };
+        if !removed.is_empty() || !resets.is_empty() {
+            plans.push((*id, removed, resets));
+        }
+    }
+    for (id, removed, resets) in plans {
+        for key in &removed {
+            doc.remove_entity_key(&[id], key)?;
+        }
+        for (key, value) in &resets {
+            doc.set_entity_key(&[id], key, value)?;
+        }
+        report.reset += resets.len();
+        report.removed.push((id, removed));
+    }
+    Ok(report)
+}
+
+pub fn apply_clean_keys(
+    doc: &mut Document,
+    fgd: Option<&ResolvedFgd>,
+    ids: &[Id],
+    reset: bool,
+) -> EditResult<KeyCleanup> {
+    let label = if reset { "Reset to class defaults" } else { "Clean up keyvalues" };
+    in_tx(doc, label, None, |doc| clean_keys(doc, fgd, ids, reset))
+}
+
+pub fn change_class_report(
+    doc: &mut Document,
+    fgd: Option<&ResolvedFgd>,
+    ids: &[Id],
+    class: &str,
+    clean: bool,
+) -> EditResult<(bool, KeyCleanup)> {
+    let mut report = KeyCleanup::default();
+    let any = in_tx(doc, "Change class", None, |doc| {
+        let any = change_class_raw(doc, fgd, ids, class)?;
+        if clean && any {
+            report = clean_keys(doc, fgd, ids, false)?;
+        }
+        Ok(any || report.any())
+    })?;
+    Ok((any, report))
+}
+
+fn change_class(
+    doc: &mut Document,
+    fgd: Option<&ResolvedFgd>,
+    ids: &[Id],
+    class: &str,
+    clean: bool,
+) -> EditResult<bool> {
+    change_class_report(doc, fgd, ids, class, clean).map(|(any, _)| any)
+}
+
+fn change_class_raw(doc: &mut Document, fgd: Option<&ResolvedFgd>, ids: &[Id], class: &str) -> EditResult<bool> {
     let class = class.trim();
     if class.is_empty() {
         return Err(EditError::Invalid("empty class name".to_owned()));
     }
     let defaults = fgd.and_then(|f| f.class(class)).map(|c| c.default_keyvalues()).unwrap_or_default();
-    in_tx(doc, "Change class", None, |doc| {
+    {
         let mut any = doc.set_entity_class(ids, class)? > 0;
         for (key, value) in &defaults {
             let missing: Vec<Id> = ids
@@ -387,7 +504,7 @@ fn change_class(doc: &mut Document, fgd: Option<&ResolvedFgd>, ids: &[Id], class
             any |= doc.add_missing_origins(ids)? > 0;
         }
         Ok(any)
-    })
+    }
 }
 
 fn delete_connections(doc: &mut Document, rows: &[Vec<(Id, usize)>]) -> EditResult<bool> {
@@ -445,7 +562,8 @@ mod tests {
         let bounds = state.doc.scene().entity_solid_bounds(6).unwrap();
         for class in ["env_embers", "func_smokevolume"] {
             state.doc.set_entity_key(&[6], "origin", "880 560 77.5").unwrap();
-            apply(&mut state.doc, Some(&fgd), Op::ChangeClass { ids: vec![6], class: class.into() }).unwrap();
+            apply(&mut state.doc, Some(&fgd), Op::ChangeClass { ids: vec![6], class: class.into(), clean: false })
+                .unwrap();
             assert!(state.doc.scene().entity(6).unwrap().entity.origin().is_none(), "{class}");
             assert_eq!(state.doc.scene().entity_solid_bounds(6), Some(bounds));
             assert!(state.doc.undo());
@@ -553,7 +671,7 @@ mod tests {
         let mut s = state();
         let fgd = test_fgd();
         let doc = &mut s.doc;
-        apply(doc, Some(&fgd), Op::ChangeClass { ids: vec![4], class: "light".into() }).unwrap();
+        apply(doc, Some(&fgd), Op::ChangeClass { ids: vec![4], class: "light".into(), clean: false }).unwrap();
         let e = &doc.scene().entity(4).unwrap().entity;
         assert_eq!(e.classname, "light");
         assert_eq!(e.get("_light"), Some("255 255 255 200"));
@@ -564,7 +682,50 @@ mod tests {
         let e = &doc.scene().entity(4).unwrap().entity;
         assert_eq!(e.classname, "info_player_start");
         assert!(e.get("_light").is_none());
-        assert!(apply(doc, Some(&fgd), Op::ChangeClass { ids: vec![4], class: "  ".into() }).is_err());
+        assert!(apply(doc, Some(&fgd), Op::ChangeClass { ids: vec![4], class: "  ".into(), clean: false }).is_err());
+    }
+
+    #[test]
+    fn class_change_with_cleanup_drops_the_old_class_keys_in_the_same_step() {
+        let mut s = state();
+        let fgd = test_fgd();
+        let doc = &mut s.doc;
+        doc.set_entity_key(&[4], "model", "models/props_c17/oildrum001.mdl").unwrap();
+        doc.set_entity_key(&[4], "targetname", "lamp").unwrap();
+        doc.set_entity_key(&[4], "skin", "2").unwrap();
+        let before = doc.history_len().0;
+        let (any, report) = change_class_report(doc, Some(&fgd), &[4], "light", true).unwrap();
+        assert!(any);
+        let e = &doc.scene().entity(4).unwrap().entity;
+        assert_eq!(e.classname, "light");
+        assert!(e.get("model").is_none() && e.get("skin").is_none());
+        assert_eq!(e.get("targetname"), Some("lamp"));
+        assert_eq!(e.get("angles"), Some("0 90 0"));
+        assert_eq!(e.get("_light"), Some("255 255 255 200"));
+        let names = report.removed_names();
+        assert!(names.iter().any(|k| k == "model") && names.iter().any(|k| k == "skin"), "{names:?}");
+        assert_eq!(doc.history_len().0, before + 1);
+        assert!(doc.undo());
+        let e = &doc.scene().entity(4).unwrap().entity;
+        assert_eq!(e.classname, "info_player_start");
+        assert_eq!(e.get("model"), Some("models/props_c17/oildrum001.mdl"));
+    }
+
+    #[test]
+    fn clean_keys_and_reset_to_class_defaults() {
+        let mut s = state();
+        let fgd = test_fgd();
+        let doc = &mut s.doc;
+        apply(doc, Some(&fgd), Op::ChangeClass { ids: vec![4], class: "light".into(), clean: false }).unwrap();
+        doc.set_entity_key(&[4], "model", "models/x.mdl").unwrap();
+        doc.set_entity_key(&[4], "_light", "1 2 3 4").unwrap();
+        apply(doc, Some(&fgd), Op::CleanKeys { ids: vec![4], reset: false }).unwrap();
+        let e = &doc.scene().entity(4).unwrap().entity;
+        assert!(e.get("model").is_none());
+        assert_eq!(e.get("_light"), Some("1 2 3 4"));
+        apply(doc, Some(&fgd), Op::CleanKeys { ids: vec![4], reset: true }).unwrap();
+        assert_eq!(doc.scene().entity(4).unwrap().entity.get("_light"), Some("255 255 255 200"));
+        assert_eq!(doc.undo_label(), Some("Reset to class defaults"));
     }
 
     #[test]
@@ -579,7 +740,8 @@ mod tests {
         let doc = &mut s.doc;
         let center = doc.scene().entity_solid_bounds(6).expect("trigger bounds").center();
         assert!(doc.scene().entity(6).unwrap().entity.get("origin").is_none());
-        apply(doc, Some(&fgd), Op::ChangeClass { ids: vec![6], class: "func_tracktrain".into() }).unwrap();
+        apply(doc, Some(&fgd), Op::ChangeClass { ids: vec![6], class: "func_tracktrain".into(), clean: false })
+            .unwrap();
         let e = &doc.scene().entity(6).unwrap().entity;
         assert_eq!(e.classname, "func_tracktrain");
         assert_eq!(e.origin(), Some(center));
@@ -587,7 +749,8 @@ mod tests {
         assert_eq!(doc.history_len().0, 1, "one undo step with the origin");
         assert!(doc.undo());
         assert!(doc.scene().entity(6).unwrap().entity.get("origin").is_none());
-        apply(doc, Some(&fgd), Op::ChangeClass { ids: vec![4], class: "func_tracktrain".into() }).unwrap();
+        apply(doc, Some(&fgd), Op::ChangeClass { ids: vec![4], class: "func_tracktrain".into(), clean: false })
+            .unwrap();
         assert_eq!(doc.scene().entity(4).unwrap().entity.get("origin"), Some("0 -128 0"), "point entities keep theirs");
     }
 

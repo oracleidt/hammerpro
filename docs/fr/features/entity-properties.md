@@ -18,9 +18,9 @@ L'onglet **Entité** du panneau de droite, c'est l'Object Properties de Hammer :
 | Élément | Rôle |
 |---|---|
 | Icône du type | Entité ponctuelle, entité brush, sélection mixte ou monde. Sa couleur est celle de la classe dans le FGD. |
-| Bouton de classe | La classe de la sélection (ou « N classes »). Cliquez pour choisir une autre classe dans une liste avec recherche (classes ponctuelles pour les entités ponctuelles, classes brush pour les entités brush). Changer de classe ajoute les clés par défaut manquantes de la nouvelle classe, sur toutes les entités sélectionnées. Une entité de brush qui prend une classe à clé `origin` (`func_tracktrain`, `func_tanktrain`, `func_rotating`...) sans en avoir reçoit celle du centre de ses brushes, comme dans Hammer. |
+| Bouton de classe | La classe de la sélection (ou « N classes »). Cliquez pour choisir une autre classe dans une liste avec recherche (classes ponctuelles pour les entités ponctuelles, classes brush pour les entités brush). Changer de classe ajoute les clés par défaut manquantes de la nouvelle classe, sur toutes les entités sélectionnées. Une entité de brush qui prend une classe à clé `origin` (`func_tracktrain`, `func_tanktrain`, `func_rotating`...) sans en avoir reçoit celle du centre de ses brushes, comme dans Hammer. Avec **Retirer les keyvalues que la nouvelle classe n'utilise pas** (Paramètres > Édition, actif par défaut) les clés que la nouvelle classe ne définit pas sont retirées dans la même étape d'annulation (un `prop_static` changé en `light` perd `model`, `skin`, `solid`, `fademindist`..., les vues ne dessinent plus l'ancien modèle) et une notification les liste ; voir [Nettoyer les keyvalues](#nettoyer-les-keyvalues). |
 | **?** | Ouvre l'aide de l'entité pour la classe. |
-| **☰** (**Plus**) | Menu avec **Copier les keyvalues**, **Coller les keyvalues** (avec la classe copiée et son nombre de clés), la case **Coller aussi le nom (targetname)**, **Rechercher et remplacer dans les entités...**, **Définir la distance maximale...** et **Aide de l'entité**. |
+| **☰** (**Plus**) | Menu avec **Copier les keyvalues**, **Coller les keyvalues** (avec la classe copiée et son nombre de clés), la case **Coller aussi le nom (targetname)**, **Rechercher et remplacer dans les entités...**, **Définir la distance maximale...**, **Nettoyer les keyvalues : retirer celles que la classe n'utilise pas**, **Rétablir les valeurs par défaut de la classe**, la case **Retirer les keyvalues que la nouvelle classe n'utilise pas** et **Aide de l'entité**. |
 | **Entités sélectionnées : N** | Affiché quand plusieurs entités sont modifiées. |
 | **Renvoyer au monde** | Pour les entités brush : rend les brushes au monde et supprime les entités brush (`Ctrl+Maj+W`). |
 | **Description** | Section repliée avec la description FGD de la classe. |
@@ -161,9 +161,18 @@ Les changements s'appliquent en direct à toutes les entités sélectionnées et
 
 ## Copier et coller les keyvalues
 
-- **Édition > Copier les keyvalues** copie toutes les clés de la première entité sélectionnée sauf `id`, `classname`, `origin` et `targetname` (gardé à part). Les clés partent aussi dans le presse-papiers du système sous forme de lignes `"clé" "valeur"`.
-- **Édition > Coller les keyvalues** les écrit sur toutes les entités sélectionnées en une étape. La classe ne change pas.
+- **Édition > Keyvalues > Copier les keyvalues** copie toutes les clés de la première entité sélectionnée sauf `id`, `classname`, `origin` et `targetname` (gardé à part). Les clés partent aussi dans le presse-papiers du système sous forme de lignes `"clé" "valeur"`.
+- **Édition > Keyvalues > Coller les keyvalues** les écrit sur toutes les entités sélectionnées en une étape. La classe ne change pas.
 - **Coller aussi le nom (targetname)** (menu du panneau) ou **Paramètres > Entités et navigateurs > Coller les keyvalues colle aussi le nom (targetname)** colle aussi le nom. Désactivé par défaut (`[entities] paste_targetname`).
+
+## Nettoyer les keyvalues
+
+Les clés que la classe d'une entité ne définit pas restent dans le VMF quand la classe change (Hammer les garde aussi). Hammer Pro les retire pour vous :
+
+- **Au changement de classe** (bouton de classe du panneau, MCP `set_entity_class`), si **Retirer les keyvalues que la nouvelle classe n'utilise pas** est actif (Paramètres > Édition et menu **☰** du panneau, actif par défaut, `[edit] clean_keys_on_class_change`). Le retrait fait partie de l'étape d'annulation du changement de classe et une notification liste les clés retirées.
+- **À la demande** : sous l'en-tête, **N keyvalues non utilisées par cette classe** (l'infobulle les liste) avec un bouton **Nettoyer** ; **Édition > Keyvalues > Nettoyer les keyvalues : retirer celles que la classe n'utilise pas** et **Édition > Keyvalues > Rétablir les valeurs par défaut de la classe** (aussi dans le menu **☰**). Rétablir les valeurs par défaut retire aussi les clés inutilisées et remet chaque clé qui a une valeur par défaut dans la classe à cette valeur. Chacun est une seule étape d'annulation sur toutes les entités sélectionnées.
+
+Toujours gardés : `classname`, `origin`, `angles`, `targetname`, `hammerid`, les clés commençant par `hp_`, les sorties, visgroups, groupes et données d'éditeur (couleur, commentaires). `spawnflags` reste quand la classe a des indicateurs. Rien n'est retiré pour une classe inconnue du FGD, ni sans FGD. MCP : `set_entity_class` avec `clean_keys` et `reset_defaults` (répond `removed_keys`), `run_action` `clean_entity_keyvalues` et `reset_entity_keyvalues`.
 
 ## Définir la distance maximale
 
@@ -240,6 +249,7 @@ Voir [Clés du worldspawn](../compiler/worldspawn-keys.md).
 | Les nouvelles sorties utilisent le séparateur ESC | **Paramètres > Entités et navigateurs**, `[entities] io_esc_delimiter` | activé |
 | Volume de l'écoute des sons | **Paramètres > Entités et navigateurs**, `[browser] sound_volume` | 80 % |
 | Mettre à jour les références en renommant | **Paramètres > Édition**, clic droit sur le libellé du nom, `[edit] rename_updates_references` | activé |
+| Retirer les keyvalues que la nouvelle classe n'utilise pas | **Paramètres > Édition**, menu **☰** du panneau, `[edit] clean_keys_on_class_change` | activé |
 
 ## Astuces
 

@@ -167,3 +167,110 @@ fn a_press_in_a_view_takes_the_keyboard_from_a_field() {
     assert!(!ctx.text_edit_focused(), "a drag in a view takes the keyboard");
     assert!(ctx.memory(|m| m.focused()).is_none());
 }
+
+#[derive(Default)]
+struct FlyClicks {
+    clicks: Vec<Pos2>,
+}
+
+impl Tool for FlyClicks {
+    fn id(&self) -> ToolId {
+        ToolId::Select
+    }
+
+    fn view_input(&mut self, _state: &mut AppState, _input: &ViewInput<'_>) -> ToolFlow {
+        ToolFlow::Handled
+    }
+
+    fn click_while_flying(
+        &mut self,
+        _state: &mut AppState,
+        _view: &hp_app::view::ViewInfo,
+        pos: Pos2,
+        _modifiers: Modifiers,
+    ) -> ToolFlow {
+        self.clicks.push(pos);
+        ToolFlow::Handled
+    }
+}
+
+fn tool_frame(
+    ctx: &egui::Context,
+    vp: &mut Viewports,
+    state: &mut AppState,
+    tool: &mut dyn Tool,
+    time: &mut f64,
+    events: Vec<Event>,
+) {
+    *time += 1.0 / 60.0;
+    state.frame.dt = 1.0 / 60.0;
+    let input = RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, vec2(1600.0, 900.0))),
+        time: Some(*time),
+        events,
+        focused: true,
+        ..Default::default()
+    };
+    let mut out = ctx.run_ui(input, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| vp.ui(ui, state, tool));
+    });
+    out.textures_delta.clear();
+}
+
+#[test]
+fn left_click_while_flying_reaches_the_tool() {
+    register_translations();
+    let ctx = egui::Context::default();
+    let mut vp = Viewports::new();
+    let mut state = test_state();
+    let mut tool = FlyClicks::default();
+    let mut time = 0.0;
+    let mut run = |vp: &mut Viewports, state: &mut AppState, tool: &mut FlyClicks, events: Vec<Event>| {
+        tool_frame(&ctx, vp, state, tool, &mut time, events);
+    };
+    run(&mut vp, &mut state, &mut tool, vec![]);
+    run(&mut vp, &mut state, &mut tool, vec![]);
+    let Some((_, rect)) = vp.view_rects()[0] else { panic!("the 3D view is visible") };
+    let anchor = rect.center();
+    run(&mut vp, &mut state, &mut tool, vec![Event::PointerMoved(anchor + vec2(30.0, 10.0))]);
+    run(&mut vp, &mut state, &mut tool, vec![z_press()]);
+    assert!(vp.is_mouselook());
+    run(&mut vp, &mut state, &mut tool, vec![z_release(), Event::PointerMoved(anchor)]);
+    run(&mut vp, &mut state, &mut tool, vec![Event::MouseMoved(vec2(4.0, 0.0)), Event::PointerMoved(anchor)]);
+    run(&mut vp, &mut state, &mut tool, vec![]);
+    let button = |pressed| Event::PointerButton {
+        pos: anchor,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: Modifiers::NONE,
+    };
+    run(&mut vp, &mut state, &mut tool, vec![button(true)]);
+    run(&mut vp, &mut state, &mut tool, vec![button(false)]);
+    run(&mut vp, &mut state, &mut tool, vec![]);
+    assert!(vp.is_mouselook(), "the click keeps flying");
+    assert_eq!(tool.clicks, [anchor], "one click at the crosshair");
+
+    let Some((_, other)) = vp.view_rects()[3] else { panic!("a 2D view is visible") };
+    let away = other.center();
+    run(&mut vp, &mut state, &mut tool, vec![Event::PointerMoved(away)]);
+    run(&mut vp, &mut state, &mut tool, vec![]);
+    let at = |p: Pos2, pressed| Event::PointerButton {
+        pos: p,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: Modifiers::NONE,
+    };
+    run(&mut vp, &mut state, &mut tool, vec![at(away, true)]);
+    run(&mut vp, &mut state, &mut tool, vec![at(away, false)]);
+    run(&mut vp, &mut state, &mut tool, vec![]);
+    assert!(vp.is_mouselook());
+    assert_eq!(tool.clicks, [anchor, anchor], "the hidden cursor off the 3D view still clicks at the crosshair");
+}
+
+#[test]
+fn fly_hover_follows_the_locked_view() {
+    assert_eq!(fly_hover(Some(3), Some(0), true), Some(0));
+    assert_eq!(fly_hover(None, Some(0), true), Some(0));
+    assert_eq!(fly_hover(Some(3), Some(0), false), Some(3));
+    assert_eq!(fly_hover(Some(3), None, true), Some(3));
+}

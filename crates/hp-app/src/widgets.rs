@@ -422,6 +422,50 @@ pub fn fmt_vec3(v: DVec3) -> String {
     format!("{} {} {}", fmt_coord(v.x), fmt_coord(v.y), fmt_coord(v.z))
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TextureThumb {
+    pub texture: egui::TextureId,
+    pub size: [u32; 2],
+}
+
+impl TextureThumb {
+    pub fn fit(&self, rect: egui::Rect) -> egui::Rect {
+        let (w, h) = (self.size[0].max(1) as f32, self.size[1].max(1) as f32);
+        let s = (rect.width() / w).min(rect.height() / h);
+        egui::Rect::from_center_size(rect.center(), egui::vec2(w * s, h * s))
+    }
+
+    pub fn paint(&self, painter: &egui::Painter, rect: egui::Rect, enabled: bool) {
+        let img = self.fit(rect);
+        let tint = if enabled { egui::Color32::WHITE } else { egui::Color32::from_gray(110) };
+        let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+        painter.image(self.texture, img, uv, tint);
+        painter.rect_stroke(
+            img,
+            1.0,
+            egui::Stroke::new(1.0, egui::Color32::from_black_alpha(160)),
+            egui::StrokeKind::Outside,
+        );
+    }
+
+    pub fn atom<'a>(&self, side: f32) -> egui::Atom<'a> {
+        let (w, h) = (self.size[0].max(1) as f32, self.size[1].max(1) as f32);
+        let s = side / w.max(h);
+        egui::Image::new((self.texture, egui::vec2(w * s, h * s))).into()
+    }
+}
+
+pub fn current_texture_thumb(ctx: &egui::Context, state: &mut crate::state::AppState) -> Option<TextureThumb> {
+    let name = state.current_material.trim().to_owned();
+    if name.is_empty() {
+        return None;
+    }
+    match state.assets.thumbnail(ctx, &name) {
+        crate::state::ThumbState::Ready { texture, size } => Some(TextureThumb { texture, size }),
+        _ => None,
+    }
+}
+
 pub fn action_button(ui: &mut Ui, label: &str, shortcut: Option<&egui::KeyboardShortcut>, enabled: bool) -> bool {
     let mut b = egui::Button::new(label);
     if let Some(sc) = shortcut {

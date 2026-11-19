@@ -14,7 +14,7 @@ use hp_geom::Ray;
 
 use super::OverlayLayer;
 use crate::overlay::pixel_world_size;
-use crate::paint::{PILL_BG, TEXT_WEAK, small_font, text_pill};
+use crate::paint::{PILL_BG, TEXT_WEAK, text_pill};
 
 pub(crate) fn layers() -> Vec<Box<dyn OverlayLayer>> {
     vec![Box::new(LabelsLayer::default())]
@@ -52,6 +52,7 @@ struct NamesKey {
     zoom: u64,
     rect: [u32; 4],
     pixels_per_point: u32,
+    label_px: u32,
 }
 
 type NamesCache = [Option<(NamesKey, Vec<egui::Shape>)>; 4];
@@ -140,7 +141,7 @@ impl LabelsLayer {
         }
     }
 
-    fn names_key(&self, view: &ViewInfo) -> Option<NamesKey> {
+    fn names_key(&self, state: &AppState, view: &ViewInfo) -> Option<NamesKey> {
         let r = view.rect;
         Some(NamesKey {
             stamp: self.stamp?,
@@ -149,11 +150,12 @@ impl LabelsLayer {
             zoom: view.cam2d.zoom.to_bits(),
             rect: [r.min.x.to_bits(), r.min.y.to_bits(), r.max.x.to_bits(), r.max.y.to_bits()],
             pixels_per_point: view.pixels_per_point.to_bits(),
+            label_px: name_px(state, view).unwrap_or(0.0).to_bits(),
         })
     }
 
     fn paint_names(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
-        let key = self.names_key(view);
+        let key = self.names_key(state, view);
         let mut cache = self.names_cache.borrow_mut();
         let slot = cache.get_mut(view.index);
         if let (Some(key), Some(Some((cached, shapes)))) = (key, slot.as_deref())
@@ -176,6 +178,7 @@ impl LabelsLayer {
 
     fn layout_names(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) -> Option<Vec<egui::Shape>> {
         let mut shapes = Vec::new();
+        let Some(px) = name_px(state, view) else { return Some(shapes) };
         let rect = view.rect.expand(40.0);
         let mut visible = self.scratch.borrow_mut();
         visible.clear();
@@ -200,7 +203,7 @@ impl LabelsLayer {
             text_pill(painter, pos, Align2::LEFT_BOTTOM, tf!("viewport.names_hidden", visible.len()), TEXT_WEAK);
             return None;
         }
-        let font = small_font();
+        let font = FontId::proportional(px);
         let offset = (8.0 * view.cam2d.zoom).clamp(2.0, 64.0) as f32 + 3.0;
         for (i, p) in visible.iter() {
             let n = &self.names[*i];
@@ -234,7 +237,8 @@ impl LabelsLayer {
                 continue;
             }
             let px = if view.is_2d() {
-                12.0
+                let Some(px) = state.settings.view.label_px_2d(12.0, view.cam2d.zoom) else { return };
+                px
             } else {
                 let world_px = pixel_world_size(view, t.pos);
                 if !(world_px.is_finite() && world_px > 0.0) {
@@ -255,6 +259,10 @@ impl LabelsLayer {
             painter.text(p, Align2::CENTER_CENTER, &t.text, font, color32(t.color));
         }
     }
+}
+
+fn name_px(state: &AppState, view: &ViewInfo) -> Option<f32> {
+    state.settings.view.label_px_2d(hp_app::settings::ViewSettings::LABEL_BASE_PX_2D, view.cam2d.zoom)
 }
 
 fn occluded(state: &AppState, eye: DVec3, p: DVec3) -> bool {
@@ -354,6 +362,25 @@ mod tests {
     fn layer_note(state: &AppState) -> Id {
         let found = state.doc.scene().entities().iter().find(|(_, n)| n.entity.classname == "editor_text");
         found.map(|(id, _)| *id).expect("note")
+    }
+
+    #[test]
+    fn label_size_follows_zoom_within_limits() {
+        let mut s = hp_app::settings::ViewSettings::default();
+        assert_eq!(s.label_px_2d(11.5, 1.0), Some(11.5));
+        assert_eq!(s.label_px_2d(11.5, 16.0), Some(14.0));
+        assert_eq!(s.label_px_2d(11.5, 0.1), None);
+        s.label_min_px_2d = 0.0;
+        assert!(s.label_px_2d(11.5, 0.1).is_some());
+        s.label_max_px_2d = 1000.0;
+        assert_eq!(s.label_px_2d(11.5, 100.0), Some(64.0));
+        let mut state = hp_app::testing::test_state();
+        let mut layer = LabelsLayer::default();
+        layer.prepare(&state);
+        assert!(shapes(&state, &layer, &view(ViewKind::Top, 2.0)) > 0);
+        assert_eq!(shapes(&state, &layer, &view(ViewKind::Top, 0.1)), 0, "too small labels are hidden");
+        state.settings.view.label_min_px_2d = 0.0;
+        assert!(shapes(&state, &layer, &view(ViewKind::Top, 0.1)) > 0);
     }
 
     #[test]

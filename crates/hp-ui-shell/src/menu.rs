@@ -114,7 +114,10 @@ fn hammer_order(group: MenuGroup) -> &'static [Action] {
         MenuGroup::FileGame => &[A::LaunchGame, A::ReloadInGame],
         MenuGroup::FilePublish => &[A::BuildContent, A::PublishWorkshop],
         MenuGroup::EditFind => &[A::FindEntities, A::FindReplaceText],
-        MenuGroup::EditProperties => &[A::Properties, A::CopyKeyvalues, A::PasteKeyvalues, A::SetMaxDistance],
+        MenuGroup::EditProperties => &[A::Properties, A::SetMaxDistance],
+        MenuGroup::EditKeyvalues => {
+            &[A::CopyKeyvalues, A::PasteKeyvalues, A::CleanEntityKeyvalues, A::ResetEntityKeyvalues]
+        }
         MenuGroup::EditColors => &[A::EditColor, A::SetDisplayColor, A::RandomDisplayColors, A::ResetDisplayColors],
         MenuGroup::EditFaceHistory => &[A::FaceSelectionBack, A::FaceSelectionForward],
         MenuGroup::ViewPanels => &PANEL_ORDER,
@@ -485,6 +488,19 @@ fn action_item(ui: &mut Ui, state: &mut AppState, action: Action) {
     let label = menu_label(state, action);
     let enabled = action_enabled(state, action);
     let check = action_check(state, action);
+    if action == Action::ApplyCurrentTexture
+        && let Some(thumb) = hp_app::widgets::current_texture_thumb(&ui.ctx().clone(), state)
+    {
+        let side = egui::TextStyle::Button.resolve(ui.style()).size;
+        let mut button = egui::Button::new((thumb.atom(side), label));
+        if let Some(sc) = state.keys.shortcut(action) {
+            button = button.shortcut_text(shortcut_label(&sc));
+        }
+        if ui.add_enabled(enabled, button).clicked() {
+            state.request(action);
+        }
+        return;
+    }
     if menu_entry(ui, &label, state.keys.shortcut(action), enabled, check).clicked() {
         state.request(action);
     }
@@ -1055,9 +1071,11 @@ mod tests {
                 I(A::FindReplaceText),
                 S,
                 I(A::Properties),
-                I(A::CopyKeyvalues),
-                I(A::PasteKeyvalues),
                 I(A::SetMaxDistance),
+                sub(
+                    "menu.keyvalues",
+                    &acts(&[A::CopyKeyvalues, A::PasteKeyvalues, A::CleanEntityKeyvalues, A::ResetEntityKeyvalues])
+                ),
                 sub(
                     "menu.colors",
                     &acts(&[A::EditColor, A::SetDisplayColor, A::RandomDisplayColors, A::ResetDisplayColors])

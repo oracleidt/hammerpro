@@ -113,6 +113,9 @@ pub(super) fn page(ui: &mut Ui, state: &mut AppState) {
         ui.label(t!("shell.edit.rename_refs")).on_hover_text(t!("shell.edit.rename_refs_tip"));
         changed |= ui.checkbox(&mut e.rename_updates_references, "").changed();
         ui.end_row();
+        ui.label(t!("shell.edit.clean_keys")).on_hover_text(t!("shell.edit.clean_keys_tip"));
+        changed |= ui.checkbox(&mut e.clean_keys_on_class_change, "").changed();
+        ui.end_row();
         ui.label(t!("shell.edit.arrow_nudge")).on_hover_text(t!("shell.edit.arrow_nudge_tip"));
         changed |= ui.checkbox(&mut e.arrow_key_nudge, "").changed();
         ui.end_row();
@@ -151,6 +154,7 @@ pub(super) fn reset(state: &mut AppState) {
     e.new_brush_color = d.new_brush_color;
     e.keep_displacements_on_cut = d.keep_displacements_on_cut;
     e.rename_updates_references = d.rename_updates_references;
+    e.clean_keys_on_class_change = d.clean_keys_on_class_change;
     sync_edit_options(state);
 }
 
@@ -202,6 +206,16 @@ pub(crate) const TR: TrTable = &[
         "Les objets collés sont décalés d'un pas de grille pour ne pas se superposer",
     ),
     ("shell.edit.rename_refs", "Update references when renaming", "Mettre à jour les références en renommant"),
+    (
+        "shell.edit.clean_keys",
+        "Remove keyvalues the new class does not use",
+        "Retirer les keyvalues que la nouvelle classe n'utilise pas",
+    ),
+    (
+        "shell.edit.clean_keys_tip",
+        "When you change the class of an entity, the keys its new class does not define (model, skin, solid of a former prop...) are removed in the same undo step. Name, origin, angles and outputs are always kept.",
+        "Quand vous changez la classe d'une entité, les clés que sa nouvelle classe ne définit pas (model, skin, solid d'un ancien prop...) sont retirées dans la même étape d'annulation. Le nom, l'origine, les angles et les sorties sont toujours gardés.",
+    ),
     (
         "shell.edit.rename_refs_tip",
         "Changing an entity name also changes the outputs, parent, filter and other name keys of every entity that use the old name, in one undo step. Off: only the entity changes, like in Hammer. Right click > Rename and update references does it once while this is off",

@@ -23,10 +23,11 @@ Picking works in the 3D view. The faces under the mouse are outlined; the select
 | `Shift+click` | Selects every face of the solid. `Ctrl+Shift+click` adds them. |
 | Hold the left button and sweep | Selects the faces under the mouse one after the other (`Ctrl` or `Shift`: added to the selection). |
 | Click in the void | Clears the face selection. |
-| `Alt+click` | Eyedropper: the face material becomes the current material. |
+| `Alt+click` | Eyedropper (lift): the face material becomes the current material and the face becomes the alignment source for `Alt+right click`. |
 | Right click | Applies the current material to the face. |
 | `Ctrl+right click` | Applies `tools/toolsnodraw` to the clicked face, keeping the current material and face selection. |
-| `Alt+right click` | Wraps: copies the material of the first selected face onto the clicked face and continues its texture across the shared edge. Select the source face first. |
+| `Alt+right click` | Applies the current texture and alignment, wrapped: the texture continues from the source face across the shared edge without a seam, also onto faces at an angle. The source is the last selected face, or the last face lifted with a click or `Alt+click`. The texture size does not matter: alignment is kept in texels like Hammer. |
+| `Shift+Alt+right click` | Applies the current texture and the alignment values of the source face unchanged, without wrapping. |
 | Hold the right button and sweep (Hammer++ camera scheme) | Paints: every face the mouse passes over gets the current material, like Hammer++. `Ctrl` paints `tools/toolsnodraw`, `Alt` wraps each face from the selected face. The whole stroke is one undo step and the face selection does not change. |
 | `Escape` | Clears the face selection. |
 
@@ -109,7 +110,7 @@ See [Displacement tool](displacement-tool.md) for sculpting.
 
 | Command | Menu | Shortcut |
 |---|---|---|
-| **Apply current texture** | **Tools** | `Shift+T` (works with any tool: selected faces, or every face of the selected objects) |
+| **Apply current texture** | **Tools**, tool palette, command palette | `Shift+T` (works with any tool: selected faces, or every face of the selected objects). Its icon is a small thumbnail of the current texture, updated as soon as the current texture changes; the **Apply current** button of the face panel shows it too |
 | **Texture lock** | **Tools**, toolbar | `Shift+L` |
 | **Texture scale lock** | **Tools**, toolbar | `Shift+K` |
 | **Find and replace textures...** | **Tools** | `Ctrl+Shift+R` (no key with the Hammer and Hammer++ presets) |
@@ -119,8 +120,8 @@ The texture locks are described in [Brush operations](brush-operations.md).
 ## Tips
 
 - Select a whole room with `Shift+click` on each wall, then **Justify > Fit** with **Treat as one** to stretch one texture over all of it.
-- `Alt+click` a face you like, then right click other faces to paint its material.
-- To continue a texture around a corner, select the textured face, then `Alt+right click` the next one.
+- `Alt+click` a face you like, then right click other faces to paint its material, or `Alt+right click` them to paint it lined up with that face.
+- To continue a texture around a corner, click or `Alt+click` the textured face, then `Alt+right click` the next one.
 - **Mark** on a selection shows every other face that uses the same materials, ready for one change.
 
 ## FAQ

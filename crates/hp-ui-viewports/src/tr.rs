@@ -71,6 +71,11 @@ pub const TR: TrTable = &[
     ("viewport.prefab_read_failed", "Could not read the prefab {0}: {1}", "Impossible de lire le prefab {0} : {1}"),
     ("viewport.material_applied", "Applied {0} to {1} face(s)", "{0} appliqué à {1} face(s)"),
     (
+        "viewport.prop_type_no_physics",
+        "{0} has no physics model (.phy), so it cannot be a {1}: placed as {2}",
+        "{0} n'a pas de modèle physique (.phy), il ne peut pas être un {1} : placé en {2}",
+    ),
+    (
         "viewport.model_unavailable",
         "Model information unavailable for {0}: {1}",
         "Informations du modèle indisponibles pour {0} : {1}",

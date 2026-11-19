@@ -119,6 +119,17 @@ Les cordes de la map (`move_rope` et `keyframe_rope`) réagissent aussi lorsque 
 
 Via MCP, `get_entity` et `set_entity_keyvalues` lisent et modifient le contrôleur et les clés `AffectedByWind`, `Frozen` et `NoWind`. `set_setting` règle `lab.show_entity_fx`, `helpers.show_ropes` et `helpers.simulate_ropes`.
 
+## Aperçu du feu dans les vues
+
+`env_fire` brûle dans les vues 3D (Texturé, Éclairé, Précalculé, Lancer de rayons et vue joueur) comme le jeu le dessine :
+
+- Un feu naturel joue le système de particules du moteur que le jeu choisit selon la **taille du feu** (`firesize`) : `env_fire_tiny` sous 36 unités, `env_fire_small` à partir de 36, `env_fire_medium` à partir de 72 et `env_fire_large` à partir de 108, en version `_smoke` sauf si **Sans fumée** (flag 2) est coché. Il passe par l'aperçu des particules : animé, additif, face à la caméra et éliminé hors vue comme tout `info_particle_system`, et `list_particle_systems` le signale.
+- Un feu **Plasma** (`firetype` 1) dessine des flammes additives `sprites/plasma1` qui vacillent, à l'échelle de la taille du feu, avec une colonne de fumée, via les effets de volume. `env_fire_trail` dessine de petites flammes `sprites/flamelet` et de la fumée à son origine.
+- Sauf si **Pas de lueur** (flag 32) est coché, le feu éclaire les alentours avec la lumière dynamique orange du moteur (bleue pour le plasma) en Éclairé, Lancer de rayons et vue joueur. Le rayon suit la taille du feu.
+- Dans les vues de l'éditeur tous les feux brûlent pour les placer. En vue joueur le feu ne brûle au départ qu'avec **Allumé au départ** (flag 4) ; les entrées `StartFire`, `Extinguish`, `ExtinguishTemporary`, `Enable` et `Disable` le commandent, un feu sans **Durée infinie** (flag 1) s'éteint après sa **durée** (`health`) plus ses secondes de **montée** (`fireattack`), et `OnIgnited` / `OnExtinguished` déclenchent leurs sorties.
+- Les aperçus de feu se masquent avec les assistants (H) et suivent les interrupteurs de l'aperçu des particules et des effets de volume. Les animations se mettent en pause comme les autres aperçus animés : après le délai d'inactivité, fenêtre réduite ou en arrière-plan.
+- `env_firesource` et `env_firesensor` n'ont pas d'apparence en jeu et restent des assistants.
+
 ## Fenêtre d'aperçu des particules
 
 Le bouton `▶` à côté du champ **Particle System Name** (`effect_name`) d'un `info_particle_system` (aussi **Affichage > Panneaux > Aperçu des particules...**, action `particle_preview`) ouvre une fenêtre avec :

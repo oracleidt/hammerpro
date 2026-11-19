@@ -49,6 +49,8 @@ Surtout sur **Paramètres > Vues** ; les clés `show_*` sont aussi dans le menu 
 | `selection_color` | `[255, 70, 70]` | Couleur de la sélection (RVB). |
 | `zoom_to_cursor` | `true` | La molette zoome vers le curseur (désactivé : vers le centre de la vue). |
 | `hover_outline` | `false` | L'outil de sélection entoure les objets sous la souris dans la vue 3D. |
+| `label_max_px_2d` | `14.0` | Taille la plus grande en pixels des noms d'entités et des notes dans les vues 2D (6 à 64) ; ils grandissent avec le zoom jusqu'à elle. |
+| `label_min_px_2d` | `6.0` | Les étiquettes des vues 2D qui seraient plus petites que cette taille en pixels en dézoomant sont masquées (0 les garde toutes). |
 | `keyboard_layout` | `"Auto"` | Touches de vol : `Auto` (par position : ZQSD en AZERTY, WASD en QWERTY), `Azerty` (par étiquette : Z Q S D, A descend, E monte), `Qwerty` (par étiquette : W A S D, Q descend, E monte). |
 
 ## `[edit]` : édition
@@ -77,6 +79,7 @@ Surtout sur **Paramètres > Vues** ; les clés `show_*` sont aussi dans le menu 
 | `undo_restores_selection` | `true` | Les changements de sélection sont des étapes d'annulation : `Ctrl+Z` rétablit la sélection précédente (faces comprises). Ils ne marquent jamais la map comme modifiée. |
 | `keep_displacements_on_cut` | `true` | Découper, Trancher, Creuser et Intersection gardent les déplacements sur les morceaux (exact sur les lignes de la grille, rééchantillonné ailleurs, coutures soudées) ; désactivé : les faces coupées redeviennent plates comme dans Hammer. **Paramètres > Édition**. |
 | `rename_updates_references` | `false` | Changer le nom d'une entité renomme aussi les sorties, le parent, le filtre, les clés et paramètres de nom qui utilisent l'ancien nom, en une étape d'annulation (gardés tant qu'une autre entité porte l'ancien nom ; jokers et AddOutput intacts). **Paramètres > Édition**. |
+| `clean_keys_on_class_change` | `true` | Changer la classe d'une entité retire les clés que la nouvelle classe FGD ne définit pas (model, skin, solid d'un ancien prop...) dans la même étape d'annulation ; le nom, l'origine, les angles et les sorties restent. **Paramètres > Édition > Retirer les keyvalues que la nouvelle classe n'utilise pas**. |
 
 ## `[ui]` : interface
 
@@ -200,6 +203,7 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `model_grid_view` | `true` | Navigateur de modèles en grille de rendus (désactivé : une liste). |
 | `tile_size` | `96.0` | Taille des tuiles de modèles et de particules, de 48 à 256 points. |
 | `gmod_only` | `false` | Les navigateurs de modèles, de sons et de particules ne listent que le contenu de base de Garry's Mod. |
+| `model_prop_class` | `""` | Type de prop des modèles posés depuis le navigateur de modèles (glisser-déposer, **Utiliser pour les nouveaux props**, double-clic) : vide pour le choix automatique, ou `prop_static`, `prop_physics`, `prop_physics_multiplayer`, `prop_dynamic`. Les modèles sans modèle physique ne deviennent pas `prop_physics`. |
 | `sound_volume` | `0.8` | Volume des aperçus sonores, de 0 à 1. |
 | `sound_autoplay` | `true` | Sélectionner un son le joue. |
 

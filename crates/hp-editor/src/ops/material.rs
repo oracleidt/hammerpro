@@ -265,7 +265,33 @@ impl Document {
     }
 
     pub fn wrap_texture(&mut self, src: FaceRef, dst: &[FaceRef]) -> EditResult<usize> {
-        let src_side = self.face_side(src).ok_or(EditError::FaceNotFound(src.solid, src.side))?.clone();
+        self.apply_texture_and_alignment(src, dst, None, true)
+    }
+
+    pub fn apply_texture_and_alignment(
+        &mut self,
+        src: FaceRef,
+        dst: &[FaceRef],
+        material: Option<&str>,
+        wrap: bool,
+    ) -> EditResult<usize> {
+        let mut src_side = self.face_side(src).ok_or(EditError::FaceNotFound(src.solid, src.side))?.clone();
+        if let Some(m) = material.map(str::trim) {
+            if m.is_empty() {
+                return Err(EditError::Invalid("empty material name".to_owned()));
+            }
+            m.clone_into(&mut src_side.material);
+        }
+        if !wrap {
+            return self.edit_sides("Apply texture and alignment", dst, |side, normal, _| {
+                side.material.clone_from(&src_side.material);
+                side.uaxis = src_side.uaxis;
+                side.vaxis = src_side.vaxis;
+                side.rotation = src_side.rotation;
+                side.lightmap_scale = src_side.lightmap_scale;
+                hp_geom::ensure_valid_axes(side, normal);
+            });
+        }
         let src_normal = side_normal(&src_side);
         let src_poly: Vec<DVec3> = self.face_polygon(src).map(<[DVec3]>::to_vec).unwrap_or_default();
         let src_center = hp_geom::polygon_center(&src_poly);

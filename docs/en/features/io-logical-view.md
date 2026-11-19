@@ -53,9 +53,9 @@ Under the table, the editor changes every selected output at once (**(multiple v
 | Field | What it does |
 |---|---|
 | **My output named** | Picker of the outputs of the class (every output when the class is unknown). |
-| **Target entities named** | Text with completion of the names of the map and of the special targets (`!self`, `!activator`, `!caller`, `!player`, `!pvsplayer`, `!speechtarget`, `!picker`). Red when no entity has the name. `Tab` completes, arrows pick, `Enter` accepts. |
+| **Target entities named** | Text with completion of the names of the map and of the special targets (`!self`, `!activator`, `!caller`, `!player`, `!pvsplayer`, `!speechtarget`, `!picker`). Red when no entity has the name. `Tab` completes, arrows pick, `Enter` accepts, a click on a suggestion fills the field (and **Via this input** then lists the inputs of that target). The entity eyedropper next to the field (Hammer's picker) waits for a click on an entity in any 3D or 2D view and writes its name; an entity without a name gets a prompt with a free name (`class_1`...) that names it and sets the target in one undo step. The views show a crosshair cursor while it waits; `Escape` or a second click on the button cancels. |
 | **Via this input** | Picker of the inputs of the classes the target resolves to (every input when it resolves to nothing known). |
-| **With a parameter override of** | Free text, **<none>** when empty. Double quotes are refused; when the input is `RunScriptCode`, **Use backticks** replaces them with backticks. |
+| **With a parameter override of** | Free text, **<none>** when empty. Double quotes are refused; when the input is `RunScriptCode`, **Use backticks** replaces them with backticks. When the chosen input takes an entity name (for example `SetParent`), an entity eyedropper sits next to the field and works like the target one. |
 | **After a delay in seconds of** | 0 to 3600 seconds. Drag or type. |
 | **Fire this many times** | **Always** (-1) or a number (Hammer++ refires). Drag or type a number; 0 is skipped, since it would never fire. |
 

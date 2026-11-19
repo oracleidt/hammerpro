@@ -909,6 +909,27 @@ impl Tool for WithInset<'_> {
         self.inner.click_while_flying(state, view, pos, modifiers)
     }
 
+    fn secondary_click_while_flying(
+        &mut self,
+        state: &mut AppState,
+        view: &ViewInfo,
+        pos: Pos2,
+        modifiers: egui::Modifiers,
+    ) -> ToolFlow {
+        if self.modal.is_active() {
+            return ToolFlow::Handled;
+        }
+        self.inner.secondary_click_while_flying(state, view, pos, modifiers)
+    }
+
+    fn secondary_click(&mut self, state: &mut AppState, view: &ViewInfo, pos: Pos2) -> bool {
+        !self.modal.is_active() && self.inner.secondary_click(state, view, pos)
+    }
+
+    fn takes_middle_drag(&self, kind: hp_app::view::ViewKind, modifiers: egui::Modifiers) -> bool {
+        !self.modal.is_active() && self.inner.takes_middle_drag(kind, modifiers)
+    }
+
     fn key_input(&mut self, state: &mut AppState, ctx: &egui::Context) -> bool {
         if self.modal.is_active() {
             return self.modal.handle_keys(state, ctx);

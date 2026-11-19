@@ -49,6 +49,8 @@ Mostly on **Settings > Viewports**; the `show_*` toggles are also in the **View*
 | `selection_color` | `[255, 70, 70]` | Color of the selection (RGB). |
 | `zoom_to_cursor` | `true` | The mouse wheel zooms toward the cursor (off: toward the view center). |
 | `hover_outline` | `false` | The selection tool outlines the objects under the mouse in the 3D view. |
+| `label_max_px_2d` | `14.0` | Largest size in pixels of the entity names and notes in the 2D views (6 to 64); they grow with the zoom up to it. |
+| `label_min_px_2d` | `6.0` | Labels of the 2D views that would be smaller than this size in pixels when zoomed out are hidden (0 keeps them all). |
 | `keyboard_layout` | `"Auto"` | Keys that fly the camera: `Auto` (by key position: ZQSD on AZERTY, WASD on QWERTY), `Azerty` (by label: Z Q S D, A down, E up), `Qwerty` (by label: W A S D, Q down, E up). |
 
 ## `[edit]`: editing defaults
@@ -77,6 +79,7 @@ Mostly on **Settings > Viewports**; the `show_*` toggles are also in the **View*
 | `undo_restores_selection` | `true` | Selection changes are undo steps: `Ctrl+Z` brings back the previous selection (faces included). They never mark the map as modified. |
 | `keep_displacements_on_cut` | `true` | Clip, Slice, Carve and Intersect keep displacements on the cut pieces (exact on grid lines, resampled elsewhere, seams sewn); off: cut faces become flat brush faces like in Hammer. **Settings > Editing**. |
 | `rename_updates_references` | `false` | Changing an entity name also renames the outputs, parent, filter, name keys and name parameters that use the old name, in one undo step (kept while another entity still has the old name; wildcards and AddOutput untouched). **Settings > Editing**. |
+| `clean_keys_on_class_change` | `true` | Changing the class of an entity removes the keys the new FGD class does not define (model, skin, solid of a former prop...) in the same undo step; name, origin, angles and outputs stay. **Settings > Editing > Remove keyvalues the new class does not use**. |
 
 ## `[ui]`: interface
 
@@ -200,6 +203,7 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `model_grid_view` | `true` | Model browser as a grid of rendered models (off: a list). |
 | `tile_size` | `96.0` | Model and particle tiles, 48 to 256 points. |
 | `gmod_only` | `false` | Model, sound and particle browsers list only stock Garry's Mod content. |
+| `model_prop_class` | `""` | Prop type of the models placed from the model browser (drag and drop, **Use for new props**, double click): empty for the automatic choice, or `prop_static`, `prop_physics`, `prop_physics_multiplayer`, `prop_dynamic`. Models without a physics model fall back from `prop_physics`. |
 | `sound_volume` | `0.8` | Volume of sound previews, 0 to 1. |
 | `sound_autoplay` | `true` | Selecting a sound plays it. |
 

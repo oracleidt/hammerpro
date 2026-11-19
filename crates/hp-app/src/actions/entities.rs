@@ -3,8 +3,8 @@ use crate::i18n::TrTable;
 use crate::state::AppState;
 
 action_list! { entities_actions {
-    CopyKeyvalues => "copy_keyvalues", Edit, EditProperties, None, Ready;
-    PasteKeyvalues => "paste_keyvalues", Edit, EditProperties, None, Ready;
+    CopyKeyvalues => "copy_keyvalues", Edit, EditKeyvalues, None, Ready;
+    PasteKeyvalues => "paste_keyvalues", Edit, EditKeyvalues, None, Ready;
     FindReplaceText => "find_replace_text", Edit, EditFind, sc(CTRL_ALT, Key::R), Ready;
     EditColor => "edit_color", Edit, EditColors, sc(NONE, Key::C), Ready;
     SetDisplayColor => "set_display_color", Edit, EditColors, None, Ready;
@@ -15,6 +15,8 @@ action_list! { entities_actions {
     ShowParticleBrowser => "show_particle_browser", View, ViewPanels, None, Ready;
     EntityHelp => "entity_help", Help, HelpDocs, None, Ready;
     SetMaxDistance => "set_max_distance", Edit, EditProperties, None, Ready;
+    CleanEntityKeyvalues => "clean_entity_keyvalues", Edit, EditKeyvalues, None, Ready;
+    ResetEntityKeyvalues => "reset_entity_keyvalues", Edit, EditKeyvalues, None, Ready;
     RenameUpdateReferences => "rename_update_references", Edit, Hidden, None, Ready;
     ToolPath => "tool_path", Tools, ToolsSwitch, None, Ready;
     PathInsertPoint => "path_insert_point", Tools, ToolsPaths, None, Ready;
@@ -37,6 +39,8 @@ pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
         | Action::EntityHelp
         | Action::EditColor
         | Action::SetMaxDistance
+        | Action::CleanEntityKeyvalues
+        | Action::ResetEntityKeyvalues
         | Action::RenameUpdateReferences => Some(entity_selected(state)),
         Action::PasteKeyvalues => Some(state.runtime.entities.clipboard.is_some() && entity_selected(state)),
         Action::PathInsertPoint | Action::PathRemovePoint => Some(entity_selected(state)),
@@ -85,6 +89,12 @@ pub(super) const TR: TrTable = &[
     ("action.show_particle_browser", "Particle browser", "Navigateur de particules"),
     ("action.entity_help", "Entity help", "Aide de l'entité"),
     ("action.set_max_distance", "Set maximum distance...", "Définir la distance maximale..."),
+    (
+        "action.clean_entity_keyvalues",
+        "Clean up keyvalues: remove the ones the class does not use",
+        "Nettoyer les keyvalues : retirer celles que la classe n'utilise pas",
+    ),
+    ("action.reset_entity_keyvalues", "Reset to class defaults", "Rétablir les valeurs par défaut de la classe"),
     (
         "action.rename_update_references",
         "Rename and update references...",

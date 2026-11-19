@@ -29,6 +29,7 @@ pub struct SelectionRuntime {
     pub vertices: Vec<(Id, DVec3)>,
     pub element_revision: u64,
     pub snapshots: Vec<PickSnapshot>,
+    pub lifted_face: Option<hp_editor::FaceRef>,
 }
 
 impl SelectionRuntime {

@@ -344,9 +344,20 @@ fn tool_button(ui: &mut Ui, state: &mut AppState, tool: ToolId, size: egui::Vec2
 
 fn action_button(ui: &mut Ui, state: &mut AppState, action: Action, size: egui::Vec2) -> egui::Response {
     let enabled = action_enabled(state, action);
-    let r = match crate::icons::action_icon(action) {
-        Some(i) => strip_button(ui, size, false, enabled, action.label(), icon(i)),
-        None => strip_button(ui, size, false, enabled, action.label(), glyph(crate::toolbar::button_glyph(action))),
+    let thumb = if action == Action::ApplyCurrentTexture {
+        hp_app::widgets::current_texture_thumb(&ui.ctx().clone(), state)
+    } else {
+        None
+    };
+    let r = match (thumb, crate::icons::action_icon(action)) {
+        (Some(thumb), _) => strip_button(ui, size, false, enabled, action.label(), move |painter, c, _, scale| {
+            let side = ICON_SIZE * scale + 2.0;
+            thumb.paint(painter, egui::Rect::from_center_size(c, egui::vec2(side, side)), enabled);
+        }),
+        (None, Some(i)) => strip_button(ui, size, false, enabled, action.label(), icon(i)),
+        (None, None) => {
+            strip_button(ui, size, false, enabled, action.label(), glyph(crate::toolbar::button_glyph(action)))
+        }
     };
     let tip = crate::common::action_tooltip(state, action);
     let r = r.on_hover_ui(|ui| {

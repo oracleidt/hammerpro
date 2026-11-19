@@ -395,6 +395,7 @@ fn set_setting(state: &AppState, v: &Value) -> R<Outcome> {
     let range = RANGES.iter().find(|(p, _, _)| *p == path).map(|(_, min, max)| (*min, *max));
     check_value(path, value, range, 0)?;
     check_toolbar_ids(path, value)?;
+    check_prop_class(path, value)?;
     *slot = value.clone();
     let mut new: Settings = serde_json::from_value(all).map_err(|e| {
         match serde_json::from_value::<Settings>(settings_json(&state.settings)) {
@@ -413,6 +414,18 @@ fn set_setting(state: &AppState, v: &Value) -> R<Outcome> {
         return Err(format!("{path} cannot hold {value} (it would become {stored})"));
     }
     Ok(Outcome::Ui(UiOp::Settings { settings: Box::new(new), path: path.to_owned(), value: stored }))
+}
+
+fn check_prop_class(path: &str, value: &Value) -> R<()> {
+    use hp_app::runtime::helpers::class_keys::PROP_TYPES;
+    if path != "browser.model_prop_class" {
+        return Ok(());
+    }
+    let v = value.as_str().unwrap_or("").trim();
+    if v.is_empty() || PROP_TYPES.iter().any(|p| p.eq_ignore_ascii_case(v)) {
+        return Ok(());
+    }
+    Err(format!("{path} takes \"\" (default) or one of {}", PROP_TYPES.join(", ")))
 }
 
 fn check_toolbar_ids(path: &str, value: &Value) -> R<()> {

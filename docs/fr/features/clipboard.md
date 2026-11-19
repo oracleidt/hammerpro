@@ -89,7 +89,7 @@ Quand une copie, un collage, une duplication, un clone ou une série contient de
 
 ## Copier et coller les keyvalues
 
-Sélectionnez une entité et faites **Édition > Copier les keyvalues**, puis sélectionnez d'autres entités et faites **Édition > Coller les keyvalues** : toutes les clés sont collées sauf `id`, `classname`, `origin` et `targetname`, en une seule étape d'annulation. Copier les keyvalues met aussi les clés dans le presse-papiers du système sous forme de lignes `"clé" "valeur"`, lisibles dans un éditeur de texte. Les deux commandes se trouvent aussi dans le menu du panneau d'entité. Activez **Coller les keyvalues colle aussi le nom (targetname)** (page **Entités et navigateurs**, désactivé par défaut) pour coller le nom avec. Voir [Propriétés des entités](entity-properties.md).
+Sélectionnez une entité et faites **Édition > Keyvalues > Copier les keyvalues**, puis sélectionnez d'autres entités et faites **Édition > Keyvalues > Coller les keyvalues** : toutes les clés sont collées sauf `id`, `classname`, `origin` et `targetname`, en une seule étape d'annulation. Copier les keyvalues met aussi les clés dans le presse-papiers du système sous forme de lignes `"clé" "valeur"`, lisibles dans un éditeur de texte. Les deux commandes se trouvent aussi dans le menu du panneau d'entité. Activez **Coller les keyvalues colle aussi le nom (targetname)** (page **Entités et navigateurs**, désactivé par défaut) pour coller le nom avec. Voir [Propriétés des entités](entity-properties.md).
 
 ## Paramètres
 

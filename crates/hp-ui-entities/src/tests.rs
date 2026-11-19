@@ -1885,3 +1885,64 @@ fn soundscape_choices_accept_custom_names_with_undo_and_vmf_roundtrip() {
         );
     }
 }
+
+#[test]
+fn clicking_a_suggestion_fills_the_output_target() {
+    let mut state = setup();
+    let fgd = test_fgd();
+    add_named(&mut state, &["aim", "spot_aim", "tttcond"]);
+    let mut panel = EntityPanel::new();
+    state.doc.set_selection(&[ObjRef::Entity(6)]);
+    panel.set_tab(EntityTab::Outputs);
+    run_ui(&mut state, |ui, state| panel.ui_with_fgd(ui, state, Some(&fgd)));
+    panel.io_mut().select_rows(&[0]);
+    let id = panel.io_mut().target_field_id();
+    let ctx = egui::Context::default();
+    let mut shapes: Vec<egui::epaint::ClippedShape> = Vec::new();
+    let mut at = None;
+    let select_all = egui::Event::Key {
+        key: egui::Key::A,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::COMMAND,
+    };
+    let button = |p: egui::Pos2, pressed: bool| egui::Event::PointerButton {
+        pos: p,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: egui::Modifiers::NONE,
+    };
+    for i in 0..12 {
+        if i == 1 {
+            ctx.memory_mut(|m| m.request_focus(id));
+        }
+        if i == 6 {
+            at = find_text(&shapes, "spot_aim");
+            assert!(at.is_some(), "the suggestion list shows spot_aim");
+        }
+        let events = match (i, at) {
+            (2, _) => vec![select_all.clone()],
+            (3, _) => vec![egui::Event::Text("spot".into())],
+            (6, Some(p)) => vec![egui::Event::PointerMoved(p)],
+            (7, Some(p)) => vec![button(p, true)],
+            (8, Some(p)) => vec![button(p, false)],
+            _ => Vec::new(),
+        };
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1200.0, 900.0))),
+            events,
+            time: Some(f64::from(i) * 0.1),
+            focused: true,
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| {
+            egui::CentralPanel::default().show(ui, |ui| panel.ui_with_fgd(ui, &mut state, Some(&fgd)));
+        });
+        out.textures_delta.clear();
+        shapes = out.shapes;
+    }
+    let c = &state.doc.scene().entity(6).unwrap().entity.connections[0];
+    assert_eq!(c.target, "spot_aim", "the clicked suggestion fills the field");
+    assert_eq!(state.doc.history_len().0, 1, "one undo step");
+}

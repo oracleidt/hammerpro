@@ -45,6 +45,20 @@ Au clavier, pointeur sur la liste ou la grille : `Haut` / `Bas` déplacent la s�
 | **Appliquer à la propriété** | Seulement quand vous choisissez pour une clé : écrit le modèle dans cette clé. |
 | **Copier** | Copie le chemin du modèle dans le presse-papiers. |
 
+## Type de prop
+
+La liste **Type de prop** sous la ligne des dossiers choisit la classe des props posés depuis le navigateur : en glissant un modèle dans une vue, avec **+ Utiliser pour les nouveaux props** ou par double-clic.
+
+| Choix | Classe posée |
+|---|---|
+| **Par défaut** | Le choix automatique : `prop_static` pour un modèle de prop statique ; sinon `prop_dynamic` pour un dépôt et `prop_physics` pour **Utiliser pour les nouveaux props**. |
+| `prop_static` | Toujours `prop_static`. |
+| `prop_physics` | `prop_physics`. |
+| `prop_physics_multiplayer` | Listé quand le FGD le connaît (Garry's Mod, Half-Life 2: Deathmatch). Devient `prop_physics` si le FGD ne le connaît pas. |
+| `prop_dynamic` | Toujours `prop_dynamic`. |
+
+Un prop physique a besoin d'un modèle physique (un fichier `.phy` à côté du `.mdl`, produit par `$collisionmodel`). Quand le modèle n'en a pas, les détails affichent **Pas de modèle physique : ne peut pas être un prop_physics** en orange, et la pose utilise `prop_static` (modèles de prop statique) ou `prop_dynamic` à la place, avec une notification qui le dit. Le choix est enregistré (`model_prop_class` dans `[browser]`, vide pour **Par défaut**) ; MCP : `set_setting` chemin `browser.model_prop_class`.
+
 ## Choisir un modèle pour une clé
 
 Le bouton de parcours d'une clé de modèle dans le panneau d'entité (voir [Propriétés des entités](entity-properties.md)) ouvre l'onglet Modèles avec un bandeau : « Choisissez un modèle pour *classe (clé)*, puis double-cliquez dessus ou appuyez sur Appliquer. » Le modèle que la clé contient déjà est sélectionné. Double-cliquez un modèle, appuyez sur `Entrée` ou cliquez **Appliquer** pour l'écrire (avec le skin de l'aperçu quand la clé est `model` et que le skin n'est pas 0) ; le panneau revient sur l'onglet **Entité**. **Annuler** quitte ce mode. L'écriture tient en une seule étape d'annulation.
@@ -124,6 +138,7 @@ Deux options de **Affichage > Options d'affichage** montrent les collisions des 
 | `[browser] model_grid_view` | Grille au lieu de liste. | `true` |
 | `[browser] tile_size` | Taille des vignettes de la grille (48 à 256). | `96` |
 | `[browser] gmod_only` | Contenu de Garry's Mod uniquement (modèles, sons, particules). | `false` |
+| `[browser] model_prop_class` | Type de prop des modèles posés : vide (Par défaut), `prop_static`, `prop_physics`, `prop_physics_multiplayer` ou `prop_dynamic`. | vide |
 | `[entities] crowbar_exe` | Crowbar choisi depuis l'inspecteur. | aucun |
 | `[render] collision_models` | Modèles de collision par-dessus les props. | `false` |
 | `[render] collision_only` | Modèles de collision à la place des modèles. | `false` |
@@ -142,7 +157,7 @@ Deux options de **Affichage > Options d'affichage** montrent les collisions des 
 
 **Pourquoi « Compiler un QC... » est grisé ?** studiomdl est introuvable dans le dossier `bin` de l'installation de Garry's Mod configurée, ou le compilateur de modèles choisi dans **Paramètres > Compilation** n'existe pas.
 
-**Un glisser donne un `prop_dynamic`, un double-clic un `prop_physics` : pourquoi ?** Un dépôt utilise `prop_dynamic` pour les modèles qui ne sont pas des props statiques, alors que **Utiliser pour les nouveaux props** utilise `prop_physics`. Changez la classe dans le panneau d'entité si vous voulez autre chose.
+**Un glisser donne un `prop_dynamic`, un double-clic un `prop_physics` : pourquoi ?** Avec le type de prop **Par défaut**, un dépôt utilise `prop_dynamic` pour les modèles qui ne sont pas des props statiques, alors que **Utiliser pour les nouveaux props** utilise `prop_physics`. Choisissez un [type de prop](#type-de-prop) pour avoir la même classe partout (par exemple `prop_physics` pour déposer directement des props physiques).
 
 ## Pages liées
 

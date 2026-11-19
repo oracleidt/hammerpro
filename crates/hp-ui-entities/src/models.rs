@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use egui::{Color32, CornerRadius, Key, Modifiers, Rect, RichText, ScrollArea, Sense, Stroke, Ui, vec2};
 use hp_app::dnd::DragPayload;
+use hp_app::runtime::helpers::class_keys;
 use hp_app::source_filter::SourceFilter;
 use hp_app::state::{AssetStatus, ModelInfo, ModelState, PreviewCamera, RightTab, ThumbState};
 use hp_app::{Action, AppState, Severity, ToolId, t, tf, theme};
@@ -446,6 +447,7 @@ impl ModelBrowser {
         if folder_below {
             self.folder_combo(ui, ui.available_width() - 8.0);
         }
+        prop_type_row(ui, state);
         if self.rows_dirty
             && let Some(index) = &self.index
         {
@@ -887,8 +889,15 @@ impl ModelBrowser {
             _ => true,
         };
         let props = self.selected_props(state);
+        let chosen = class_keys::chosen_prop_type(state);
+        if chosen.is_some_and(|c| c.starts_with("prop_physics"))
+            && matches!(info, ModelState::Ready(_))
+            && class_keys::has_physics_model(state, path) == Some(false)
+        {
+            ui.label(RichText::new(t!("entities.prop_type_no_physics_short")).small().color(theme::warning()));
+        }
         ui.horizontal_wrapped(|ui| {
-            let class = if is_static { "prop_static" } else { "prop_physics" };
+            let class = chosen.unwrap_or(if is_static { "prop_static" } else { "prop_physics" });
             let use_btn = ui.button(format!("+ {}", t!("entities.use_for_new_props")));
             if use_btn.on_hover_text(tf!("entities.use_for_new_props_tip", class)).clicked() {
                 use_for_new_props(ui.ctx(), state, path, self.camera.skin);
@@ -1386,11 +1395,47 @@ fn use_for_new_props(ctx: &egui::Context, state: &mut AppState, path: &str, skin
         ModelState::Ready(i) => i.is_static_prop,
         _ => true,
     };
+    let auto = if is_static { "prop_static" } else { "prop_physics" };
+    let choice = class_keys::prop_class_for_model(state, path, auto);
+    if let Some(refused) = choice.refused {
+        state.notify(Severity::Warning, tf!("entities.prop_type_no_physics", path, refused, choice.class));
+    }
     state.current_model = Some(path.to_owned());
     state.current_model_skin = skin;
-    state.current_entity_class = if is_static { "prop_static" } else { "prop_physics" }.to_owned();
+    state.current_entity_class = choice.class;
     state.set_tool(ToolId::Entity);
     push_recent_model(ctx, path);
+}
+
+fn prop_type_row(ui: &mut Ui, state: &mut AppState) {
+    let multiplayer = state.assets.fgd().is_some_and(|f| f.class("prop_physics_multiplayer").is_some());
+    let current = class_keys::chosen_prop_type(state);
+    let label_of = |c: Option<&str>| c.map_or_else(|| t!("entities.prop_type_default").to_owned(), str::to_owned);
+    let mut picked: Option<Option<&'static str>> = None;
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(t!("entities.prop_type")).small()).on_hover_text(t!("entities.prop_type_tip"));
+        egui::ComboBox::from_id_salt("hp_ui_entities.model_prop_type")
+            .selected_text(label_of(current))
+            .show_ui(ui, |ui| {
+                if ui.selectable_label(current.is_none(), label_of(None)).clicked() {
+                    picked = Some(None);
+                }
+                for class in class_keys::PROP_TYPES {
+                    if *class == "prop_physics_multiplayer" && !multiplayer && current != Some(class) {
+                        continue;
+                    }
+                    if ui.selectable_label(current == Some(class), *class).clicked() {
+                        picked = Some(Some(class));
+                    }
+                }
+            })
+            .response
+            .on_hover_text(t!("entities.prop_type_tip"));
+    });
+    if let Some(choice) = picked {
+        state.settings.browser.model_prop_class = choice.unwrap_or("").to_owned();
+        state.settings_dirty = true;
+    }
 }
 
 fn picked_model(doc: &Document, pick: &crate::cx::ModelPick) -> Option<String> {

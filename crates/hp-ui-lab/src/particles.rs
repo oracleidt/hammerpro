@@ -856,7 +856,7 @@ enum SourcesKey {
 pub struct ParticleLayer {
     handle: ParticleHandle,
     sources: Vec<Source>,
-    sources_key: Option<SourcesKey>,
+    sources_key: Option<(SourcesKey, FireView)>,
     effects: HashMap<Id, Playing>,
     lighting: Option<LightingContext>,
 }
@@ -874,7 +874,29 @@ pub(crate) fn compiled_entity_id(index: usize, entity: &hp_vmf::Entity) -> Id {
     entity.get("hammerid").and_then(|value| value.trim().parse().ok()).unwrap_or(BSP_ID_BASE + index as Id)
 }
 
-fn sources_of<'a>(entities: impl Iterator<Item = (Id, &'a hp_vmf::Entity)> + Clone) -> Vec<Source> {
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct FireView {
+    pub shown: bool,
+    pub playing: bool,
+    pub states: Vec<(Id, bool)>,
+}
+
+impl FireView {
+    pub(crate) fn of(state: &AppState) -> FireView {
+        let p = &state.runtime.lab.player;
+        FireView { shown: state.settings.view.show_helpers, playing: p.active, states: p.fires.clone() }
+    }
+
+    fn system(&self, id: Id, e: &hp_vmf::Entity) -> Option<&'static str> {
+        let f = hp_app::runtime::helpers::fire::fire(e)?;
+        if !self.shown || !hp_app::runtime::helpers::fire::lit(f.start_on, id, &self.states, self.playing) {
+            return None;
+        }
+        hp_app::runtime::helpers::fire::particle_system(&f)
+    }
+}
+
+fn sources_of<'a>(entities: impl Iterator<Item = (Id, &'a hp_vmf::Entity)> + Clone, fires: &FireView) -> Vec<Source> {
     let model_objects: Arc<HashSet<Id>> = Arc::new(
         entities
             .clone()
@@ -900,10 +922,13 @@ fn sources_of<'a>(entities: impl Iterator<Item = (Id, &'a hp_vmf::Entity)> + Clo
     }
     let mut out = Vec::new();
     for (id, e) in entities {
-        if !is_system(e) {
+        let fire = fires.system(id, e);
+        if !is_system(e) && fire.is_none() {
             continue;
         }
-        let Some(name) = e.get("effect_name").map(str::trim).filter(|n| !n.is_empty()) else { continue };
+        let Some(name) = fire.or_else(|| e.get("effect_name").map(str::trim).filter(|n| !n.is_empty())) else {
+            continue;
+        };
         let Some(origin) = e.origin().filter(|o| o.is_finite()) else { continue };
         let angles = parse3(e.get("angles")).unwrap_or([0.0; 3]);
         let mut points = Points::with_angles(f3(origin), angles);
@@ -969,18 +994,19 @@ impl ParticleLayer {
             Some(w) => SourcesKey::Compiled(Arc::as_ptr(w) as usize),
             None => SourcesKey::Document(state.sidecar.serial(), state.doc.revision()),
         };
-        if self.sources_key.as_ref() == Some(&key) {
+        let fires = FireView::of(state);
+        if self.sources_key.as_ref().is_some_and(|(k, f)| *k == key && *f == fires) {
             return;
         }
-        self.sources_key = Some(key);
         self.sources = match Self::compiled_world(state) {
             Some(w) => {
                 let list: Vec<(Id, &hp_vmf::Entity)> =
                     w.particle_entities.iter().enumerate().map(|(i, e)| (compiled_entity_id(i, e), e)).collect();
-                sources_of(list.iter().map(|(id, e)| (*id, *e)))
+                sources_of(list.iter().map(|(id, e)| (*id, *e)), &fires)
             }
-            None => sources_of(state.doc.scene().entities().iter().map(|(id, node)| (*id, &node.entity))),
+            None => sources_of(state.doc.scene().entities().iter().map(|(id, node)| (*id, &node.entity)), &fires),
         };
+        self.sources_key = Some((key, fires));
     }
 
     #[cfg(test)]
@@ -1539,7 +1565,8 @@ mod tests {
         map.entities.push(sys);
         map.entities.push(target);
         let doc = hp_editor::Document::from_map(map);
-        let sources = sources_of(doc.scene().entities().iter().map(|(id, n)| (*id, &n.entity)));
+        let editor = FireView { shown: true, playing: false, states: Vec::new() };
+        let sources = sources_of(doc.scene().entities().iter().map(|(id, n)| (*id, &n.entity)), &editor);
         assert_eq!(sources.len(), 1);
         let s = &sources[0];
         assert_eq!(s.name, "beam_fx");
@@ -1554,6 +1581,34 @@ mod tests {
         assert_eq!(s.points.orientation(3), s.points.orientation(1));
         assert_eq!(s.points.orientation(4), Points::UNSET_AXES);
         assert!((s.points.axes[0][1] - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn env_fire_plays_the_engine_fire_system() {
+        let mut map = hp_vmf::Map::new_empty();
+        let mut fire = hp_vmf::Entity { id: 8, classname: "env_fire".into(), ..Default::default() };
+        fire.set("origin", "10 20 30");
+        fire.set("firesize", "128");
+        map.entities.push(fire.clone());
+        fire.id = 9;
+        fire.set("firetype", "1");
+        map.entities.push(fire);
+        let doc = hp_editor::Document::from_map(map);
+        let list = |view: &FireView| {
+            let mut v: Vec<(Id, String)> =
+                sources_of(doc.scene().entities().iter().map(|(id, n)| (*id, &n.entity)), view)
+                    .into_iter()
+                    .map(|s| (s.id, s.name))
+                    .collect();
+            v.sort();
+            v
+        };
+        let editor = FireView { shown: true, playing: false, states: Vec::new() };
+        assert_eq!(list(&editor), vec![(8, "env_fire_large_smoke".to_owned())], "plasma uses its own sprites");
+        assert!(list(&FireView { shown: false, ..editor.clone() }).is_empty(), "hidden with the helpers");
+        let player = FireView { shown: true, playing: true, states: Vec::new() };
+        assert!(list(&player).is_empty(), "Start On is off");
+        assert_eq!(list(&FireView { states: vec![(8, true)], ..player }).len(), 1, "StartFire");
     }
 
     fn painted(layer: &ParticleLayer, state: &AppState, view: &ViewInfo, hover: Option<egui::Pos2>) -> usize {

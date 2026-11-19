@@ -13,6 +13,7 @@ pub mod portals;
 pub mod render;
 pub mod roadside;
 pub mod selection;
+pub mod selection_top;
 pub mod terrain;
 
 use hp_app::AppState;
@@ -57,6 +58,7 @@ pub fn default_layers() -> Vec<Box<dyn OverlayLayer>> {
     list.extend(terrain::layers());
     list.extend(mesh_disp::layers());
     list.extend(crate::fly_texture::layers());
+    list.extend(selection_top::layers());
     list
 }
 

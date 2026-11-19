@@ -23,10 +23,11 @@ La sélection se fait dans la vue 3D. La face sous la souris est soulignée ; le
 | `Maj+clic` | Sélectionne toutes les faces du solide. `Ctrl+Maj+clic` les ajoute. |
 | Bouton gauche maintenu en balayant | Sélectionne les faces survolées l'une après l'autre (`Ctrl` ou `Maj` : ajoutées à la sélection). |
 | Clic dans le vide | Vide la sélection de faces. |
-| `Alt+clic` | Pipette : le matériau de la face devient le matériau actuel. |
+| `Alt+clic` | Pipette (prélever) : le matériau de la face devient le matériau actuel et la face devient la source d'alignement de `Alt+clic droit`. |
 | Clic droit | Applique le matériau actuel à la face. |
 | `Ctrl+clic droit` | Applique `tools/toolsnodraw` à la face cliquée en conservant le matériau courant et la sélection. |
-| `Alt+clic droit` | Enroule : copie le matériau de la première face sélectionnée sur la face cliquée et prolonge sa texture par-dessus l'arête commune. Sélectionnez d'abord la face source. |
+| `Alt+clic droit` | Applique la texture actuelle et l'alignement, enroulé : la texture continue depuis la face source par-dessus l'arête commune sans raccord visible, aussi sur les faces en angle. La source est la dernière face sélectionnée, ou la dernière face prélevée par un clic ou `Alt+clic`. La taille de la texture ne compte pas : l'alignement est gardé en texels comme dans Hammer. |
+| `Maj+Alt+clic droit` | Applique la texture actuelle et les valeurs d'alignement de la face source telles quelles, sans enrouler. |
 | Maintenir le clic droit et balayer (schéma de caméra Hammer++) | Peint : chaque face survolée reçoit le matériau courant, comme dans Hammer++. `Ctrl` peint `tools/toolsnodraw`, `Alt` enroule chaque face depuis la face sélectionnée. Tout le trait est une seule étape d'annulation et la sélection de faces ne change pas. |
 | `Échap` | Vide la sélection de faces. |
 
@@ -109,7 +110,7 @@ Pour sculpter, voir [Outil displacement](displacement-tool.md).
 
 | Commande | Menu | Raccourci |
 |---|---|---|
-| **Appliquer la texture actuelle** | **Outils** | `Maj+T` (avec n'importe quel outil : faces sélectionnées, ou toutes les faces des objets sélectionnés) |
+| **Appliquer la texture actuelle** | **Outils**, palette d'outils, palette de commandes | `Maj+T` (avec n'importe quel outil : faces sélectionnées, ou toutes les faces des objets sélectionnés). Son icône est une petite vignette de la texture actuelle, mise à jour dès que la texture actuelle change ; le bouton **Appliquer l'actuel** du panneau des faces la montre aussi |
 | **Verrouillage des textures** | **Outils**, barre d'outils | `Maj+L` |
 | **Verrouillage de l'échelle des textures** | **Outils**, barre d'outils | `Maj+K` |
 | **Rechercher et remplacer des textures...** | **Outils** | `Ctrl+Maj+R` (aucune touche avec les préréglages Hammer et Hammer++) |
@@ -119,8 +120,8 @@ Les verrouillages de texture sont décrits dans [Opérations sur les brushes](br
 ## Astuces
 
 - Sélectionnez toute une pièce avec `Maj+clic` sur chaque mur, puis **Justifier > Ajuster** avec **Traiter comme une seule** pour étirer une seule texture sur l'ensemble.
-- `Alt+clic` sur une face qui vous plaît, puis clic droit sur d'autres faces pour peindre son matériau.
-- Pour prolonger une texture dans un angle, sélectionnez la face texturée, puis `Alt+clic droit` sur la suivante.
+- `Alt+clic` sur une face qui vous plaît, puis clic droit sur d'autres faces pour peindre son matériau, ou `Alt+clic droit` pour le peindre aligné sur cette face.
+- Pour prolonger une texture dans un angle, cliquez ou `Alt+cliquez` la face texturée, puis `Alt+clic droit` sur la suivante.
 - **Marquer** sur une sélection montre toutes les autres faces qui utilisent les mêmes matériaux, prêtes pour une modification groupée.
 
 ## FAQ

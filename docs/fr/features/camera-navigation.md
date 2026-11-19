@@ -49,7 +49,7 @@ Inutile de quitter la vue souris pour travailler sur le brush que vous regardez 
 
 | Entrée | Effet |
 |---|---|
-| Clic gauche | L'outil actif agit sous le viseur : les outils Sélection et Caméra sélectionnent l'objet (`Ctrl+clic` l'ajoute ou le retire) ; l'[outil Édition de faces](texture-tool.md) sélectionne la face et prélève sa texture (`Ctrl+clic` ajoute ou retire la face, `Maj+clic` sélectionne tout le brush) |
+| Clic gauche | L'outil actif agit sous le viseur : les outils Sélection et Caméra sélectionnent l'objet (`Ctrl+clic` l'ajoute ou le retire) ; l'[outil Édition de faces](texture-tool.md) sélectionne la face et prélève sa texture (`Ctrl+clic` ajoute ou retire la face, `Maj+clic` sélectionne tout le brush) Le clic tombe toujours sous le viseur, même quand le curseur caché a quitté la vue 3D, et il n'est jamais envoyé à une autre vue. Quand une pipette d'entité attend, le clic choisit l'entité sous le viseur. |
 | Clic droit avec l'outil Édition de faces | Applique la texture courante à la face visée comme un clic droit de l'outil (`Ctrl` : nodraw ; `Maj` : tout le brush) |
 | Maintenir `Alt` | Libère le curseur : la caméra ne tourne plus, le viseur disparaît et la souris marche comme hors de la vue souris, pour glisser le gizmo, les poignées ou les flèches de face de la sélection, dessiner avec l'outil actif ou cliquer n'importe où dans la vue. Relâchez `Alt` pour revoler (un glisser commencé avec `Alt` continue jusqu'au relâchement du bouton) |
 

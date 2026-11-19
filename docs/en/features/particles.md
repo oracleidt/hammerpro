@@ -119,6 +119,17 @@ Map ropes (`move_rope` and `keyframe_rope`) also respond while **Show ropes** an
 
 Through MCP, use `get_entity` and `set_entity_keyvalues` to read or change the controller and the `AffectedByWind`, `Frozen` and `NoWind` keys. `set_setting` controls `lab.show_entity_fx`, `helpers.show_ropes` and `helpers.simulate_ropes`.
 
+## Fire preview in the views
+
+`env_fire` burns in the 3D views (Textured, Lit, Baked, Ray traced and Player view) the way the game draws it:
+
+- A natural fire plays the engine particle system the game picks from **Fire Size** (`firesize`): `env_fire_tiny` under 36 units, `env_fire_small` from 36, `env_fire_medium` from 72 and `env_fire_large` from 108, with the `_smoke` version unless **Smokeless** (flag 2) is checked. It goes through the particle preview, so it is animated, additive, camera facing and culled like any `info_particle_system`, and `list_particle_systems` reports it.
+- A **Plasma** fire (`firetype` 1) draws flickering additive `sprites/plasma1` flames scaled by Fire Size with a smoke column, through the volume effects. `env_fire_trail` draws small `sprites/flamelet` flames and smoke at its origin.
+- Unless **No glow** (flag 32) is checked, the fire lights its surroundings with the orange engine dynamic light (blue for plasma) in Lit, Ray traced and Player view. The radius follows Fire Size.
+- In the editor views every fire burns so you can place it. In Player view the fire starts burning only with **Start On** (flag 4); the `StartFire`, `Extinguish`, `ExtinguishTemporary`, `Enable` and `Disable` inputs switch it, a fire without **Infinite Duration** (flag 1) goes out after its **Duration** (`health`) plus **Fire Attack** seconds, and `OnIgnited` / `OnExtinguished` fire their outputs.
+- Fire previews hide with the helpers (H) and follow the particle preview and volume effects toggles. Animations pause like the other animated previews: after the idle delay without input, when the window is minimized or in the background.
+- `env_firesource` and `env_firesensor` have no look in game and stay helpers.
+
 ## Particle preview window
 
 The `▶` button next to the **Particle System Name** field (`effect_name`) of an `info_particle_system` (also **View > Panels > Particle preview...**, action `particle_preview`) opens a window with:

@@ -258,7 +258,7 @@ impl EntityPanel {
                         .auto_shrink([false, false])
                         .show(ui, |ui| smart.flags(ui, view, &mut ops));
                 }
-                EntityTab::Outputs => io.outputs(ui, &mut cx, view, names, &mut ops),
+                EntityTab::Outputs => io.outputs(ui, &mut cx, &mut smart.picks, view, names, &mut ops),
                 EntityTab::Inputs => go_to = io.inputs(ui, view),
                 EntityTab::Raw => {
                     ScrollArea::vertical()
@@ -379,6 +379,18 @@ fn panel_menu(ui: &mut Ui, cx: &mut Cx, view: &EntityView) {
     entry(ui, cx, Action::FindReplaceText, true);
     entry(ui, cx, Action::SetMaxDistance, entities);
     entry(ui, cx, Action::RenameUpdateReferences, entities);
+    let known = entities && cx.fgd.is_some();
+    entry(ui, cx, Action::CleanEntityKeyvalues, known);
+    entry(ui, cx, Action::ResetEntityKeyvalues, known);
+    let mut clean = cx.settings.edit.clean_keys_on_class_change;
+    if ui
+        .checkbox(&mut clean, t!("entities.clean_keys_toggle"))
+        .on_hover_text(t!("entities.clean_keys_toggle_tip"))
+        .changed()
+    {
+        cx.settings.edit.clean_keys_on_class_change = clean;
+        *cx.settings_dirty = true;
+    }
     entry(ui, cx, Action::EntityHelp, view.single_class().is_some());
     ui.separator();
     let mut real = cx.settings.placement.show_real_dimensions;
@@ -463,7 +475,8 @@ fn header(ui: &mut Ui, cx: &mut Cx, view: &EntityView, move_shortcut: Option<&st
                 PickerItem { name, detail: fgd.and_then(|f| f.class(name)).map_or("", |c| c.description.as_str()) }
             });
             if let Some(class) = picked {
-                ops.push(Op::ChangeClass { ids: view.target.ids().to_vec(), class });
+                let clean = cx.settings.edit.clean_keys_on_class_change;
+                ops.push(Op::ChangeClass { ids: view.target.ids().to_vec(), class, clean });
             }
         }
     });
@@ -496,6 +509,7 @@ fn header(ui: &mut Ui, cx: &mut Cx, view: &EntityView, move_shortcut: Option<&st
         }
         Some(_) => {}
     }
+    unused_keys_row(ui, cx, view, ops);
     for n in fog_hints(cx, view) {
         let color = if n.warning { theme::warning() } else { ui.visuals().weak_text_color() };
         ui.add(egui::Label::new(RichText::new(n.text).color(color).small()).wrap());
@@ -508,6 +522,32 @@ fn header(ui: &mut Ui, cx: &mut Cx, view: &EntityView, move_shortcut: Option<&st
                 ui.label(RichText::new(view.description.trim()).small());
             });
     }
+}
+
+fn unused_keys_row(ui: &mut Ui, cx: &Cx, view: &EntityView, ops: &mut Vec<Op>) {
+    if view.target.is_world() {
+        return;
+    }
+    let mut names: Vec<String> = Vec::new();
+    for id in view.target.ids() {
+        let Some(node) = cx.doc.scene().entity(*id) else { continue };
+        for key in hp_app::runtime::helpers::class_keys::unused_keys_in(cx.fgd, &node.entity) {
+            if !names.iter().any(|k| k.eq_ignore_ascii_case(&key)) {
+                names.push(key);
+            }
+        }
+    }
+    if names.is_empty() {
+        return;
+    }
+    ui.horizontal_wrapped(|ui| {
+        let text = tf!("entities.unused_keys_hint", names.len());
+        ui.label(RichText::new(text).small().weak()).on_hover_text(names.join(", "));
+        let tip = Action::CleanEntityKeyvalues.label();
+        if ui.small_button(t!("entities.clean_keys_button")).on_hover_text(tip).clicked() {
+            ops.push(Op::CleanKeys { ids: view.target.ids().to_vec(), reset: false });
+        }
+    });
 }
 
 pub(crate) fn fog_hints(cx: &Cx, view: &EntityView) -> Vec<hp_app::runtime::fog::Note> {

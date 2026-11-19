@@ -53,9 +53,9 @@ Sous le tableau, l'éditeur modifie toutes les sorties sélectionnées d'un coup
 | Champ | Rôle |
 |---|---|
 | **Ma sortie nommée** | Liste des sorties de la classe (toutes les sorties si la classe est inconnue). |
-| **Entités cibles nommées** | Texte avec complétion des noms de la map et des cibles spéciales (`!self`, `!activator`, `!caller`, `!player`, `!pvsplayer`, `!speechtarget`, `!picker`). En rouge si aucune entité ne porte ce nom. `Tab` complète, les flèches choisissent, `Entrée` valide. |
+| **Entités cibles nommées** | Texte avec complétion des noms de la map et des cibles spéciales (`!self`, `!activator`, `!caller`, `!player`, `!pvsplayer`, `!speechtarget`, `!picker`). En rouge si aucune entité ne porte ce nom. `Tab` complète, les flèches choisissent, `Entrée` valide, un clic sur une suggestion remplit le champ (et **Via cette entrée** liste alors les entrées de cette cible). La pipette d'entité à côté du champ (le sélecteur de Hammer) attend un clic sur une entité dans une vue 3D ou 2D et écrit son nom ; une entité sans nom ouvre une invite avec un nom libre (`classe_1`...) qui la nomme et règle la cible en une seule étape d'annulation. Les vues montrent un curseur en croix pendant l'attente ; `Échap` ou un second clic sur le bouton annule. |
 | **Via cette entrée** | Liste des entrées des classes visées par la cible (toutes les entrées si la cible ne correspond à rien de connu). |
-| **Avec le paramètre** | Texte libre, **<aucun>** s'il est vide. Les guillemets doubles sont refusés ; si l'entrée est `RunScriptCode`, **Utiliser des accents graves** les remplace par des accents graves. |
+| **Avec le paramètre** | Texte libre, **<aucun>** s'il est vide. Les guillemets doubles sont refusés ; si l'entrée est `RunScriptCode`, **Utiliser des accents graves** les remplace par des accents graves. Quand l'entrée choisie attend un nom d'entité (par exemple `SetParent`), une pipette d'entité se place à côté du champ et fonctionne comme celle de la cible. |
 | **Après un délai en secondes de** | 0 à 3600 secondes. Glissez ou tapez. |
 | **Nombre de déclenchements** | **Toujours** (-1) ou un nombre (les refires de Hammer++). Glissez ou tapez un nombre ; 0 est sauté, puisqu'il ne se déclencherait jamais. |
 

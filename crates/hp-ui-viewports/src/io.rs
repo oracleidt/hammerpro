@@ -5,6 +5,8 @@ use hp_app::{AppState, t, tf};
 use hp_editor::limits::world_light::LightCmd;
 use hp_vmf::{Entity, Id};
 
+use hp_app::runtime::helpers::fire;
+
 use crate::player::{self, Doors};
 
 const MAX_PER_FRAME: usize = 256;
@@ -44,6 +46,7 @@ pub struct IoSim {
     sound_inputs: Vec<(Id, String, String)>,
     moved: HashMap<Id, glam::DMat4>,
     projectors: HashMap<Id, hp_app::state::ProjectorOverride>,
+    fires: HashMap<Id, (bool, f64)>,
     triggers: Option<TriggerList>,
 }
 
@@ -141,6 +144,9 @@ impl IoSim {
             }
             if c == "logic_auto" {
                 autos.push(e.id);
+            }
+            if let Some(f) = fire::fire(e) {
+                sim.fires.insert(e.id, (f.start_on, 0.0));
             }
             if c == "infodecal" && e.get("targetname").is_some_and(|n| !n.trim().is_empty()) {
                 sim.hidden.insert(e.id);
@@ -252,6 +258,7 @@ impl IoSim {
             self.timers.insert(id, self.time + refire);
             self.fire(state, id, "OnTimer");
         }
+        self.burn_out(state);
         for _ in 0..MAX_PER_FRAME {
             let Some(i) = self
                 .queue
@@ -386,8 +393,29 @@ impl IoSim {
         std::mem::take(&mut self.light_inputs)
     }
 
+    pub fn fire_states(&self) -> Vec<(Id, bool)> {
+        let mut out: Vec<(Id, bool)> = self.fires.iter().map(|(id, (on, _))| (*id, *on)).collect();
+        out.sort_unstable();
+        out
+    }
+
+    fn burn_out(&mut self, state: &AppState) {
+        let scene = state.doc.scene();
+        for (id, (on, since)) in &mut self.fires {
+            let Some(f) = scene.entity(*id).and_then(|n| fire::fire(&n.entity)) else { continue };
+            if *on && !f.infinite && self.time - *since >= f.health + f.attack {
+                *on = false;
+            }
+        }
+    }
+
     pub fn projector_overrides(&self) -> Vec<hp_app::state::ProjectorOverride> {
         let mut out: Vec<hp_app::state::ProjectorOverride> = self.projectors.values().cloned().collect();
+        out.extend(self.fires.iter().map(|(id, (on, _))| hp_app::state::ProjectorOverride {
+            id: *id,
+            on: Some(*on),
+            ..Default::default()
+        }));
         out.sort_by_key(|o| o.id);
         out
     }
@@ -463,6 +491,28 @@ impl IoSim {
                     _ => !now,
                 });
             }
+            "startfire" | "extinguish" | "extinguishtemporary" | "enable" | "disable" if c == "env_fire" => {
+                let lit = input == "startfire";
+                let disabled = self.disabled.contains(&id);
+                match input.as_str() {
+                    "enable" => {
+                        self.disabled.remove(&id);
+                    }
+                    "disable" => {
+                        self.disabled.insert(id);
+                        self.fires.insert(id, (false, self.time));
+                    }
+                    _ if lit && disabled => {}
+                    _ => {
+                        self.fires.insert(id, (lit, self.time));
+                    }
+                }
+                if lit && !disabled {
+                    self.fire(state, id, "OnIgnited");
+                } else if input.starts_with("extinguish") {
+                    self.fire(state, id, "OnExtinguished");
+                }
+            }
             "lighton" | "lightoff" if c == "point_spotlight" => {
                 let o = self
                     .projectors
@@ -474,6 +524,9 @@ impl IoSim {
                 self.hidden.insert(id);
                 self.disabled.insert(id);
                 self.timers.remove(&id);
+                if let Some(f) = self.fires.get_mut(&id) {
+                    f.0 = false;
+                }
             }
             "fireuser1" | "fireuser2" | "fireuser3" | "fireuser4" => {
                 let n = &input[8..];
@@ -759,6 +812,47 @@ mod tests {
         sim.step(&state, &mut doors, DVec3::ZERO, 72.0, 0.0);
         assert_eq!(sim.projector_overrides()[0].on, Some(false));
         assert!(!sim.hidden.contains(&2));
+    }
+
+    #[test]
+    fn fire_inputs_light_extinguish_and_burn_out() {
+        let mut state = hp_app::testing::test_state();
+        let mut fire = Entity { id: 2, classname: "env_fire".into(), ..Default::default() };
+        fire.set("targetname", "camp");
+        fire.set("origin", "0 0 0");
+        fire.set("health", "5");
+        fire.set("fireattack", "1");
+        let mut relay = Entity { id: 3, classname: "logic_relay".into(), ..Default::default() };
+        let c = |input: &str| hp_vmf::Connection {
+            output: "OnTrigger".into(),
+            target: "camp".into(),
+            input: input.into(),
+            param: String::new(),
+            delay: 0.0,
+            times: -1,
+            separator: ',',
+        };
+        relay.connections = vec![c("StartFire")];
+        let map = hp_vmf::Map { entities: vec![fire, relay.clone()], ..Default::default() };
+        state.doc = hp_editor::Document::from_map(map);
+        let mut sim = IoSim::new(&state);
+        let mut doors = Doors::default();
+        assert_eq!(sim.fire_states(), [(2, false)], "Start On unchecked");
+        sim.fire(&state, 3, "OnTrigger");
+        sim.step(&state, &mut doors, DVec3::ZERO, 72.0, 0.0);
+        assert_eq!(sim.fire_states(), [(2, true)]);
+        assert!(sim.projector_overrides().iter().any(|o| o.id == 2 && o.on == Some(true)));
+        for _ in 0..70 {
+            sim.step(&state, &mut doors, DVec3::ZERO, 72.0, 0.1);
+        }
+        assert_eq!(sim.fire_states(), [(2, false)], "burns out after health plus attack seconds");
+        sim.fire(&state, 3, "OnTrigger");
+        sim.step(&state, &mut doors, DVec3::ZERO, 72.0, 0.0);
+        relay.connections = vec![c("Extinguish")];
+        state.doc.edit_entity(3, |e| e.connections = relay.connections.clone()).expect("edit");
+        sim.fire(&state, 3, "OnTrigger");
+        sim.step(&state, &mut doors, DVec3::ZERO, 72.0, 0.0);
+        assert_eq!(sim.fire_states(), [(2, false)]);
     }
 
     #[test]

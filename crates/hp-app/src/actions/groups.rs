@@ -22,6 +22,7 @@ pub enum MenuGroup {
     EditSelectEdges,
     EditFaceHistory,
     EditProperties,
+    EditKeyvalues,
     EditColors,
     MapGrid,
     MapGrids,
@@ -133,6 +134,7 @@ impl MenuGroup {
             MenuGroup::EditFaceHistory => sub(30, 22, "menu.select_element", 220.0),
             MenuGroup::EditFind => inline(40, 0),
             MenuGroup::EditProperties => inline(50, 0),
+            MenuGroup::EditKeyvalues => sub(50, 5, "menu.keyvalues", 260.0),
             MenuGroup::EditColors => sub(50, 10, "menu.colors", 200.0),
             MenuGroup::MapGrid => inline(10, 0),
             MenuGroup::MapGrids => sub(10, 10, "menu.grids", 240.0),
@@ -230,6 +232,7 @@ impl MenuGroup {
             | MenuGroup::EditSelectEdges
             | MenuGroup::EditFaceHistory
             | MenuGroup::EditProperties
+            | MenuGroup::EditKeyvalues
             | MenuGroup::EditColors => C::Edit,
             MenuGroup::MapGrid
             | MenuGroup::MapGrids
@@ -328,6 +331,7 @@ pub const TR: TrTable = &[
     ("menu.compile", "Compile", "Compiler"),
     ("menu.publish", "Publish", "Publier"),
     ("menu.colors", "Display colors", "Couleurs d'affichage"),
+    ("menu.keyvalues", "Keyvalues", "Keyvalues"),
     ("menu.leaks_visibility", "Leaks and visibility", "Fuites et visibilité"),
     ("menu.environment", "Environment preview", "Aperçu de l'environnement"),
     ("menu.effects", "Effects", "Effets"),

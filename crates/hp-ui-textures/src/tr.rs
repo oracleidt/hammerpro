@@ -994,8 +994,8 @@ pub const TR: TrTable = &[
     ("tex.tool.wrap_failed", "Could not wrap the texture: {0}", "Impossible d'enrouler la texture : {0}"),
     (
         "tex.tool.wrap_needs_source",
-        "Select the source face first, then Alt + right click the target face",
-        "Sélectionnez d'abord la face source, puis Alt + clic droit sur la face cible",
+        "Select or Alt + click the source face first, then Alt + right click the target face",
+        "Sélectionnez ou Alt + cliquez d'abord la face source, puis Alt + clic droit sur la face cible",
     ),
     ("tex.tool.edit_failed", "Face edit failed: {0}", "Échec de la modification des faces : {0}"),
     ("tex.err.open_folder", "Could not open {0}: {1}", "Impossible d'ouvrir {0} : {1}"),

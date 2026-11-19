@@ -1,3 +1,4 @@
+mod fires;
 mod fish;
 pub(crate) mod lightglows;
 pub(crate) mod overlays;
@@ -15,5 +16,6 @@ pub(crate) fn producers() -> Vec<Box<dyn DerivedProducer>> {
         Box::new(suns::SunProducer::default()),
         Box::new(spotlights::SpotlightProducer::default()),
         Box::new(lightglows::LightGlowProducer::default()),
+        Box::new(fires::FireGlowProducer::default()),
     ]
 }
