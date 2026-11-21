@@ -1001,6 +1001,22 @@ pub const TR: TrTable = &[
     ("tex.err.open_folder", "Could not open {0}: {1}", "Impossible d'ouvrir {0} : {1}"),
     ("tex.tool.paint_undo", "Paint material", "Peindre le matériau"),
     (
+        "tex.tool.source",
+        "Alignment source (blue outline): {0} on brush {1}",
+        "Source d'alignement (contour bleu) : {0} sur la brush {1}",
+    ),
+    (
+        "tex.tool.source_none",
+        "No alignment source: Alt + click a face to lift it",
+        "Aucune source d'alignement : Alt + clic sur une face pour la prendre",
+    ),
+    ("tex.tool.source_clear", "Clear", "Effacer"),
+    (
+        "tex.tool.source_clear_tip",
+        "Forget the alignment source used by Alt + right click",
+        "Oublie la source d'alignement utilisée par Alt + clic droit",
+    ),
+    (
         "tex.tool.hint_paint",
         "Right drag in the 3D view: paint onto every face swept (same modifiers).",
         "Glisser clic droit dans la vue 3D : peindre chaque face survolée (mêmes modificateurs).",

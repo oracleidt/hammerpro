@@ -21,7 +21,7 @@ impl Group {
             DepKind::Material | DepKind::Texture => Group::Materials,
             DepKind::Model | DepKind::ModelPart => Group::Models,
             DepKind::Sound | DepKind::SoundScript | DepKind::Soundscape => Group::Sounds,
-            DepKind::Particle | DepKind::ParticleManifest => Group::Particles,
+            DepKind::Particle | DepKind::ParticleManifest | DepKind::ParticleSystem => Group::Particles,
             DepKind::File => Group::Other,
         }
     }
@@ -105,6 +105,12 @@ pub struct Totals {
     pub model_files: usize,
     pub bytes: u64,
     pub missing: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LeftOut {
+    pub nodes: HashSet<String>,
+    pub missing: HashSet<String>,
 }
 
 pub fn is_base(node: &DepNode) -> bool {
@@ -265,6 +271,28 @@ impl AssetTree {
         let mut missing: Vec<usize> = missing.into_iter().collect();
         missing.sort_unstable();
         (nodes, missing)
+    }
+
+    pub fn left_out(&self, unchecked: &HashSet<String>) -> LeftOut {
+        let mut out = LeftOut::default();
+        if unchecked.is_empty() {
+            return out;
+        }
+        let mut kept: HashSet<Item> = HashSet::new();
+        for e in self.entries.iter().filter(|e| !unchecked.contains(self.name(e.item))) {
+            kept.extend(e.closure.iter().copied().filter(|&i| !unchecked.contains(self.name(i))));
+        }
+        for (i, n) in self.graph.nodes.iter().enumerate() {
+            if !kept.contains(&Item::Node(i)) {
+                out.nodes.insert(n.vpath.clone());
+            }
+        }
+        for (i, m) in self.graph.missing.iter().enumerate() {
+            if !kept.contains(&Item::Missing(i)) {
+                out.missing.insert(m.name.clone());
+            }
+        }
+        out
     }
 
     pub fn totals(&self, entries: &[usize], base_game: bool) -> Totals {

@@ -64,7 +64,16 @@ Rebuilds are incremental: `.hammerpro_release.toml` records every file a release
 
 The release also adds the Lua of the skybox switches (`point_hammerpro_skybox`) to the addon when the map uses them, since the game never runs Lua from a map's pakfile.
 
-A build stops with a clear message when the map is not saved, the game or its content is not found, the compile fails, the map leaks, needed files are missing (see the report) or some files cannot be loaded from a map or an addon.
+A build stops with a clear message when the map is not saved, the game or its content is not found, the compile fails, the map leaks or some files cannot be loaded from a map or an addon.
+
+### Missing content
+
+Missing files and particle systems never block a build. When some are missing, the build stops before compiling and asks **Missing content**: how many files are missing, how many particle systems are not found in any particle file, and how many entries you left out. **Continue anyway** builds the map without them (they show as missing in game), **Show what is missing** opens the report, **Cancel** stops. The build tab keeps a **Continue anyway** button next to the message afterwards.
+
+- Particle systems (the `effect_name` of `info_particle_system`, for example) are listed as *Particle system not found*, never as files. Hammer Pro looks for them in the particle manifests and in every particle file of the mounted content, including the files no manifest lists.
+- The log and the report say where each missing item is used, up to the entity: for example `materials/path.vtf` used by `materials/x.vmt` < `models/y.mdl` < `prop_static 12 (model)`. Placeholders that tools and editors leave (`materials/path.vtf`, `noicon`) are easy to find and fix this way.
+- **Leave out** (report, Missing section) or unchecking an entry in [Map assets](map-assets.md) leaves it out of the build: it is not shipped and does not count as missing. The choice is saved with the map; **Include again** puts it back.
+- **Missing content is an error** (build options, setting `content.missing_as_errors`, off by default) stops the build instead of asking.
 
 ### Game session
 
@@ -87,7 +96,7 @@ Every row should be green before publishing (**Refresh** reads everything again)
 | **No leak** | The map is sealed. | **Build** |
 | **Cubemaps** | Built cubemaps against `env_cubemap` count. | **Build in game** |
 | **Navigation mesh** | Present and current, missing, or built for other geometry. | **Build in game** |
-| **Dependencies** | Every file found, or the number missing. | **Show** (Report tab) |
+| **Dependencies** | Every file found, or the number missing (orange: a build still works). | **Show** (Report tab) |
 | **Map thumbnail** | `maps/thumb/<map>.png` exists. | **Capture** |
 | **Workshop icon** | The icon exists (written by the next build from the thumbnail). | **Capture** |
 | **addon.json** | Title, type and tags valid. | **Edit** (Addon tab) |
@@ -138,7 +147,7 @@ Every file the map needs with its size, origin, destination (**Pakfile**, **Addo
 
 - **Origins**: files per origin (base game, addons, Workshop, custom folders, downloads, mounted games, extra content, loose game files, generated), with the ship choices for Workshop and mounted content.
 - **Workshop items (N)**: the items the map uses, with **Copy the ids** (list them as Required Items when their content is not shipped).
-- **Missing (N)**: files the map names but no mounted content has.
+- **Missing (N)**: files and particle systems the map names but no mounted content has, in two lists, each with the chain of what uses it (hover for every use) and **Leave out** / **Include again**.
 - **Paths (N)**: shipped files in generic folders, with spaces in the path or also provided by another addon.
 - **Size advice (N)**: textures that could be smaller (DXT5 without alpha, larger than 1024, no mipmaps, uncompressed).
 

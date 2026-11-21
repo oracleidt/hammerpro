@@ -21,6 +21,7 @@ fn curve(points: &[(f64, f64)]) -> CurveMeta {
         thickness: 64.0,
         tex_scale: 0.25,
         section: Section::default(),
+        cap: None,
     }
 }
 

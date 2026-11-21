@@ -24,6 +24,7 @@ All are in the **Edit** menu and in the right click menu of the views:
 
 - `Ctrl+V` with the pointer over a 2D view: the contents are centered on the cursor and keep their depth.
 - `Ctrl+V` with the pointer over the 3D view: the contents sit on the surface under the cursor by their bottom, like Hammer. Props use the real bounds of their model (rotated and scaled like the prop), so the lowest point of the model touches the surface whatever the height of its origin; point entities without a model use their helper box.
+- `Ctrl+V` while flying in camera mode (`Z` mouse look): the contents go where the crosshair looks, on the first surface hit by the ray from the centre of the 3D view (up to 4096 units away). On a floor they sit by their bottom like above; on a wall or a ceiling they touch it from the side you look from. When the crosshair hits nothing in reach, they are placed in front of the camera.
 - In the 2D views, and for the `<` buttons of **Offset per copy** in **Paste Special**, props are measured by their model bounds too.
 - The offset follows the grid, so objects on the grid stay on it.
 - Anywhere else (menu, pointer outside the views): the objects are moved by one grid step on X and Y when **Offset pasted objects** is on (default), else pasted at their original place.

@@ -158,7 +158,7 @@ impl Knowledge {
                     a.sounds.insert(root.name, !gone);
                 }
                 RootKind::Particle => {
-                    let gone = missing.contains(&(DepKind::Particle, name));
+                    let gone = missing.contains(&(DepKind::ParticleSystem, name));
                     a.particles.insert(root.name, !gone);
                 }
                 _ => {}

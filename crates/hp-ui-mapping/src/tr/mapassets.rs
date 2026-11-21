@@ -69,6 +69,7 @@ pub const TR: TrTable = &[
     ("mapassets.kind_soundscape", "Soundscape", "Ambiance sonore"),
     ("mapassets.kind_particle", "Particle file", "Fichier de particules"),
     ("mapassets.kind_manifest", "Particle manifest", "Manifeste de particules"),
+    ("mapassets.kind_particle_system", "Particle system", "Système de particules"),
     ("mapassets.kind_file", "File", "Fichier"),
     ("mapassets.tip_from", "From: {0}", "Provenance : {0}"),
     (

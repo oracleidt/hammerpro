@@ -122,3 +122,34 @@ fn hidden_groups_hide_members() {
     assert!(!doc.is_visible(ObjRef::Solid(a)));
     assert!(!doc.is_visible(ObjRef::Solid(b)));
 }
+
+#[test]
+fn removing_a_brush_entity_from_a_visgroup_also_frees_its_solids() {
+    let (mut doc, a, _b, e) = three();
+    let es = doc.scene().entity_solid_ids(e)[0];
+    let v = doc.create_visgroup("Walls", None, &[ObjRef::Solid(a), ObjRef::Entity(e), ObjRef::Solid(es)]).expect("v");
+    let w = doc.create_visgroup("Other", None, &[ObjRef::Solid(es)]).expect("w");
+    assert_eq!(doc.visgroups_of(&[ObjRef::Entity(e)]), vec![v, w]);
+    let before = doc.history_len().0;
+    let n = check_undo_redo(&mut doc, |d| d.remove_from_visgroup(v, &[ObjRef::Entity(e)]).expect("remove"));
+    assert_eq!(n, 1);
+    assert_eq!(doc.history_len().0, before + 1);
+    assert_eq!(doc.visgroup_members(v), vec![ObjRef::Solid(a)]);
+    assert_eq!(doc.visgroups_of(&[ObjRef::Entity(e)]), vec![w]);
+    let n = check_undo_redo(&mut doc, |d| {
+        d.remove_from_all_visgroups(&[ObjRef::Entity(e), ObjRef::Solid(a)]).expect("all")
+    });
+    assert_eq!(n, 2);
+    assert!(doc.visgroups_of(&[ObjRef::Entity(e), ObjRef::Solid(a)]).is_empty());
+    assert!(doc.visgroup_members(w).is_empty());
+    assert!(doc.remove_from_all_visgroups(&[ObjRef::Solid(a)]).is_err());
+}
+
+#[test]
+fn point_entities_leave_visgroups() {
+    let (mut doc, _a, _b, _e) = three();
+    let p = doc.create_point_entity("light", DVec3::ZERO, &[]).expect("p");
+    let v = doc.create_visgroup("Lights", None, &[ObjRef::Entity(p)]).expect("v");
+    doc.remove_from_visgroup(v, &[ObjRef::Entity(p)]).expect("remove");
+    assert!(doc.visgroup_members(v).is_empty());
+}

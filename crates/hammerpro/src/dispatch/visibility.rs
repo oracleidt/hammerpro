@@ -17,6 +17,7 @@ const HANDLED: &[Action] = &[
     Action::UnhideAll,
     Action::ToggleCordon,
     Action::MoveToVisgroup,
+    Action::RemoveFromAllVisgroups,
     Action::HiddenToVisgroup,
 ];
 
@@ -40,6 +41,15 @@ impl Package for Visibility {
             Action::MoveToVisgroup => {
                 if app.require_selection() {
                     app.state.runtime.visibility.move_to_visgroup_open = true;
+                }
+            }
+            Action::RemoveFromAllVisgroups => {
+                if app.require_selection() {
+                    let objs = app.state.doc.selected_objects();
+                    match app.state.doc.remove_from_all_visgroups(&objs) {
+                        Ok(n) => app.state.notify(Severity::Success, tf!("visibility.removed_from_visgroups", n)),
+                        Err(e) => app.state.notify(Severity::Info, tf!("visibility.remove_from_visgroups_failed", e)),
+                    }
                 }
             }
             Action::HiddenToVisgroup => hidden_to_visgroup(app),
@@ -116,6 +126,12 @@ const TR: TrTable = &[
         "{0} objets masqués placés dans le visgroup masqué {1}",
     ),
     ("visibility.nothing_hidden", "No object is hidden", "Aucun objet n'est masqué"),
+    (
+        "visibility.removed_from_visgroups",
+        "{0} objects removed from every visgroup",
+        "{0} objets retirés de tous les visgroups",
+    ),
+    ("visibility.remove_from_visgroups_failed", "Nothing to remove: {0}", "Rien à retirer : {0}"),
 ];
 
 #[cfg(test)]

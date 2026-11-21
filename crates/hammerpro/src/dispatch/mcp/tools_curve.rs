@@ -1,11 +1,11 @@
-use glam::DVec2;
+use glam::{DVec2, DVec3};
 use hp_app::{AppState, ViewKind};
 use hp_editor::{EditError, ObjRef, SelectOp};
 use hp_mcp::protocol::ToolResult;
-use hp_tools_create::curve::{self, CurveMeta, Profile, Section, apply};
+use hp_tools_create::curve::{self, Align, CurveMeta, FacePick, Profile, Section, apply};
 use serde_json::{Value, json};
 
-use super::semantic::grid;
+use super::semantic::{grid, opt_faces};
 use super::tools::{Args, MAX_NAME, R, bounds_json, check_class, edit, material_name};
 
 const PROFILE_NAMES: [&str; 3] = ["flat", "curb", "ditch"];
@@ -112,7 +112,59 @@ fn meta_json(meta: &CurveMeta) -> Value {
         "roll_end": s.roll_end,
         "auto_bank": s.auto_gain,
         "auto_bank_limit": s.auto_limit,
+        "flat_ends": meta.cap.is_some(),
     })
+}
+
+struct Arch {
+    kind: ViewKind,
+    points: Vec<DVec2>,
+    depth: (f64, f64),
+    cap: DVec2,
+    span: f64,
+    apex: f64,
+    align: Align,
+}
+
+fn face_pick(state: &AppState, face: hp_editor::FaceRef, height: Option<f64>) -> R<FacePick> {
+    let g = state
+        .doc
+        .scene()
+        .solid(face.solid)
+        .and_then(|n| n.geom.face_for_side(face.side))
+        .ok_or_else(|| format!("solid {} side {} has no face", face.solid, face.side))?;
+    let n = g.vertices.len().max(1) as f64;
+    let center = g.vertices.iter().copied().sum::<DVec3>() / n;
+    let mut pick = FacePick::new(center, g.plane.normal, g.vertices.clone());
+    pick.point.z = height.unwrap_or_else(|| pick.top());
+    Ok(pick)
+}
+
+fn arch_args(state: &AppState, a: &Args<'_>, thickness: f64) -> R<Option<Arch>> {
+    let Some(faces) = opt_faces(&state.doc, a, "faces")? else { return Ok(None) };
+    let [start, end] = faces.as_slice() else {
+        return Err("faces must be exactly two different {solid, side}: the start face and the end face".to_owned());
+    };
+    if a.get("points").is_some() {
+        return Err("give either points or faces, not both".to_owned());
+    }
+    let start = face_pick(state, *start, a.opt_f64("start_height", -16384.0, 16384.0)?)?;
+    let end = face_pick(state, *end, a.opt_f64("end_height", -16384.0, 16384.0)?)?;
+    let align = match a.opt_enum("align", &["inner", "center", "outer"])? {
+        Some(v) => Align::parse(&v).ok_or("unknown align")?,
+        None => Align::Inner,
+    };
+    let apex = a.opt_f64("apex", -16384.0, 16384.0)?.unwrap_or_else(|| curve::faces::default_apex(&start, &end));
+    let plan = curve::plan_arch(&start, &end, apex, thickness, align).map_err(|e| e.to_string())?;
+    Ok(Some(Arch {
+        kind: plan.kind,
+        points: plan.points,
+        depth: plan.depth,
+        cap: plan.cap,
+        span: plan.span,
+        apex,
+        align,
+    }))
 }
 
 fn invalid(e: apply::ApplyError) -> EditError {
@@ -123,14 +175,20 @@ fn invalid(e: apply::ApplyError) -> EditError {
 }
 
 pub(super) fn create_curve_brushes(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
-    let view = a.opt_enum("view", &["top", "front", "side"])?.ok_or("view is required")?;
-    let kind = view_kind(&view);
-    let points = points_arg(state, a)?
-        .ok_or_else(|| format!("points must be 2 to {} [a, b] points", curve::MAX_CURVE_POINTS))?;
     let segments = a.opt_u64("subdivisions", 2, 4096)?.map_or(16, |n| n as u32);
     let thickness = a.opt_f64("thickness", 1.0, 1024.0)?.unwrap_or(16.0);
-    let (auto_lo, auto_hi) =
-        hp_tools_create::new_depth_range(state, state.runtime.brush.last_created, depth_axis(kind));
+    let arch = arch_args(state, a, thickness)?;
+    let (kind, points, auto_lo, auto_hi, cap) = match &arch {
+        Some(arch) => (arch.kind, arch.points.clone(), arch.depth.0, arch.depth.1, Some(arch.cap)),
+        None => {
+            let view = a.opt_enum("view", &["top", "front", "side"])?.ok_or("view is required (or faces)")?;
+            let kind = view_kind(&view);
+            let points = points_arg(state, a)?
+                .ok_or_else(|| format!("points must be 2 to {} [a, b] points", curve::MAX_CURVE_POINTS))?;
+            let (lo, hi) = hp_tools_create::new_depth_range(state, state.runtime.brush.last_created, depth_axis(kind));
+            (kind, points, lo, hi, None)
+        }
+    };
     let lo = a.opt_f64("base", -16384.0, 16384.0)?.unwrap_or(auto_lo);
     let height = a.opt_f64("height", 1.0, 16384.0)?.unwrap_or(auto_hi - auto_lo);
     let material = match a.opt_str("material", MAX_NAME)? {
@@ -146,8 +204,9 @@ pub(super) fn create_curve_brushes(state: &mut AppState, a: &Args<'_>) -> R<Tool
         if s.is_finite() && s.abs() > 1e-6 { s } else { hp_geom::DEFAULT_TEXTURE_SCALE }
     });
     let section = section_args(a, Section::default())?.clamped();
-    let meta = CurveMeta { kind, points, depth: (lo, lo + height), segments, thickness, tex_scale, section };
-    let layout = curve::layout(&meta.points, segments, section.total_width(thickness)).map_err(|e| e.to_string())?;
+    let meta = CurveMeta { kind, points, depth: (lo, lo + height), segments, thickness, tex_scale, section, cap };
+    let layout = curve::layout_capped(&meta.points, segments, section.total_width(thickness), meta.cap)
+        .map_err(|e| e.to_string())?;
     layout.check().map_err(|e| e.to_string())?;
     let lightmap = lightmap_scale(state);
     let created = edit(state, "create_curve_brushes", |doc| {
@@ -157,7 +216,10 @@ pub(super) fn create_curve_brushes(state: &mut AppState, a: &Args<'_>) -> R<Tool
         };
         apply::create_curve(doc, &meta, &material, lightmap, target).map_err(invalid)
     })?;
-    finish(state, &meta, &created, &material, layout.length)
+    let extra = arch
+        .map(|arch| vec![("span", json!(arch.span)), ("apex", json!(arch.apex)), ("align", json!(arch.align.name()))])
+        .unwrap_or_default();
+    finish(state, &meta, &created, &material, layout.length, &extra)
 }
 
 fn finish(
@@ -166,6 +228,7 @@ fn finish(
     created: &apply::Created,
     material: &str,
     length: f64,
+    extra: &[(&str, Value)],
 ) -> R<ToolResult> {
     let bounds =
         created.ids.iter().filter_map(|id| state.doc.scene().solid(*id).map(|n| n.bounds)).reduce(|a, b| a.union(&b));
@@ -178,6 +241,9 @@ fn finish(
         map.insert("length".to_owned(), json!(length));
         map.insert("material".to_owned(), json!(material));
         map.insert("bounds".to_owned(), bounds_json(bounds));
+        for (k, v) in extra {
+            map.insert((*k).to_owned(), v.clone());
+        }
     }
     Ok(ToolResult::json(out))
 }
@@ -238,7 +304,7 @@ pub(super) fn edit_curve_brushes(state: &mut AppState, a: &Args<'_>) -> R<ToolRe
         Some(m) => material_name(m)?,
         None => apply::material_of(&state.doc, &record).unwrap_or_else(|| state.current_material.clone()),
     };
-    let layout = curve::layout(&meta.points, meta.segments, meta.section.total_width(meta.thickness))
+    let layout = curve::layout_capped(&meta.points, meta.segments, meta.section.total_width(meta.thickness), meta.cap)
         .map_err(|e| e.to_string())?;
     layout.check().map_err(|e| e.to_string())?;
     let lightmap = lightmap_scale(state);
@@ -250,5 +316,5 @@ pub(super) fn edit_curve_brushes(state: &mut AppState, a: &Args<'_>) -> R<ToolRe
         }
         Ok(made)
     })?;
-    finish(state, &meta, &created, &material, layout.length)
+    finish(state, &meta, &created, &material, layout.length, &[])
 }

@@ -220,6 +220,8 @@ pub(crate) struct ReleaseWindow {
     publish_log: Vec<(LogSeverity, String)>,
     report: report::ReportView,
     ignore_text: String,
+    allow_missing_next: bool,
+    confirm_missing: Option<hp_app::runtime::MissingCounts>,
 }
 
 impl MapDialog for ReleaseWindow {
@@ -433,7 +435,11 @@ impl ReleaseWindow {
             nav_fingerprint: self.side.nav_fingerprint,
             workshop_id: self.side.workshop_id,
             protect_salt: self.side.protect_salt.clone(),
+            unchecked: crate::mapassets::unchecked_entries(state),
+            allow_missing: std::mem::take(&mut self.allow_missing_next),
         };
+        self.confirm_missing = None;
+        state.runtime.content.awaiting_missing = None;
         let (tx, rx) = mpsc::channel();
         let cancel = Arc::new(AtomicBool::new(false));
         let c2 = cancel.clone();
@@ -465,6 +471,7 @@ impl ReleaseWindow {
     }
 
     pub(crate) fn cancel(&mut self) {
+        self.confirm_missing = None;
         if let Some(job) = &self.job {
             job.cancel.store(true, Ordering::Relaxed);
         }
@@ -480,6 +487,7 @@ impl ReleaseWindow {
         }
         if let Some(analyze_only) = state.runtime.content.start_requested.take() {
             state.runtime.content.release_open = true;
+            self.allow_missing_next = std::mem::take(&mut state.runtime.content.start_allow_missing);
             self.sync_sidecar(state);
             self.start(ctx, state, analyze_only);
         }
@@ -553,6 +561,10 @@ impl ReleaseWindow {
                     self.side.nav_fingerprint = Some(fp);
                     state.sidecar.set(&self.side);
                 }
+                ReleaseEvent::MissingConfirm(c) => {
+                    self.confirm_missing = Some(c);
+                    state.runtime.content.awaiting_missing = Some(c);
+                }
                 ReleaseEvent::Graph(_) | ReleaseEvent::NavFingerprint(_) => {}
                 ReleaseEvent::Compile(ev) => self.compile_event(ev),
                 ReleaseEvent::Done(result) => finished = Some(*result),
@@ -601,6 +613,9 @@ impl ReleaseWindow {
                 if state.settings.content.open_folder {
                     open_folder(&s.out_root);
                 }
+            }
+            Err(e) if self.confirm_missing.is_some() => {
+                self.push_log(LogSeverity::Warning, e.clone());
             }
             Err(e) => {
                 self.push_log(LogSeverity::Error, e.clone());

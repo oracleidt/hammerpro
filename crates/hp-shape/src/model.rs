@@ -124,17 +124,42 @@ pub fn attachments(model: &hp_mdl::Model) -> Vec<Attachment> {
     out
 }
 
-pub fn load_shape(path: &str, mut read: impl FnMut(&str) -> Option<Vec<u8>>, body: u32) -> Result<ModelShape, String> {
+pub fn shape_key(path: &str, pose: Option<&str>) -> String {
+    match pose.map(str::trim).filter(|p| !p.is_empty()) {
+        Some(p) => format!("{path}{}{}", hp_mdl::POSE_SEPARATOR, p.to_ascii_lowercase()),
+        None => path.to_owned(),
+    }
+}
+
+pub fn load_shape(key: &str, mut read: impl FnMut(&str) -> Option<Vec<u8>>, body: u32) -> Result<ModelShape, String> {
+    let (path, pose_key) = match key.split_once(hp_mdl::POSE_SEPARATOR) {
+        Some((p, k)) => (p, Some(k)),
+        None => (key, None),
+    };
     let files = hp_mdl::read_files(path, &mut read).map_err(|e| e.to_string())?;
-    let opts =
-        hp_mdl::LoadOptions { body_groups: hp_mdl::BodyGroupSelect::Body(body), ..hp_mdl::LoadOptions::default() };
-    let model = files.load(&opts).map_err(|e| e.to_string())?;
+    let first = pose_key == Some(hp_mdl::FIRST_SEQUENCE_KEY);
+    let opts = hp_mdl::LoadOptions {
+        body_groups: hp_mdl::BodyGroupSelect::Body(body),
+        pose: if first { hp_mdl::Pose::FirstSequence } else { hp_mdl::Pose::Bind },
+        ..hp_mdl::LoadOptions::default()
+    };
+    let mut model = files.load(&opts).map_err(|e| e.to_string())?;
+    if let Some(name) = pose_key.filter(|_| !first)
+        && let Some(index) = model.sequences.iter().position(|s| s.name.eq_ignore_ascii_case(name))
+        && let Ok(posed) = files.load(&hp_mdl::LoadOptions { pose: hp_mdl::Pose::Sequence(index), ..opts })
+    {
+        model = posed;
+    }
+    let pose = match model.posed_sequence {
+        Some(s) => hp_mdl::Pose::Sequence(s),
+        None => opts.pose,
+    };
     let render = render_mesh(&model);
     if render.is_empty() {
         return Err(format!("{path} has no triangles"));
     }
     let collision = read(&hp_mdl::phy_path(path))
-        .and_then(|phy| hp_mdl::parse_phy_for_model(&phy, &files.mdl, hp_mdl::Pose::FirstSequence).ok())
+        .and_then(|phy| hp_mdl::parse_phy_for_model(&phy, &files.mdl, pose).ok())
         .map(|c| collision_pieces(&c))
         .unwrap_or_default();
     Ok(ModelShape {

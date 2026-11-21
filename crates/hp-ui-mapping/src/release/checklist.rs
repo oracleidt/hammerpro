@@ -250,7 +250,7 @@ pub(crate) fn rows(f: &Facts) -> Vec<Row> {
             Some(Fix::Report),
         ),
         Some(0) => row(t!("release.check.deps"), Status::Ok, t!("release.check.deps_ok").to_owned(), None),
-        Some(n) => row(t!("release.check.deps"), Status::Fail, tf!("release.check.deps_missing", n), Some(Fix::Report)),
+        Some(n) => row(t!("release.check.deps"), Status::Warn, tf!("release.check.deps_missing", n), Some(Fix::Report)),
     });
     out.push(if f.thumbnail {
         row(t!("release.check.thumbnail"), Status::Ok, String::new(), None)

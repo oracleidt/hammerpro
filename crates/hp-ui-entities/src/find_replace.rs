@@ -129,6 +129,28 @@ impl FindReplace {
         self.show_match(state, next);
     }
 
+    pub fn select_all(&mut self, state: &mut AppState) -> usize {
+        let mut ids: Vec<EntityId> = self.matches.iter().filter(|m| !m.world).map(|m| m.entity).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        let objs: Vec<hp_editor::ObjRef> = ids
+            .into_iter()
+            .filter(|id| state.doc.scene().entity(*id).is_some())
+            .map(hp_editor::ObjRef::Entity)
+            .collect();
+        if objs.is_empty() {
+            return 0;
+        }
+        state.doc.set_selection(&objs);
+        state.request(hp_app::Action::Center2dOnSelection);
+        state.request(hp_app::Action::Center3dOnSelection);
+        let n = objs.len();
+        let text = tf!("entities.fr_selected", n);
+        state.notify(Severity::Info, text.clone());
+        self.message = Some((Severity::Info, text));
+        n
+    }
+
     fn show_match(&self, state: &mut AppState, row: usize) {
         let Some(m) = self.matches.get(row) else { return };
         if m.world {
@@ -274,6 +296,14 @@ impl FindReplace {
             if next.on_hover_text(hp_app::actions::key_label(Key::Enter)).clicked() {
                 self.find_next(state);
             }
+            let selectable = entities.iter().any(|(_, world)| !world);
+            if ui
+                .add_enabled(selectable, egui::Button::new(t!("entities.fr_select_all")))
+                .on_hover_text(t!("entities.fr_select_all_tip"))
+                .clicked()
+            {
+                self.select_all(state);
+            }
             if ui.add_enabled(n > 0 && !quote, egui::Button::new(t!("entities.fr_replace_one"))).clicked() {
                 self.replace_current(state);
             }
@@ -366,6 +396,9 @@ mod tests {
         assert!(state.doc.selection().objects.iter().eq([hp_editor::ObjRef::Entity(6)].iter()));
         fr.find_next(&mut state);
         assert_eq!(fr.current, Some(0), "wraps around");
+        assert_eq!(fr.select_all(&mut state), 2);
+        assert_eq!(state.doc.selection().objects.len(), 2);
+        assert!(state.doc.selection().objects.contains(&hp_editor::ObjRef::Entity(6)));
         assert_eq!(fr.replace_current(&mut state), 1);
         assert_eq!(fr.matches().len(), 1);
         assert_eq!(fr.replace_all(&mut state), 1);

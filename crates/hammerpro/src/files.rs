@@ -348,6 +348,7 @@ pub fn flush_sidecar(state: &mut AppState) {
 }
 
 fn switch_sidecar(state: &mut AppState) {
+    state.clear_lifted_face();
     flush_sidecar(state);
     let dir = state.sidecar.dir().map(Path::to_path_buf);
     state.sidecar = Sidecar::open(dir.as_deref(), state.doc.path());

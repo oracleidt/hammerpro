@@ -538,8 +538,10 @@ impl AssetManager {
         let class = class_of(self.fgd.as_deref(), e);
         let origin = e.origin().filter(|o| o.is_finite()).unwrap_or(glam::DVec3::ZERO);
         if let Some(path) = model_path(e, class) {
-            let key = model_key_cow(&path);
-            let state = self.shared.bounds.read().get(key.as_ref()).copied();
+            let plain = model_key_cow(&path);
+            let key =
+                crate::models::model_data_key(&plain, crate::entities::model_pose_key(e, Some(&plain)).as_deref());
+            let state = self.shared.bounds.read().get(key.as_str()).copied();
             match state {
                 Some(BoundsState::Ready { min, max }) => {
                     let angles = crate::entities::model_angles(e, class);

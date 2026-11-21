@@ -715,6 +715,13 @@ pub const TR: TrTable = &[
         "{0} occurrences dans {1} champs de {2} entités",
     ),
     ("entities.fr_find_next", "Find next", "Suivant"),
+    ("entities.fr_select_all", "Select all", "Tout sélectionner"),
+    (
+        "entities.fr_select_all_tip",
+        "Select every entity in the list of matches and frame them in the views",
+        "Sélectionner toutes les entités de la liste des résultats et les cadrer dans les vues",
+    ),
+    ("entities.fr_selected", "{0} entities selected", "{0} entités sélectionnées"),
     ("entities.fr_replace_one", "Replace", "Remplacer"),
     ("entities.fr_replace_all", "Replace all", "Tout remplacer"),
     ("entities.fr_replaced", "Fields replaced: {0}", "Champs remplacés : {0}"),

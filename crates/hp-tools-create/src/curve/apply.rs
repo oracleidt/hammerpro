@@ -62,6 +62,7 @@ pub fn build_meta(
         tex_scale: meta.tex_scale,
         lightmap_scale,
         section: meta.section,
+        cap: meta.cap,
     };
     let mut next = first_side_id;
     build_brushes(&spec, &mut || {

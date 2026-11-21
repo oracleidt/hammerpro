@@ -15,6 +15,7 @@ pub struct CurveMeta {
     pub thickness: f64,
     pub tex_scale: f64,
     pub section: Section,
+    pub cap: Option<DVec2>,
 }
 
 fn view_name(kind: ViewKind) -> Option<&'static str> {
@@ -55,6 +56,9 @@ impl CurveMeta {
             s.auto_gain,
             s.auto_limit,
         );
+        if let Some(c) = self.cap.filter(|c| c.is_finite() && c.length_squared() > 1e-12) {
+            out.insert_str(out.len() - "pts=".len(), &format!("cap={},{};", c.x, c.y));
+        }
         for (i, p) in self.points.iter().enumerate() {
             if i > 0 {
                 out.push(' ');
@@ -77,6 +81,7 @@ impl CurveMeta {
             thickness: 16.0,
             tex_scale: hp_geom::DEFAULT_TEXTURE_SCALE,
             section: Section::default(),
+            cap: None,
         };
         let mut seen_points = false;
         for part in parts {
@@ -102,6 +107,11 @@ impl CurveMeta {
                 "r1" => meta.section.roll_end = num()?,
                 "ab" => meta.section.auto_gain = num()?,
                 "al" => meta.section.auto_limit = num()?,
+                "cap" => {
+                    let (x, y) = v.split_once(',')?;
+                    let c = DVec2::new(x.parse().ok()?, y.parse().ok()?);
+                    meta.cap = (c.is_finite() && c.length_squared() > 1e-12).then_some(c);
+                }
                 "pts" => {
                     seen_points = true;
                     for item in v.split_whitespace() {
@@ -148,6 +158,7 @@ mod tests {
                 auto_gain: 3.0,
                 auto_limit: 9.0,
             },
+            cap: None,
         }
     }
 
@@ -157,6 +168,10 @@ mod tests {
         let text = m.encode().unwrap();
         assert!(text.is_ascii() && !text.contains('"'));
         assert_eq!(CurveMeta::decode(&text), Some(m));
+        let capped = CurveMeta { cap: Some(DVec2::new(1.0, 0.0)), ..sample() };
+        let text = capped.encode().unwrap();
+        assert!(text.contains(";cap=1,0;pts="), "{text}");
+        assert_eq!(CurveMeta::decode(&text), Some(capped));
     }
 
     #[test]

@@ -288,6 +288,9 @@ impl HammerProApp {
     }
 
     fn paste_at_cursor(&self, text: &str) -> Option<DVec3> {
+        if self.state.runtime.lab.fly_texture.active {
+            return self.paste_at_crosshair(text);
+        }
         let index = self.state.ui.hovered_view?;
         let point = self.state.hover_world.filter(|p| p.is_finite())?;
         let bounds = hp_editor::Document::clipboard_shape_bounds(text, &|e| self.state.entity_bounds(e)).ok()?;
@@ -297,6 +300,18 @@ impl HammerProApp {
         let snapped = if kind.axes_2d().is_some() { 3 } else { 2 };
         for i in 0..snapped {
             offset[i] = self.state.snap(offset[i]);
+        }
+        offset.is_finite().then_some(offset)
+    }
+
+    fn paste_at_crosshair(&self, text: &str) -> Option<DVec3> {
+        let bounds = hp_editor::Document::clipboard_shape_bounds(text, &|e| self.state.entity_bounds(e)).ok()?;
+        let cam = self.state.cameras.cam3d;
+        let (mut offset, snap) = crosshair_paste_offset(&self.state, &bounds, cam.pos, cam.forward())?;
+        for i in 0..3 {
+            if snap[i] {
+                offset[i] = self.state.snap(offset[i]);
+            }
         }
         offset.is_finite().then_some(offset)
     }
@@ -380,6 +395,37 @@ pub fn docs_url(lang: hp_app::i18n::Lang) -> String {
 
 pub const ISSUES_URL: &str = "https://github.com/oracleidt/hammerpro/issues";
 
+pub(crate) const PASTE_REACH: f64 = 4096.0;
+pub(crate) const PASTE_FALLBACK: f64 = 128.0;
+
+pub(crate) fn crosshair_paste_offset(
+    state: &hp_app::AppState,
+    bounds: &hp_geom::Aabb,
+    origin: DVec3,
+    forward: DVec3,
+) -> Option<(DVec3, [bool; 3])> {
+    let forward = forward.try_normalize()?;
+    if !origin.is_finite() || bounds.is_empty() {
+        return None;
+    }
+    let ray = hp_geom::Ray::new(origin, forward);
+    let opts = hp_editor::PickOptions { max_distance: PASTE_REACH, ..hp_editor::PickOptions::default() };
+    match state.view_pick(&ray, &opts).filter(|h| h.t <= PASTE_REACH && h.point.is_finite()) {
+        Some(hit) => {
+            let normal = hit.normal.try_normalize().unwrap_or(DVec3::Z);
+            let normal = if normal.dot(forward) > 0.0 { -normal } else { normal };
+            let snap =
+                if normal.z >= 0.7 { [true, true, false] } else { [normal.x.abs() < 0.3, normal.y.abs() < 0.3, false] };
+            Some((hp_editor::surface_paste_offset(bounds, hit.point, normal), snap))
+        }
+        None => {
+            let half = (bounds.max - bounds.min) * 0.5;
+            let point = origin + forward * (PASTE_FALLBACK + half.length());
+            Some((point - bounds.center(), [true, true, false]))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -399,5 +445,31 @@ mod tests {
             let file = url.rsplit('/').next().expect("file name");
             assert!(root.join(file).is_file(), "{file} is missing");
         }
+    }
+
+    #[test]
+    fn camera_paste_lands_where_the_crosshair_looks() {
+        let state = hp_app::testing::test_state();
+        let bounds = hp_geom::Aabb::new(DVec3::new(-16.0, -16.0, -16.0), DVec3::new(16.0, 16.0, 16.0));
+        let (floor, snap) =
+            crosshair_paste_offset(&state, &bounds, DVec3::new(-100.0, 40.0, 64.0), DVec3::new(0.0, 0.0, -1.0))
+                .expect("floor");
+        assert!((floor - DVec3::new(-100.0, 40.0, 16.0)).length() < 1e-6, "{floor}");
+        assert_eq!(snap, [true, true, false]);
+        let (wall, snap) =
+            crosshair_paste_offset(&state, &bounds, DVec3::new(-100.0, 40.0, 64.0), DVec3::new(0.0, 1.0, 0.0))
+                .expect("wall");
+        assert!((wall - DVec3::new(-100.0, 240.0, 64.0)).length() < 1e-6, "{wall}");
+        assert_eq!(snap, [true, false, false]);
+        let (air, _) =
+            crosshair_paste_offset(&state, &bounds, DVec3::new(-100.0, 40.0, 64.0), DVec3::new(0.0, -1.0, 0.0))
+                .expect("fallback");
+        assert!(air.y < 40.0 - PASTE_FALLBACK && air.y > -PASTE_REACH, "{air}");
+        assert!((air.x + 100.0).abs() < 1e-6 && (air.z - 64.0).abs() < 1e-6, "{air}");
+        let far = DVec3::new(-100.0, 40.0, PASTE_REACH + 500.0);
+        let (beyond, _) =
+            crosshair_paste_offset(&state, &bounds, far, DVec3::new(0.0, 0.0, -1.0)).expect("out of reach");
+        assert!(beyond.z > PASTE_REACH, "{beyond}");
+        assert!(crosshair_paste_offset(&state, &bounds, far, DVec3::ZERO).is_none());
     }
 }

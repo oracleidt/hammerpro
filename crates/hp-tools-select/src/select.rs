@@ -6,6 +6,7 @@ mod live;
 mod options;
 #[cfg(test)]
 pub(crate) use draw::center_marks;
+pub(crate) use draw::paint_filter_badge;
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
@@ -312,6 +313,7 @@ pub struct SelectTool {
     mode_before_click: Option<HandleMode>,
     pick_click: Option<PickClick>,
     query: String,
+    filter_text: String,
     query_kind: QueryKind,
     query_result: Option<(usize, f64)>,
     views: Vec<Option<ViewInfo>>,
@@ -350,6 +352,7 @@ impl SelectTool {
             mode_before_click: None,
             pick_click: None,
             query: String::new(),
+            filter_text: String::new(),
             query_kind: QueryKind::Class,
             query_result: None,
             views: Vec::new(),
@@ -401,11 +404,18 @@ impl SelectTool {
             RectMode::Touching
         };
         let found = state.doc.objects_in_rect_2d(axis, a, b, mode, &|e| state.entity_bounds(e));
-        let objs = if inside && !self.centers_only {
+        let mut objs = if inside && !self.centers_only {
             units_fully_inside(state, &found, state.select_mode())
         } else {
             state.doc.resolve_many(&found, state.select_mode())
         };
+        let filter = &state.runtime.selection.filter;
+        if filter.is_active() {
+            filter.retain(state.doc.scene(), &mut objs);
+            if objs.is_empty() && !found.is_empty() {
+                state.notify(Severity::Info, tf!("seltool.filter.none", filter.summary()));
+            }
+        }
         if add {
             state.doc.select(&objs, SelectOp::Add);
         } else {
@@ -1186,7 +1196,7 @@ impl SelectTool {
         if !done.insert(hit.obj) {
             return;
         }
-        let objs = state.doc.resolve(hit.obj, state.select_mode());
+        let objs = filtered(state, state.doc.resolve(hit.obj, state.select_mode()));
         let op = if *remove { SelectOp::Remove } else { SelectOp::Add };
         state.doc.select(&objs, op);
     }
@@ -1613,7 +1623,7 @@ impl SelectTool {
         let mode = state.select_mode();
         let mut cands: Vec<Vec<ObjRef>> = Vec::new();
         for o in raw {
-            let r = state.doc.resolve(o, mode);
+            let r = filtered(state, state.doc.resolve(o, mode));
             if !r.is_empty() && !cands.contains(&r) {
                 cands.push(r);
                 if cands.len() >= MAX_CYCLE {
@@ -1864,7 +1874,7 @@ fn candidates_3d(state: &AppState, view: &ViewInfo, pos: Pos2) -> Vec<Vec<ObjRef
     let mode = state.select_mode();
     let mut cands: Vec<Vec<ObjRef>> = Vec::new();
     for h in hits {
-        let r = state.doc.resolve(h.obj, mode);
+        let r = filtered(state, state.doc.resolve(h.obj, mode));
         if !r.is_empty() && !cands.contains(&r) {
             cands.push(r);
             if cands.len() >= MAX_CYCLE {
@@ -1873,6 +1883,11 @@ fn candidates_3d(state: &AppState, view: &ViewInfo, pos: Pos2) -> Vec<Vec<ObjRef
         }
     }
     cands
+}
+
+pub(crate) fn filtered(state: &AppState, mut objs: Vec<ObjRef>) -> Vec<ObjRef> {
+    state.runtime.selection.filter.retain(state.doc.scene(), &mut objs);
+    objs
 }
 
 fn signed(v: f64) -> String {
@@ -2164,6 +2179,7 @@ impl Tool for SelectTool {
         }
         self.paint_pivot(state, view, painter);
         self.paint_helpers(state, view, painter);
+        draw::paint_filter_badge(state, view, painter);
     }
 
     fn options_ui(&mut self, ui: &mut egui::Ui, state: &mut AppState) {
@@ -2271,6 +2287,10 @@ impl Tool for SelectTool {
         if !state.doc.selection().is_empty() {
             state.doc.clear_selection();
             self.cycle = None;
+            return true;
+        }
+        if state.runtime.selection.filter.is_active() {
+            state.runtime.selection.filter.clear();
             return true;
         }
         false

@@ -114,6 +114,10 @@ When displacements are selected, per face options appear:
 
 Every selected displacement shows the selection tint and its triangle grid in the views (the masks hide either). Triangles tagged removed are tinted in the 3D view.
 
+Like the Face Edit sheet of Hammer, the face selection belongs to the tool: switching to the [Face edit tool](texture-tool.md) keeps the same faces selected (the two tools edit the same faces), switching to any other tool clears the face selection, so no displacement stays tinted. The selected solids stay selected, and **Previous selection** of the Face edit tool brings the faces back.
+
+In camera mode (mouselook, `Z`) the brush circle, painting, sculpting, alpha, tags and Terraform stamps follow the crosshair at the center of the 3D view, not the hidden mouse cursor; hold `Alt` to free the cursor and paint where it points. While you look around with a held mouse button, the brush stays where the button went down.
+
 ## Paint geometry
 
 Section **Paint geometry** (mode **Paint geometry**):

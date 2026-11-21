@@ -202,6 +202,7 @@ mod tests {
             thickness: 128.0,
             tex_scale: 0.25,
             section: Section::default(),
+            cap: None,
         };
         RoadsideMeta {
             kind: Kind::Curb,

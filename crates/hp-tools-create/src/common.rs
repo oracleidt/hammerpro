@@ -33,6 +33,11 @@ pub(crate) struct Mouse {
     pub modifiers: Modifiers,
 }
 
+pub(crate) fn camera_aim(state: &AppState) -> bool {
+    let fly = &state.runtime.lab.fly_texture;
+    fly.active && !fly.free_cursor
+}
+
 impl Mouse {
     pub(crate) fn from_input(input: &ViewInput<'_>) -> Self {
         let r = input.response;
@@ -47,6 +52,11 @@ impl Mouse {
             double_clicked: r.double_clicked_by(b) || r.triple_clicked_by(b),
             modifiers: input.modifiers,
         }
+    }
+
+    pub(crate) fn aimed(input: &ViewInput<'_>) -> Self {
+        let m = Self::from_input(input);
+        if input.navigating { Self { press_origin: None, ..m } } else { m }
     }
 
     pub(crate) fn origin(&self) -> Option<Pos2> {

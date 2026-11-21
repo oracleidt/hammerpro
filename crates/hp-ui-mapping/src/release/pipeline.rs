@@ -10,7 +10,9 @@ use hp_app::{t, tf};
 use hp_bsp::{Bsp, PakCompression, PakOptions, lump};
 use hp_compile::{CompileEvent, Severity as LogSeverity, StepAction, StepKind};
 use hp_fs::GameFs;
-use hp_fs::deps::{DepKind, DepNode, DepRoot, DepWarning, DependencyGraph, DepsCache, PackPolicy, ResolveOptions};
+use hp_fs::deps::{
+    DepKind, DepNode, DepRoot, DepWarning, DependencyGraph, DepsCache, MissingAsset, PackPolicy, ResolveOptions,
+};
 use hp_gma::{AddonJson, GmaSource, GmaWriter};
 use rayon::prelude::*;
 
@@ -69,6 +71,62 @@ pub(crate) struct ReleaseInput {
     pub nav_fingerprint: Option<u64>,
     pub protect_salt: String,
     pub workshop_id: Option<u64>,
+    pub unchecked: HashSet<String>,
+    pub allow_missing: bool,
+}
+
+pub(crate) struct Gaps<'g> {
+    pub files: Vec<&'g MissingAsset>,
+    pub systems: Vec<&'g MissingAsset>,
+    pub left_out_missing: usize,
+    pub left_out_nodes: HashSet<String>,
+}
+
+impl Gaps<'_> {
+    pub(crate) fn count(&self) -> usize {
+        self.files.len() + self.systems.len()
+    }
+
+    pub(crate) fn counts(&self) -> hp_app::runtime::MissingCounts {
+        hp_app::runtime::MissingCounts {
+            files: self.files.len(),
+            particle_systems: self.systems.len(),
+            left_out: self.left_out_missing,
+        }
+    }
+}
+
+pub(crate) fn gaps<'g>(graph: &'g Arc<DependencyGraph>, unchecked: &HashSet<String>) -> Gaps<'g> {
+    let left = crate::mapassets::AssetTree::build(graph.clone()).left_out(unchecked);
+    let mut out = Gaps { files: Vec::new(), systems: Vec::new(), left_out_missing: 0, left_out_nodes: left.nodes };
+    for m in &graph.missing {
+        if left.missing.contains(&m.name) {
+            out.left_out_missing += 1;
+        } else if m.kind == DepKind::ParticleSystem {
+            out.systems.push(m);
+        } else {
+            out.files.push(m);
+        }
+    }
+    out
+}
+
+fn log_gaps(ctx: &Ctx<'_>, graph: &DependencyGraph, gaps: &Gaps<'_>) {
+    for m in gaps.files.iter().take(50) {
+        ctx.log(
+            LogSeverity::Warning,
+            tf!("release.missing_line", m.name, super::report::used_by_chain(graph, &m.reasons)),
+        );
+    }
+    for m in gaps.systems.iter().take(50) {
+        ctx.log(
+            LogSeverity::Warning,
+            tf!("release.missing_system_line", m.name, super::report::used_by_chain(graph, &m.reasons)),
+        );
+    }
+    if gaps.left_out_missing > 0 || !gaps.left_out_nodes.is_empty() {
+        ctx.log(LogSeverity::Info, tf!("release.left_out", gaps.left_out_nodes.len(), gaps.left_out_missing));
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -160,6 +218,7 @@ pub(crate) enum ReleaseEvent {
     Compile(CompileEvent),
     Progress(f32),
     Graph(Arc<DependencyGraph>),
+    MissingConfirm(hp_app::runtime::MissingCounts),
     NavFingerprint(u64),
     Done(Box<Result<ReleaseSummary, String>>),
 }
@@ -217,12 +276,16 @@ pub(crate) fn analyze(
     let ctx = Ctx { input: &input, tx: &tx, cancel: &cancel, wake: &*wake };
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         ctx.stage(Stage::Dependencies);
-        let graph = resolve(&ctx)?;
+        let graph = Arc::new(resolve(&ctx)?);
+        let gaps = gaps(&graph, &input.unchecked);
+        log_gaps(&ctx, &graph, &gaps);
         let policy = PackPolicy { workshop: input.settings.pack_workshop, mounted: input.settings.pack_mounted };
-        let shipped: Vec<&DepNode> = graph.shipped(policy).filter(|n| !skipped(&n.vpath)).collect();
+        let shipped: Vec<&DepNode> =
+            graph.shipped(policy).filter(|n| !skipped(&n.vpath) && !gaps.left_out_nodes.contains(&n.vpath)).collect();
         let tips = size_tips(&input.fs, &shipped);
         let lint = input.fs.lint_paths(&graph, policy);
-        ctx.send(ReleaseEvent::Graph(Arc::new(graph)));
+        drop(gaps);
+        ctx.send(ReleaseEvent::Graph(graph));
         ctx.stage(Stage::Done);
         Ok(ReleaseSummary { tips, lint, ..ReleaseSummary::default() })
     }))
@@ -241,11 +304,21 @@ fn run_stages(ctx: &Ctx<'_>) -> Result<ReleaseSummary, String> {
     if graph.cancelled {
         return Err(t!("release.cancelled").to_owned());
     }
-    if !graph.missing.is_empty() {
-        return Err(tf!("release.err_missing", graph.missing.len()));
+    let gaps = gaps(&graph, &input.unchecked);
+    log_gaps(ctx, &graph, &gaps);
+    if gaps.count() > 0 {
+        if s.missing_as_errors {
+            return Err(tf!("release.err_missing", gaps.count()));
+        }
+        if !input.allow_missing {
+            ctx.send(ReleaseEvent::MissingConfirm(gaps.counts()));
+            return Err(tf!("release.missing_paused", gaps.count()));
+        }
+        ctx.log(LogSeverity::Warning, tf!("release.missing_continue", gaps.count()));
     }
     let policy = PackPolicy { workshop: s.pack_workshop, mounted: s.pack_mounted };
-    let shipped: Vec<&DepNode> = graph.shipped(policy).filter(|n| !skipped(&n.vpath)).collect();
+    let shipped: Vec<&DepNode> =
+        graph.shipped(policy).filter(|n| !skipped(&n.vpath) && !gaps.left_out_nodes.contains(&n.vpath)).collect();
     if let Some(bad) = shipped.iter().find(|n| name_problem(&n.vpath).is_some()) {
         return Err(tf!("release.err_bad_name", bad.vpath));
     }
@@ -434,13 +507,11 @@ fn resolve(ctx: &Ctx<'_>) -> Result<DependencyGraph, String> {
     let shipped =
         graph.shipped(PackPolicy { workshop: input.settings.pack_workshop, mounted: input.settings.pack_mounted });
     let (n, bytes) = shipped.fold((0usize, 0u64), |(n, b), node| (n + 1, b + node.size));
+    let systems = graph.missing.iter().filter(|m| m.kind == DepKind::ParticleSystem).count();
     ctx.log(
         LogSeverity::Info,
-        tf!("release.graph_summary", graph.nodes.len(), n, fmt_bytes(bytes), graph.missing.len()),
+        tf!("release.graph_summary", graph.nodes.len(), n, fmt_bytes(bytes), graph.missing.len() - systems, systems),
     );
-    for m in graph.missing.iter().take(50) {
-        ctx.log(LogSeverity::Error, tf!("release.missing_line", m.name));
-    }
     let mut mounted = 0;
     for w in &graph.warnings {
         let text = match w {

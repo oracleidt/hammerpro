@@ -431,13 +431,18 @@ impl Document {
                     }
                 }
                 ObjRef::Entity(eid) => {
-                    if self.scene.entities.get(&eid).is_some_and(|n| n.entity.editor.visgroup_ids.contains(&id)) {
+                    let children = self.strip_child_visgroups(eid, &|v| v != id, &hidden);
+                    let own = self.scene.entities.get(&eid).is_some_and(|n| n.entity.editor.visgroup_ids.contains(&id));
+                    if own {
                         self.update_entity(eid, |e| {
                             e.editor.visgroup_ids.retain(|v| *v != id);
                             e.editor.visgroup_shown = !e.editor.visgroup_ids.iter().any(|v| hidden.contains(v));
                         });
+                    }
+                    if own || !children.is_empty() {
                         count += 1;
                     }
+                    solids.extend(children);
                 }
             }
         }
@@ -468,13 +473,18 @@ impl Document {
                     }
                 }
                 ObjRef::Entity(eid) => {
-                    if self.scene.entities.get(&eid).is_some_and(|n| n.entity.editor.visgroup_ids != ids) {
+                    let children = self.strip_child_visgroups(eid, &|v| ids.contains(&v), &hidden);
+                    let own = self.scene.entities.get(&eid).is_some_and(|n| n.entity.editor.visgroup_ids != ids);
+                    if own {
                         self.update_entity(eid, |e| {
                             ids.clone_into(&mut e.editor.visgroup_ids);
                             e.editor.visgroup_shown = shown;
                         });
+                    }
+                    if own || !children.is_empty() {
                         count += 1;
                     }
+                    solids.extend(children);
                 }
             }
         }
@@ -484,6 +494,60 @@ impl Document {
             self.changes.visibility_changed = true;
         }
         count
+    }
+
+    fn strip_child_visgroups(&self, entity: Id, keep: &dyn Fn(Id) -> bool, hidden: &IdSet) -> Vec<(Id, Solid)> {
+        let mut out = Vec::new();
+        for sid in self.scene.entity_solid_ids(entity) {
+            if let Some(n) = self.scene.solids.get(&sid)
+                && n.solid.editor.visgroup_ids.iter().any(|v| !keep(*v))
+            {
+                let mut s = n.solid.clone();
+                s.editor.visgroup_ids.retain(|v| keep(*v));
+                s.editor.visgroup_shown = !s.editor.visgroup_ids.iter().any(|v| hidden.contains(v));
+                out.push((sid, s));
+            }
+        }
+        out
+    }
+
+    pub fn visgroups_of(&self, objs: &[ObjRef]) -> Vec<Id> {
+        let mut found = IdSet::default();
+        for o in objs {
+            match *o {
+                ObjRef::Solid(sid) => {
+                    if let Some(n) = self.scene.solids.get(&sid) {
+                        found.extend(n.solid.editor.visgroup_ids.iter().copied());
+                    }
+                }
+                ObjRef::Entity(eid) => {
+                    if let Some(n) = self.scene.entities.get(&eid) {
+                        found.extend(n.entity.editor.visgroup_ids.iter().copied());
+                    }
+                    for sid in self.scene.entity_solid_ids(eid) {
+                        if let Some(n) = self.scene.solids.get(&sid) {
+                            found.extend(n.solid.editor.visgroup_ids.iter().copied());
+                        }
+                    }
+                }
+            }
+        }
+        let mut order = Vec::new();
+        let mut stack: Vec<&VisGroup> = self.scene.visgroups.iter().rev().collect();
+        while let Some(g) = stack.pop() {
+            if found.contains(&g.id) {
+                order.push(g.id);
+            }
+            stack.extend(g.children.iter().rev());
+        }
+        order
+    }
+
+    pub fn remove_from_all_visgroups(&mut self, objs: &[ObjRef]) -> EditResult<usize> {
+        if self.visgroups_of(objs).is_empty() {
+            return Err(EditError::Nothing("the objects are in no visgroup"));
+        }
+        self.tx("Remove from all visgroups", |doc| Ok(doc.replace_visgroups_unchecked(objs, &[])))
     }
 
     pub fn set_visgroup_visible(&mut self, id: Id, visible: bool) -> EditResult<()> {

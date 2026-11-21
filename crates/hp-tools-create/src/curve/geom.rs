@@ -16,6 +16,7 @@ pub const MIN_SEGMENT: f64 = 1.0;
 pub const MIN_EDGE: f64 = 0.25;
 pub const MAX_COORD: f64 = hp_geom::MAX_COORD;
 const MITER_LIMIT_COS: f64 = 0.125;
+const CAP_MIN_COS: f64 = 0.3;
 const SAMPLES_PER_SEGMENT: usize = 8;
 const MIN_SAMPLES_PER_SPAN: usize = 8;
 const MAX_DENSE_SAMPLES: usize = 262_144;
@@ -228,7 +229,35 @@ pub fn layout(points: &[DVec2], segments: u32, thickness: f64) -> Result<CurveLa
     layout_centers(resample(&pts, segments), thickness)
 }
 
+pub fn layout_capped(
+    points: &[DVec2],
+    segments: u32,
+    thickness: f64,
+    cap: Option<DVec2>,
+) -> Result<CurveLayout, CurveError> {
+    let pts = clean_points(points);
+    if pts.len() < 2 {
+        return Err(CurveError::TooFewPoints);
+    }
+    let segments = segments.clamp(MIN_SUBDIVISIONS, MAX_SUBDIVISIONS);
+    layout_centers_capped(resample(&pts, segments), thickness, cap)
+}
+
 pub fn layout_centers(centers: Vec<DVec2>, thickness: f64) -> Result<CurveLayout, CurveError> {
+    layout_centers_capped(centers, thickness, None)
+}
+
+fn cap_offset(cap: Option<DVec2>, side: DVec2, half: f64) -> Option<DVec2> {
+    let c = cap?.try_normalize()?;
+    let along = side.dot(c);
+    (along.abs() >= CAP_MIN_COS).then(|| c * (half * along.signum()))
+}
+
+pub fn layout_centers_capped(
+    centers: Vec<DVec2>,
+    thickness: f64,
+    cap: Option<DVec2>,
+) -> Result<CurveLayout, CurveError> {
     if centers.len() < 2 {
         return Err(CurveError::TooFewPoints);
     }
@@ -245,9 +274,9 @@ pub fn layout_centers(centers: Vec<DVec2>, thickness: f64) -> Result<CurveLayout
     let mut offsets: Vec<DVec2> = Vec::with_capacity(n + 1);
     for i in 0..=n {
         let off = if i == 0 {
-            left(dirs[0]) * half
+            cap_offset(cap, left(dirs[0]), half).unwrap_or(left(dirs[0]) * half)
         } else if i == n {
-            left(dirs[n - 1]) * half
+            cap_offset(cap, left(dirs[n - 1]), half).unwrap_or(left(dirs[n - 1]) * half)
         } else {
             let (a, b) = (left(dirs[i - 1]), left(dirs[i]));
             let sum = a + b;
@@ -327,6 +356,7 @@ pub struct CurveSpec<'a> {
     pub tex_scale: f64,
     pub lightmap_scale: i32,
     pub section: Section,
+    pub cap: Option<DVec2>,
 }
 
 #[derive(Debug)]
@@ -363,7 +393,7 @@ pub fn build_brushes(
     spec.section.check(h).map_err(BuildError::Section)?;
     let thickness = clamp_thickness(spec.thickness);
     let width = spec.section.total_width(thickness);
-    let layout = layout(spec.points, spec.segments, width).map_err(BuildError::Curve)?;
+    let layout = layout_capped(spec.points, spec.segments, width, spec.cap).map_err(BuildError::Curve)?;
     layout.check().map_err(BuildError::Curve)?;
     let list = pieces(&PieceInput {
         kind: spec.kind,

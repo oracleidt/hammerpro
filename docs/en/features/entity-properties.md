@@ -219,7 +219,7 @@ Results list class, name and origin. Double click a row (or `Enter` in the field
 | **Whole map** / **Selection** | Whole map |
 | **Visible only** | off |
 
-The status line counts matches, fields and entities. **Find next** (or `Enter` in the find field) goes to the next match and selects its entity; **Replace** replaces in the current field and moves on; **Replace all** replaces every match in one undo step. Double click a result row to select its entity. Double quotes in the replacement are refused.
+The status line counts matches, fields and entities. **Find next** (or `Enter` in the find field) goes to the next match and selects its entity; **Replace** replaces in the current field and moves on; **Replace all** replaces every match in one undo step. Double click a result row to select its entity. Double quotes in the replacement are refused. **Select all** selects every entity of the list of matches at once and frames them in the views (MCP: `find_text` with `select: true`).
 
 ## Entity report
 

@@ -20,6 +20,9 @@ pub use mdl::{
 pub use model::{BodyGroupSelect, LoadOptions, Model, ModelMesh, ModelVertex, load};
 pub use paths::{normalize_material_name, sibling_paths};
 pub use phy::{CollisionModel, CollisionSolid, parse_phy, parse_phy_for_model};
+pub const FIRST_SEQUENCE_KEY: &str = "@hp-first-sequence";
+pub const POSE_SEPARATOR: char = '|';
+
 pub use pose::{
     AnimClip, Pose, SkinMatrix, animation_block_path, animation_clip, pose_vertex, skin_matrices, skin_matrices_with,
 };

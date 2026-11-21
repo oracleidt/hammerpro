@@ -504,6 +504,25 @@ fn pending_box_waits_for_enter_and_can_be_resized_and_moved() {
     drag(&mut tool, &mut state, &v, pt(-300.0, 300.0), pt(300.0, 260.0), Modifiers::NONE);
     assert_eq!(state.doc.selected_objects(), vec![WALL]);
     assert!(tool.pending_box().is_none());
+
+    state.doc.clear_selection();
+    assert!(tool.set_option(&mut state, "filter", "class:light"));
+    assert!(state.runtime.selection.filter.is_active());
+    drag(&mut tool, &mut state, &v, pt(-300.0, 300.0), pt(300.0, 260.0), Modifiers::NONE);
+    assert!(state.doc.selected_objects().is_empty(), "the filter keeps the wall out");
+    crate::select::sync_options(&state);
+    assert!(tool.option_values().iter().any(|o| o.key == "filter" && o.value == "class:light"));
+    assert!(tool.set_option(&mut state, "filter", ""));
+    assert!(tool.set_option(&mut state, "filter_kinds", "entities,props"));
+    drag(&mut tool, &mut state, &v, pt(-300.0, 300.0), pt(300.0, 260.0), Modifiers::NONE);
+    assert!(state.doc.selected_objects().is_empty(), "brushes are switched off");
+    assert!(!tool.set_option(&mut state, "filter_kinds", "walls"));
+    assert!(tool.set_option(&mut state, "filter_kinds", "brushes"));
+    drag(&mut tool, &mut state, &v, pt(-300.0, 300.0), pt(300.0, 260.0), Modifiers::NONE);
+    assert_eq!(state.doc.selected_objects(), vec![WALL]);
+    state.doc.clear_selection();
+    assert!(tool.cancel(&mut state), "Esc with nothing selected clears the filter");
+    assert!(!state.runtime.selection.filter.is_active());
 }
 
 #[test]

@@ -45,7 +45,7 @@ pub use brush::BrushRuntime;
 pub use compile::{CompileBadge, CompileBrowse, CompileProgress, CompileRuntime};
 pub use content::{
     AssetCollectRequest, AssetCollectSummary, CaptureState, CapturedImage, ChecklistRow, ContentRuntime,
-    MapAssetsRuntime, ReleaseReport,
+    MapAssetsRuntime, MissingCounts, ReleaseReport,
 };
 pub use cubemaps::CubemapRuntime;
 pub use discord::{DiscordRuntime, DiscordStatus};
@@ -82,7 +82,7 @@ pub use placement::{
 };
 pub use render::RenderRuntime;
 pub use roadside::{PreviewLine, PreviewTri, RoadPreview, RoadsideRuntime};
-pub use selection::{DragTransform, SelectionRuntime};
+pub use selection::{DragTransform, LiftedFace, SelectionRuntime};
 pub use shader::{LiveGraph, ShaderRequest, ShaderRuntime};
 pub use startup::{OpeningStatus, PreloadMaterial, PreloadResource, PreloadResult, ResourceLoading, StartupRuntime};
 pub use update::{UpdateFailure, UpdateInfo, UpdateRuntime, UpdateStatus};

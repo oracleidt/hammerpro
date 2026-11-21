@@ -146,6 +146,24 @@ pub(crate) fn brush_entity_color(e: &Entity, class: Option<&ResolvedClass>) -> [
     c
 }
 
+const BIND_POSE_CLASSES: [&str; 3] = ["prop_static", "prop_detail", "static_prop"];
+
+pub(crate) fn model_pose_key(e: &Entity, model: Option<&str>) -> Option<String> {
+    pose_key_for(&e.classname, e.get("DefaultAnim"), model?)
+}
+
+pub fn pose_key_for(class: &str, default_anim: Option<&str>, model: &str) -> Option<String> {
+    let class = class.trim();
+    if BIND_POSE_CLASSES.iter().any(|c| class.eq_ignore_ascii_case(c)) {
+        return None;
+    }
+    match default_anim.map(str::trim).filter(|a| !a.is_empty()) {
+        Some(anim) => Some(anim.to_owned()),
+        None if model.to_ascii_lowercase().ends_with(".mdl") => Some(crate::models::FIRST_SEQUENCE_KEY.to_owned()),
+        None => None,
+    }
+}
+
 pub(crate) fn entity_desc(e: &Entity, fgd: Option<&ResolvedFgd>) -> EntityDesc {
     let class = class_of(fgd, e);
     let origin = e.origin().filter(|o| o.is_finite()).unwrap_or(DVec3::ZERO);
@@ -156,7 +174,7 @@ pub(crate) fn entity_desc(e: &Entity, fgd: Option<&ResolvedFgd>) -> EntityDesc {
     let tint = render_tint(e);
     let body =
         int_key(e, "body").or_else(|| int_key(e, "SetBodyGroup")).unwrap_or(0).clamp(0, i64::from(u32::MAX)) as u32;
-    let anim = e.get("DefaultAnim").map(str::trim).filter(|a| !a.is_empty()).map(str::to_owned);
+    let anim = model_pose_key(e, model.as_ref().map(|(p, _)| p.as_str()));
     let fade = {
         let read = |k: &str| e.get(k).and_then(|s| s.trim().parse::<f32>().ok()).filter(|v| v.is_finite());
         match read("fademaxdist") {

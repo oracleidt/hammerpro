@@ -46,7 +46,7 @@ impl AssetManager {
                 continue;
             };
             let path = crate::util::model_key(path);
-            let key = model_data_key(&path, entity.get("DefaultAnim").or_else(|| entity.get("defaultanim")));
+            let key = model_data_key(&path, crate::entities::model_pose_key(entity, Some(&path)).as_deref());
             if self.fs.is_none() && self.status != hp_app::state::AssetStatus::Mounting {
                 continue;
             }
@@ -144,7 +144,10 @@ mod tests {
             bind_bones: bones,
             ..Default::default()
         };
-        assets.models.map.insert("models/hp_parity/hitboxes.mdl".into(), ModelEntry::Ready(Arc::new(data)));
+        assets.models.map.insert(
+            model_data_key("models/hp_parity/hitboxes.mdl", Some(crate::models::FIRST_SEQUENCE_KEY)),
+            ModelEntry::Ready(Arc::new(data)),
+        );
         let mut entity = hp_vmf::Entity { id: 17, classname: "prop_dynamic".into(), ..Default::default() };
         entity.set("model", "models/hp_parity/hitboxes.mdl");
         entity.set("origin", "0 0 0");
@@ -183,7 +186,10 @@ mod tests {
         assert!(assets.particle_model_snapshot_impl(&[(17, entity.clone())], true).pending.is_empty());
         entity.set("model", "models/missing.mdl");
         assert!(assets.particle_model_snapshot_impl(&[(17, entity.clone())], true).pending.contains(&17));
-        assets.models.map.insert("models/missing.mdl".into(), ModelEntry::Failed("not found".into()));
+        assets.models.map.insert(
+            model_data_key("models/missing.mdl", Some(crate::models::FIRST_SEQUENCE_KEY)),
+            ModelEntry::Failed("not found".into()),
+        );
         let snapshot = assets.particle_model_snapshot_impl(&[(17, entity)], true);
         assert!(snapshot.pending.is_empty());
         assert!(snapshot.models.is_empty());

@@ -229,7 +229,9 @@ fn tool_entries_come_first_in_the_context_menu() {
     h.click(p, PointerButton::Secondary);
     h.frame(vec![]);
     let Some(menu) = h.vp.menu else { panic!("the menu is open") };
-    let first = menu.pos + vec2(40.0, 14.0);
+    let area = egui::Id::unique(("hp_viewport_context_menu", menu.opened_frame));
+    let top_left = h.ctx.memory(|m| m.area_rect(area)).map_or(menu.pos, |r| r.min);
+    let first = top_left + vec2(40.0, 14.0);
     h.click(first, PointerButton::Primary);
     h.frame(vec![]);
     assert_eq!(h.tool.commands, vec![7]);

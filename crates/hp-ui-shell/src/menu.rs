@@ -147,9 +147,15 @@ fn hammer_order(group: MenuGroup) -> &'static [Action] {
         MenuGroup::ViewShow => &[A::ToggleModels, A::ToggleHelpers, A::ToggleToolTextures],
         MenuGroup::ViewSky => &[A::ToggleSkyPreview, A::ToggleSkybox3d, A::UseSkyCameraInGame],
         MenuGroup::ViewFog => &[A::ToggleFogPreview, A::ToggleFogVolumes, A::ToggleFogVolumeTexture],
-        MenuGroup::ViewHide => {
-            &[A::HideSelected, A::HideUnselected, A::UnhideAll, A::ToggleCordon, A::MoveToVisgroup, A::HiddenToVisgroup]
-        }
+        MenuGroup::ViewHide => &[
+            A::HideSelected,
+            A::HideUnselected,
+            A::UnhideAll,
+            A::ToggleCordon,
+            A::MoveToVisgroup,
+            A::RemoveFromAllVisgroups,
+            A::HiddenToVisgroup,
+        ],
         MenuGroup::ViewNav => &[A::Center2dOnSelection, A::Center3dOnSelection, A::MaximizeView, A::ToggleFullscreen],
         MenuGroup::ViewZoom => &[A::Zoom2dIn, A::Zoom2dOut, A::FarPlaneCloser, A::FarPlaneFarther, A::ResetViewSplits],
         MenuGroup::MapGrid => &[A::ToggleSnap, A::ToggleGrid, A::ToggleGrid3d, A::GridSmaller, A::GridLarger],
@@ -1138,6 +1144,7 @@ mod tests {
                 A::UnhideAll.id(),
                 A::ToggleCordon.id(),
                 A::MoveToVisgroup.id(),
+                A::RemoveFromAllVisgroups.id(),
                 A::HiddenToVisgroup.id(),
                 "|",
                 A::Center2dOnSelection.id(),

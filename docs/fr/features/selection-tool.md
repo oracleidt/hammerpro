@@ -105,6 +105,18 @@ Au bout de la barre d'options se trouvent un choix **Classe** / **Matériau**, u
 - Maintenez `Ctrl` en validant pour ajouter à la sélection.
 - La barre affiche ensuite **{n} trouvé(s)** ou **Aucun résultat**. Quand la barre n'a plus de place, le compte s'affiche dans l'infobulle de **Sélectionner**. Une recherche sans résultat garde la sélection actuelle.
 
+### Filtre de sélection
+
+La barre d'options a un champ **Filtre** et quatre bascules : **Brushes**, **Entités**, **Props**, **Lumières**. Tant qu'un filtre est défini, la sélection au cadre, les clics et la peinture `Ctrl` dans les vues 2D et 3D ne prennent que les objets qui correspondent : tapez `class:light` et tracez un cadre sur une pièce pour ne sélectionner que ses lumières.
+
+- Termes : `class:` (classe), `name:` (targetname), `material:` (une face quelconque des brushes), `model:` (modèle d'un prop, une partie du chemin suffit). Un mot sans préfixe cherche dans la classe ou le nom (n'importe quelle partie).
+- Les jokers `*` et `?` marchent : `class:light*` prend `light`, `light_spot` et `light_dynamic`, `class:prop_*` tous les props, `name:door*` tous les noms qui commencent par door. Sans joker, `class:` et `name:` demandent le nom exact.
+- Une virgule donne des alternatives (`class:light,light_spot`), plusieurs termes du même type sont aussi des alternatives, des termes de types différents doivent tous correspondre (`name:door* class:func_*`). Un `-` devant exclut (`-class:light*`).
+- Les bascules gardent ou retirent des types entiers : **Brushes** (brushes du monde), **Entités** (entités brush et point qui ne sont ni props ni lumières), **Props** (`prop_*`), **Lumières** (`light*`, `point_spotlight`, `env_projectedtexture`).
+- Quand un filtre est actif, l'étiquette **Filtre** passe en jaune et chaque vue affiche un badge jaune **Filtre de sélection : ...** en bas à gauche : un cadre qui ne sélectionne rien n'est jamais un mystère (un cadre qui trouve des objets dont aucun ne correspond le dit aussi).
+- `Échap` dans le champ, le bouton **Effacer**, ou `Échap` dans une vue sans sélection retire le filtre. Le filtre dure le temps de la session.
+- MCP : `set_tool_options` avec `filter` et `filter_kinds` (all, none, ou une liste comme `lights,props`), et `select_in_box` prend `filter`, `kinds` et `use_tool_filter`.
+
 ## Transformer dans les vues 2D
 
 Glissez à l'intérieur du cadre de sélection pour le déplacer. Glissez un objet non sélectionné pour le sélectionner et le déplacer d'un coup. Les poignées du cadre dépendent du mode :
@@ -247,8 +259,9 @@ Avec une sélection, un clic droit dans une vue ajoute en haut du menu : **Poser
 | **Local** | Le gizmo d'une entité ponctuelle seule suit ses angles (enregistré dans les paramètres) | Désactivé |
 | **Pivot** | Affiche le pivot déplaçable | Désactivé |
 | **Classe** / **Matériau**, champ, **Sélectionner** | Sélection par classe ou par matériau | Classe |
+| **Filtre**, **Brushes** / **Entités** / **Props** / **Lumières**, **Effacer** | Filtre de sélection (voir plus haut) | Vide, tous les types |
 
-Les choix du cadre, des poignées et du gizmo durent le temps de la session. Ces options sont aussi accessibles par leur nom dans les scripts (`tool_option`) et via les outils MCP `get_tool_options` / `set_tool_options` (`handles`, `box`, `gizmo`, `edit_mode`, `gizmo_mode`, `gizmo_local`, `stretch_handles`, `box_confirm`, `pending_box`). `edit_mode` prend gizmo, box ou none. `pending_box` lit le cadre en attente, prend `x1 y1 x2 y2` pour en tracer un dans une vue 2D, `confirm`, `add` ou `cancel`.
+Les choix du cadre, des poignées et du gizmo durent le temps de la session. Ces options sont aussi accessibles par leur nom dans les scripts (`tool_option`) et via les outils MCP `get_tool_options` / `set_tool_options` (`handles`, `box`, `gizmo`, `edit_mode`, `gizmo_mode`, `gizmo_local`, `stretch_handles`, `box_confirm`, `pending_box`, `filter`, `filter_kinds`). `edit_mode` prend gizmo, box ou none. `pending_box` lit le cadre en attente, prend `x1 y1 x2 y2` pour en tracer un dans une vue 2D, `confirm`, `add` ou `cancel`.
 
 ## Paramètres
 

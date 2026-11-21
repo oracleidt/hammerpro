@@ -166,7 +166,16 @@ impl PickGeometry {
     }
 }
 
-pub(crate) const ANIM_SEPARATOR: char = '|';
+pub(crate) const ANIM_SEPARATOR: char = hp_mdl::POSE_SEPARATOR;
+pub(crate) const FIRST_SEQUENCE_KEY: &str = hp_mdl::FIRST_SEQUENCE_KEY;
+
+pub(crate) fn pose_for_key(anim: Option<&str>) -> hp_mdl::Pose {
+    if anim == Some(FIRST_SEQUENCE_KEY) { hp_mdl::Pose::FirstSequence } else { hp_mdl::Pose::Bind }
+}
+
+pub(crate) fn sequence_for_key(anim: Option<&str>) -> Option<&str> {
+    anim.filter(|a| *a != FIRST_SEQUENCE_KEY && *a != crate::particle_model_draw::ANIMATION_KEY)
+}
 
 pub(crate) fn model_data_key(path: &str, anim: Option<&str>) -> String {
     match anim.map(str::trim).filter(|a| !a.is_empty()) {
@@ -185,13 +194,12 @@ pub(crate) fn model_job(fs: &hp_fs::GameFs, key: &str) -> Result<PreparedModel, 
         body_groups: hp_mdl::BodyGroupSelect::All,
         tangents: true,
         bone_weights: particle,
-        pose: if particle { hp_mdl::Pose::Bind } else { Default::default() },
+        pose: pose_for_key(anim),
         ..Default::default()
     };
     let files = hp_mdl::read_files(path, |p| fs.read(p)).map_err(|e| e.to_string())?;
     let mut model = files.load(&opts).map_err(|e| e.to_string())?;
-    if !particle
-        && let Some(anim) = anim
+    if let Some(anim) = sequence_for_key(anim)
         && let Some(index) = model.sequences.iter().position(|s| s.name.eq_ignore_ascii_case(anim))
         && model.posed_sequence != Some(index)
     {
@@ -502,6 +510,88 @@ pub(crate) fn transformed_bounds(min: DVec3, max: DVec3, m: &DMat4) -> hp_geom::
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn static_pose_fs() -> hp_fs::GameFs {
+        let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/static_pose");
+        hp_fs::GameFs::from_source_mounts(
+            None,
+            None,
+            &[hp_fs::SourceMount {
+                kind: hp_fs::SourceMountKind::Dir,
+                label: "Static pose probe".into(),
+                path: folder,
+                enabled: true,
+                origin: hp_fs::SourceOrigin::Custom,
+            }],
+        )
+        .unwrap()
+    }
+
+    fn positions(m: &PreparedModel) -> Vec<[f32; 3]> {
+        m.parts.iter().flat_map(|p| p.vertices.iter().map(|v| v.pos)).collect()
+    }
+
+    fn reach(m: &PreparedModel) -> (f32, f32) {
+        let p = positions(m);
+        let x = p.iter().map(|v| v[0].abs()).fold(0.0, f32::max);
+        let y = p.iter().map(|v| v[1].abs()).fold(0.0, f32::max);
+        (x, y)
+    }
+
+    #[test]
+    fn static_props_of_skeletal_models_use_the_reference_pose_like_the_game() {
+        let fs = static_pose_fs();
+        let path = "models/hp_staticpose/probe.mdl";
+        let files = hp_mdl::read_files(path, |p| fs.read(p)).unwrap();
+        let raw: Vec<[f32; 3]> = hp_mdl::raw_mesh_positions(&files.mdl, &files.vvd).unwrap().concat();
+        let still = model_job(&fs, path).unwrap();
+        assert!(!still.info.is_static_prop && still.info.stats.bones == 2);
+        let mut got = positions(&still);
+        let mut want = raw.clone();
+        let order = |a: &[f32; 3], b: &[f32; 3]| a.partial_cmp(b).unwrap();
+        got.sort_by(order);
+        want.sort_by(order);
+        assert_eq!(got, want, "prop_static draws the raw reference vertices");
+        let (x, y) = reach(&still);
+        assert!(x > 60.0 && y < 8.0, "reference pose: wing spread along +X, got {x} {y}");
+        let key = model_data_key(path, Some(FIRST_SEQUENCE_KEY));
+        let first = model_job(&fs, &key).unwrap();
+        let (x, y) = reach(&first);
+        assert!(x < 20.0 && y > 15.0, "first sequence frame 0 turns the root and folds the wing, got {x} {y}");
+        let named = model_job(&fs, &model_data_key(path, Some("Fold"))).unwrap();
+        assert_eq!(positions(&named), positions(&first), "DefaultAnim fold is the first sequence here");
+        assert_ne!(positions(&named), positions(&still));
+    }
+
+    #[test]
+    fn pose_key_follows_the_class() {
+        let ent = |class: &str, kv: &[(&str, &str)]| {
+            let mut e = hp_vmf::Entity { classname: class.into(), ..Default::default() };
+            for (k, v) in kv {
+                e.set(k, *v);
+            }
+            e
+        };
+        let mdl = Some("models/hp_staticpose/probe.mdl");
+        let key = |e: &hp_vmf::Entity| crate::entities::model_pose_key(e, mdl);
+        for class in ["prop_static", "PROP_DETAIL", "static_prop"] {
+            assert_eq!(key(&ent(class, &[("DefaultAnim", "fold")])), None, "{class} ignores DefaultAnim");
+        }
+        let mut e = ent("prop_dynamic", &[]);
+        assert_eq!(key(&e).as_deref(), Some(FIRST_SEQUENCE_KEY));
+        e.set("DefaultAnim", " fold ");
+        assert_eq!(key(&e).as_deref(), Some("fold"));
+        e.classname = "prop_static".into();
+        assert_eq!(key(&e), None, "switching to prop_static changes the pose key at once");
+        e.classname = "prop_physics".into();
+        assert_eq!(key(&e).as_deref(), Some("fold"));
+        assert_eq!(crate::entities::model_pose_key(&ent("prop_dynamic", &[]), Some("sprites/glow01.vmt")), None);
+        assert_eq!(crate::entities::model_pose_key(&ent("prop_dynamic", &[]), None), None);
+        assert_eq!(pose_for_key(None), hp_mdl::Pose::Bind);
+        assert_eq!(pose_for_key(Some(FIRST_SEQUENCE_KEY)), hp_mdl::Pose::FirstSequence);
+        assert_eq!(sequence_for_key(Some(FIRST_SEQUENCE_KEY)), None);
+        assert_eq!(sequence_for_key(Some("fold")), Some("fold"));
+    }
 
     #[test]
     fn transforms() {

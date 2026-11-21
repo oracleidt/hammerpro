@@ -44,7 +44,7 @@ The tab has three sections: your visgroups, the **Cordons** (see [Cordons](cordo
 | --- | --- |
 | **Select members** | Selects the visible objects of the visgroup and its children. Hidden members are not selected, like in Hammer. |
 | **Add the selection** | Adds the selected objects to the visgroup. |
-| **Remove the selection** | Removes the selected objects from it. |
+| **Remove the selection from this visgroup** | Removes the selected objects from it (enabled when the selection is in it). |
 | **Move the selection here** | Puts the selection in this visgroup and removes it from its other visgroups. |
 | **Move up** / **Move down** | Reorders the visgroup among its siblings. |
 | **New child visgroup** | Creates an empty visgroup under this one. |
@@ -52,6 +52,17 @@ The tab has three sections: your visgroups, the **Cordons** (see [Cordons](cordo
 | **Delete visgroup** | Deletes it. Its children move up to its parent and its objects stay in the map: they only leave the visgroup. |
 
 Every change (create, rename, color, move, show or hide, membership) is one undo step.
+
+### Removing objects from visgroups
+
+Select the brushes or entities (world brushes, brush entities and point entities all work), then:
+
+- In the **Visgroups** tab, a **Selection is in:** line under the toolbar lists every visgroup of the selection: click **x Name** to take the selection out of that visgroup, or **Remove from all visgroups**.
+- Right click a visgroup row: **Remove the selection from this visgroup**.
+- Right click in a 2D or 3D view: **Visgroups > Remove from > (the visgroups of the selection)**, **Visgroups > Remove from all visgroups**, or **Visgroups > Move to visgroup...**.
+- **View > Remove from all visgroups** (action `remove_from_all_visgroups`).
+
+Each removal is one undo step. A brush entity leaves the visgroup with its brushes (Hammer also stores the visgroup on them). MCP: `set_visgroup_members` with `action` `remove` or `remove_all`.
 
 ## Move to visgroup
 

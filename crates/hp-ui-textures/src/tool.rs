@@ -14,6 +14,7 @@ use crate::util::{material_sizes, normalize_material, size_lookup};
 
 const SELECT_STYLE: MaskStyle = MaskStyle { fill: [1.0, 0.22, 0.18, 0.28], line: [1.0, 0.35, 0.3, 1.0] };
 const HOVER_LINE: [f32; 4] = [1.0, 0.85, 0.25, 1.0];
+const SOURCE_LINE: [f32; 4] = [0.2, 0.85, 1.0, 1.0];
 
 pub fn pick_face(state: &AppState, view: &ViewInfo, pos: egui::Pos2) -> Option<FaceRef> {
     if view.is_2d() {
@@ -72,16 +73,27 @@ pub fn click_face(state: &mut AppState, face: FaceRef, kind: ClickKind) {
         ClickKind::Select => {
             state.doc.select_faces(&[face], SelectOp::Replace);
             pick_material(state, face);
-            state.runtime.selection.lifted_face = Some(face);
+            state.lift_face(face);
         }
-        ClickKind::Toggle => state.doc.select_faces(&[face], SelectOp::Toggle),
+        ClickKind::Toggle => {
+            state.doc.select_faces(&[face], SelectOp::Toggle);
+            if state.doc.selection().faces.contains(&face) {
+                state.lift_face(face);
+            } else if state.lifted_face() == Some(face) {
+                match state.doc.selection().faces.last().copied() {
+                    Some(last) => state.lift_face(last),
+                    None => state.clear_lifted_face(),
+                }
+            }
+        }
         ClickKind::SelectSolid { add } => {
             let all = state.doc.all_faces_of(&[ObjRef::Solid(face.solid)]);
             state.doc.select_faces(&all, if add { SelectOp::Add } else { SelectOp::Replace });
+            state.lift_face(face);
         }
         ClickKind::Eyedropper => {
             pick_material(state, face);
-            state.runtime.selection.lifted_face = Some(face);
+            state.lift_face(face);
         }
         ClickKind::Apply | ClickKind::Nodraw => {
             let material =
@@ -90,6 +102,7 @@ pub fn click_face(state: &mut AppState, face: FaceRef, kind: ClickKind) {
                 state.notify(Severity::Error, tf!("tex.tool.apply_failed", e));
             }
         }
+        ClickKind::Wrap | ClickKind::ApplyAlignment if state.lifted_face() == Some(face) => {}
         ClickKind::Wrap | ClickKind::ApplyAlignment => match alignment_source(state, face) {
             Some(src) => {
                 let material = state.current_material.clone();
@@ -103,9 +116,31 @@ pub fn click_face(state: &mut AppState, face: FaceRef, kind: ClickKind) {
     }
 }
 
+pub fn start_select_drag(state: &mut AppState, face: FaceRef, add: bool) {
+    state.doc.select_faces(&[face], if add { SelectOp::Add } else { SelectOp::Replace });
+    if !add {
+        pick_material(state, face);
+    }
+    state.lift_face(face);
+}
+
 pub fn alignment_source(state: &AppState, face: FaceRef) -> Option<FaceRef> {
-    let selected = state.doc.selection().faces.iter().rev().copied().find(|f| *f != face);
-    selected.or_else(|| state.runtime.selection.lifted_face.filter(|f| *f != face && state.doc.face_side(*f).is_some()))
+    if let Some(lifted) = state.lifted_face() {
+        return (lifted != face).then_some(lifted);
+    }
+    state.doc.selection().faces.iter().rev().copied().find(|f| *f != face && state.doc.face_side(*f).is_some())
+}
+
+pub fn current_source(state: &AppState) -> Option<FaceRef> {
+    state
+        .lifted_face()
+        .or_else(|| state.doc.selection().faces.iter().rev().copied().find(|f| state.doc.face_side(*f).is_some()))
+}
+
+pub fn source_text(state: &AppState) -> Option<String> {
+    let face = current_source(state)?;
+    let side = state.doc.face_side(face)?;
+    Some(tf!("tex.tool.source", normalize_material(&side.material), face.solid))
 }
 
 fn pick_material(state: &mut AppState, face: FaceRef) {
@@ -129,6 +164,9 @@ fn paint_face(state: &mut AppState, stroke: &mut RightPaint, face: FaceRef) {
     }
     stroke.done.push(face);
     if matches!(stroke.kind, ClickKind::Wrap | ClickKind::ApplyAlignment) {
+        if current_source(state) == Some(face) {
+            return;
+        }
         if alignment_source(state, face).is_none() {
             if stroke.done.len() == 1 {
                 state.notify(Severity::Warning, t!("tex.tool.wrap_needs_source"));
@@ -714,7 +752,7 @@ impl hp_app::Tool for TextureTool {
             self.painting = true;
             if let Some(face) = self.hover {
                 let add = input.modifiers.ctrl || input.modifiers.command || input.modifiers.shift;
-                state.doc.select_faces(&[face], if add { SelectOp::Add } else { SelectOp::Replace });
+                start_select_drag(state, face, add);
             }
             return ToolFlow::Handled;
         }
@@ -849,6 +887,22 @@ impl hp_app::Tool for TextureTool {
                 }
             }
         });
+        ui.horizontal_wrapped(|ui| match source_text(state) {
+            Some(text) => {
+                ui.label(RichText::new(text).color(hp_app::theme::info()).small());
+                if state.lifted_face().is_some()
+                    && ui
+                        .small_button(t!("tex.tool.source_clear"))
+                        .on_hover_text(t!("tex.tool.source_clear_tip"))
+                        .clicked()
+                {
+                    state.clear_lifted_face();
+                }
+            }
+            None => {
+                ui.weak(RichText::new(t!("tex.tool.source_none")).small());
+            }
+        });
         ui.separator();
         egui::ScrollArea::vertical().id_salt("hp_face_edit_scroll").auto_shrink([false, false]).show(ui, |ui| {
             if count == 0 {
@@ -900,10 +954,14 @@ impl hp_app::Tool for TextureTool {
     }
 
     fn status_hint(&self, state: &AppState) -> Option<String> {
+        let mut text = t!("tex.tool.hint").to_owned();
         if state.settings.workflow.nav_scheme.right_free() {
-            return Some(format!("{} {}", t!("tex.tool.hint"), t!("tex.tool.hint_paint")));
+            text = format!("{text} {}", t!("tex.tool.hint_paint"));
         }
-        Some(t!("tex.tool.hint").to_owned())
+        if let Some(source) = source_text(state) {
+            text = format!("{source}. {text}");
+        }
+        Some(text)
     }
 
     fn cancel(&mut self, state: &mut AppState) -> bool {
@@ -923,6 +981,11 @@ impl TextureTool {
             && let Some(h) = self.hover
         {
             crate::mask::face_outline(state, h, HOVER_LINE, true, out);
+        }
+        if !self.hide_mask
+            && let Some(source) = current_source(state)
+        {
+            crate::mask::face_outline(state, source, SOURCE_LINE, true, out);
         }
     }
 
@@ -1078,7 +1141,96 @@ mod tests {
         assert_eq!(d.material, "brick/brickwall001a");
         assert_eq!((d.uaxis, d.vaxis), (s.uaxis, s.vaxis));
         state.doc.select_faces(&[other, dst], SelectOp::Replace);
+        assert_eq!(alignment_source(&state, other), Some(src));
+        state.clear_lifted_face();
         assert_eq!(alignment_source(&state, src), Some(dst));
+    }
+
+    #[test]
+    fn eyedropper_wins_over_an_older_face_selection() {
+        let mut state = hp_app::testing::test_state();
+        let (a, b, dst) = (FaceRef::new(2, 0), FaceRef::new(3, 0), FaceRef::new(3, 5));
+        click_face(&mut state, a, ClickKind::Select);
+        click_face(&mut state, b, ClickKind::Eyedropper);
+        assert_eq!(state.doc.selected_faces(), [a]);
+        assert_eq!(alignment_source(&state, dst), Some(b));
+        assert_eq!(current_source(&state), Some(b));
+        let text = source_text(&state).expect("status text");
+        assert!(text.contains("concrete/concretefloor001a") && text.contains('3'), "{text}");
+    }
+
+    #[test]
+    fn source_follows_toggle_and_solid_clicks() {
+        let mut state = hp_app::testing::test_state();
+        let (a, b, c) = (FaceRef::new(2, 0), FaceRef::new(2, 1), FaceRef::new(3, 2));
+        click_face(&mut state, a, ClickKind::Select);
+        click_face(&mut state, b, ClickKind::Toggle);
+        assert_eq!(state.lifted_face(), Some(b));
+        click_face(&mut state, b, ClickKind::Toggle);
+        assert_eq!(state.lifted_face(), Some(a));
+        click_face(&mut state, a, ClickKind::Toggle);
+        assert_eq!(state.lifted_face(), None);
+        click_face(&mut state, c, ClickKind::SelectSolid { add: false });
+        assert_eq!(state.doc.selected_faces().len(), 6);
+        assert_eq!(state.lifted_face(), Some(c));
+        assert_eq!(alignment_source(&state, a), Some(c));
+    }
+
+    #[test]
+    fn drag_selection_lifts_like_a_click() {
+        let mut state = hp_app::testing::test_state();
+        let (a, b) = (FaceRef::new(3, 0), FaceRef::new(2, 0));
+        state.use_material("tools/toolsnodraw");
+        start_select_drag(&mut state, a, false);
+        assert_eq!(state.lifted_face(), Some(a));
+        assert_eq!(state.current_material, "concrete/concretefloor001a");
+        start_select_drag(&mut state, b, true);
+        assert_eq!(state.lifted_face(), Some(b));
+        assert_eq!(state.current_material, "concrete/concretefloor001a");
+    }
+
+    #[test]
+    fn deleted_source_is_forgotten_and_never_used() {
+        let mut state = hp_app::testing::test_state();
+        let (src, dst) = (FaceRef::new(3, 0), FaceRef::new(2, 0));
+        click_face(&mut state, src, ClickKind::Eyedropper);
+        state.doc.delete(&[ObjRef::Solid(3)]).unwrap();
+        state.sync_lifted_face();
+        assert_eq!(state.runtime.selection.lifted_face, None);
+        assert!(state.doc.undo());
+        state.sync_lifted_face();
+        assert_eq!(state.lifted_face(), None);
+        let before = state.doc.face_side(dst).unwrap().clone();
+        click_face(&mut state, dst, ClickKind::Wrap);
+        assert_eq!(state.doc.face_side(dst), Some(&before));
+    }
+
+    #[test]
+    fn wrapping_the_source_onto_itself_does_nothing() {
+        let mut state = hp_app::testing::test_state();
+        let src = FaceRef::new(3, 0);
+        click_face(&mut state, src, ClickKind::Select);
+        state.use_material("brick/brickwall001a");
+        let before = state.doc.face_side(src).unwrap().clone();
+        let revision = state.doc.revision();
+        click_face(&mut state, src, ClickKind::Wrap);
+        click_face(&mut state, src, ClickKind::ApplyAlignment);
+        assert_eq!(state.doc.face_side(src), Some(&before));
+        assert_eq!(state.doc.revision(), revision);
+    }
+
+    #[test]
+    fn plain_apply_keeps_the_target_alignment() {
+        let mut state = hp_app::testing::test_state();
+        let (src, dst) = (FaceRef::new(3, 0), FaceRef::new(2, 0));
+        state.doc.edit_faces(&[src], &FaceEdit { u_shift: Some(37.0), ..FaceEdit::default() }).unwrap();
+        click_face(&mut state, src, ClickKind::Eyedropper);
+        state.use_material("brick/brickwall001a");
+        let before = state.doc.face_side(dst).unwrap().clone();
+        click_face(&mut state, dst, ClickKind::Apply);
+        let after = state.doc.face_side(dst).unwrap();
+        assert_eq!(after.material, "brick/brickwall001a");
+        assert_eq!((after.uaxis, after.vaxis, after.rotation), (before.uaxis, before.vaxis, before.rotation));
     }
 
     #[test]
@@ -1207,7 +1359,7 @@ mod tests {
         assert_eq!(out2.lines_on_top.len(), 7);
         let mut frame = Overlay::default();
         tool.overlay(&state, &view, &mut frame);
-        assert!(frame.is_empty());
+        assert!(frame.triangles.is_empty(), "the live overlay only outlines the alignment source face");
     }
 
     fn views() -> (ViewInfo, ViewInfo) {

@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 use glam::DVec2;
 use hp_app::settings::SelectElement;
@@ -12,11 +12,45 @@ use crate::math::HandleMode;
 thread_local! {
     static SETTINGS_SNAPSHOT: Cell<(bool, bool, SelectElement, bool)> =
         const { Cell::new((true, false, SelectElement::Object, false)) };
+    static FILTER_SNAPSHOT: RefCell<(String, String)> = const { RefCell::new((String::new(), String::new())) };
+}
+
+fn kinds_text(f: &hp_editor::SelectFilter) -> String {
+    if f.all_kinds() {
+        return "all".to_owned();
+    }
+    let kinds: Vec<&str> = f.enabled_kinds().into_iter().map(hp_editor::FilterKind::id).collect();
+    if kinds.is_empty() { "none".to_owned() } else { kinds.join(",") }
+}
+
+pub(crate) fn parse_kinds(v: &str) -> Option<Vec<hp_editor::FilterKind>> {
+    let v = v.trim().to_ascii_lowercase();
+    if v == "all" || v.is_empty() {
+        return Some(hp_editor::FilterKind::ALL.to_vec());
+    }
+    if v == "none" {
+        return Some(Vec::new());
+    }
+    v.split(|c: char| c == ',' || c == '+' || c.is_whitespace())
+        .filter(|t| !t.is_empty())
+        .map(hp_editor::FilterKind::from_id)
+        .collect()
 }
 
 pub fn sync_options(state: &AppState) {
     let s = &state.settings.selection;
     SETTINGS_SNAPSHOT.with(|c| c.set((s.stretch_handles, s.gizmo_local, s.element, s.box_confirm)));
+    let f = &state.runtime.selection.filter;
+    FILTER_SNAPSHOT.with(|c| {
+        let mut c = c.borrow_mut();
+        if c.0 != f.text() {
+            f.text().clone_into(&mut c.0);
+        }
+        let k = kinds_text(f);
+        if c.1 != k {
+            c.1 = k;
+        }
+    });
 }
 
 fn on_off(b: bool) -> &'static str {
@@ -60,6 +94,19 @@ impl SelectTool {
     pub(super) fn set_named_option(&mut self, state: &mut AppState, key: &str, value: &str) -> bool {
         let v = value.trim().to_ascii_lowercase();
         match key {
+            "filter" => {
+                let text = value.trim();
+                if text.chars().count() > hp_editor::MAX_FILTER_LEN {
+                    return false;
+                }
+                let text = if matches!(v.as_str(), "none" | "clear" | "off") { "" } else { text };
+                state.runtime.selection.filter.set_text(text);
+                text.clone_into(&mut self.filter_text);
+            }
+            "filter_kinds" => {
+                let Some(kinds) = parse_kinds(&v) else { return false };
+                state.runtime.selection.filter.set_kinds(&kinds);
+            }
             "handles" => {
                 let Some(m) = HandleMode::ALL.into_iter().find(|m| handle_mode_name(*m) == v) else { return false };
                 self.handle_mode = m;
@@ -134,6 +181,7 @@ impl SelectTool {
 
     pub(super) fn named_option_values(&self) -> Vec<ToolOption> {
         let (stretch, local, element, confirm) = SETTINGS_SNAPSHOT.with(Cell::get);
+        let (filter, kinds) = FILTER_SNAPSHOT.with(|c| c.borrow().clone());
         let pending = match self.pending_box() {
             Some((kind, a, b)) => format!("{} {} {} {} {}", kind_name(kind), a.x, a.y, b.x, b.y),
             None => "none".to_owned(),
@@ -176,6 +224,22 @@ impl SelectTool {
                 "the box waiting for Enter: none, or its view (top, front, side) and corners on the two axes of \
                  that view. Set it to four numbers \"x1 y1 x2 y2\" to draw a box in the 2D view under the pointer \
                  (or the first 2D view), confirm to select it, add to add it to the selection, cancel to drop it.",
+            ),
+            ToolOption::new(
+                "filter",
+                filter,
+                "selection filter text: only matching objects are taken by box selection, clicks and Ctrl paint \
+                 in the 2D and 3D views. Terms class:, name:, material:, model: with wildcards * and ?, a comma for \
+                 alternatives (class:light,light_spot), a leading - to exclude, a bare word matches class or name. \
+                 Terms of the same kind are alternatives, different kinds must all match. Empty (or none) clears \
+                 it; Esc in the views with nothing selected clears it too.",
+            ),
+            ToolOption::new(
+                "filter_kinds",
+                kinds,
+                "which kinds of object the selection filter lets through: all (default), none, or a comma list of \
+                 brushes (world brushes), entities (brush and point entities that are not props or lights), props \
+                 (prop_*), lights (light*, point_spotlight, env_projectedtexture).",
             ),
             ToolOption::new("gizmo", on_off(self.gizmo_visible), "on/off: show the transform gizmo in the 3D view."),
             ToolOption::new(

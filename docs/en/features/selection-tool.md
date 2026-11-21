@@ -105,6 +105,18 @@ The right end of the options bar has a **Class** / **Material** switch, a text f
 - Hold `Ctrl` while applying to add to the selection.
 - The bar then shows **{n} found** or **No match**. When the bar has no room left for it, the count shows in the tooltip of **Select** instead. A query that finds nothing keeps the current selection.
 
+### Selection filter
+
+The options bar has a **Filter** field and four toggles: **Brushes**, **Entities**, **Props**, **Lights**. While a filter is set, box selection, clicks and `Ctrl` paint selection in the 2D and 3D views only take the objects that match: type `class:light` and drag a box over a room to select only its lights.
+
+- Terms: `class:` (class name), `name:` (targetname), `material:` (any face of the brushes), `model:` (model of a prop, part of the path is enough). A word without a prefix matches the class or the name (any part of it).
+- Wildcards `*` and `?` work: `class:light*` takes `light`, `light_spot` and `light_dynamic`, `class:prop_*` every prop, `name:door*` every name starting with door. Without a wildcard, `class:` and `name:` need the exact name.
+- A comma gives alternatives (`class:light,light_spot`), several terms of the same kind are alternatives too, terms of different kinds must all match (`name:door* class:func_*`). A leading `-` excludes (`-class:light*`).
+- The toggles keep or drop whole kinds: **Brushes** (world brushes), **Entities** (brush and point entities that are not props or lights), **Props** (`prop_*`), **Lights** (`light*`, `point_spotlight`, `env_projectedtexture`).
+- While a filter is active the **Filter** label turns yellow and each view shows a yellow **Selection filter: ...** badge in its bottom left corner, so a box that selects nothing is never a mystery (a box that finds objects but none matching also says so).
+- `Escape` in the field, the **Clear** button, or `Escape` in a view when nothing is selected removes the filter. The filter lasts for the session.
+- MCP: `set_tool_options` with `filter` and `filter_kinds` (all, none, or a list such as `lights,props`), and `select_in_box` takes `filter`, `kinds` and `use_tool_filter`.
+
 ## Transforming in the 2D views
 
 Drag inside the selection box to move it. Drag an object that is not selected to select it and move it at once. The handles on the box depend on the handle mode:
@@ -246,8 +258,9 @@ With a selection, a right click in a view adds at the top: **Move to floor**, **
 | **Local** | Gizmo of a single point entity follows its angles (saved in the settings) | Off |
 | **Pivot** | Shows the movable pivot | Off |
 | **Class** / **Material**, field, **Select** | Select by class or material | Class |
+| **Filter**, **Brushes** / **Entities** / **Props** / **Lights**, **Clear** | Selection filter (see above) | Empty, all kinds |
 
-The box, handle and gizmo choices last for the session. These options are also reachable by name through scripts (`tool_option`) and the MCP tools `get_tool_options` / `set_tool_options` (`handles`, `box`, `gizmo`, `edit_mode`, `gizmo_mode`, `gizmo_local`, `stretch_handles`, `box_confirm`, `pending_box`). `edit_mode` takes gizmo, box or none. `pending_box` reads the waiting box, takes `x1 y1 x2 y2` to draw one in a 2D view, `confirm`, `add` or `cancel`.
+The box, handle and gizmo choices last for the session. These options are also reachable by name through scripts (`tool_option`) and the MCP tools `get_tool_options` / `set_tool_options` (`handles`, `box`, `gizmo`, `edit_mode`, `gizmo_mode`, `gizmo_local`, `stretch_handles`, `box_confirm`, `pending_box`, `filter`, `filter_kinds`). `edit_mode` takes gizmo, box or none. `pending_box` reads the waiting box, takes `x1 y1 x2 y2` to draw one in a 2D view, `confirm`, `add` or `cancel`.
 
 ## Settings
 

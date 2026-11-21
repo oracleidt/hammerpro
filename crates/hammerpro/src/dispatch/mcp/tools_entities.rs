@@ -127,6 +127,7 @@ domain! { "entities and io";
             "find": string("Text."), "whole_word": boolean("Whole words only."), "case_sensitive": boolean("Match case."),
             "key_names": boolean("Search key names too."), "ids": ids("Only these entities."),
             "visible_only": boolean("Visible entities only."), "limit": limit(), "offset": offset(),
+            "select": boolean("Select every matched entity and frame them in the views, like Select all in the Find and Replace window."),
         }, ["find"];
     replace_text: Edit, "Replace text",
         "Replace text in keyvalues, key names and outputs of entities (every match of find_text).",
@@ -751,12 +752,29 @@ fn field_json(f: &TextField) -> Value {
 fn find_text(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let q = text_query(state, a)?;
     let matches = state.doc.find_text(&q);
+    let mut selected = None;
+    if a.opt_bool("select")?.unwrap_or(false) {
+        let mut ids: Vec<hp_editor::Id> = matches.iter().filter(|m| !m.world).map(|m| m.entity).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        let objs: Vec<hp_editor::ObjRef> = ids.into_iter().map(hp_editor::ObjRef::Entity).collect();
+        if !objs.is_empty() {
+            state.doc.set_selection(&objs);
+            state.request(hp_app::Action::Center2dOnSelection);
+            state.request(hp_app::Action::Center3dOnSelection);
+        }
+        selected = Some(objs.len());
+    }
     let (matches, total) = page(matches, a)?;
     let list: Vec<Value> = matches
         .iter()
         .map(|m| json!({ "entity": m.entity, "world": m.world, "field": field_json(&m.field), "text": m.text, "count": m.ranges.len() }))
         .collect();
-    Ok(ToolResult::json(json!({ "total": total, "matches": list })))
+    let mut out = json!({ "total": total, "matches": list });
+    if let Some(n) = selected {
+        out["selected"] = json!(n);
+    }
+    Ok(ToolResult::json(out))
 }
 
 fn replace_text(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {

@@ -8,21 +8,23 @@ use hp_geom::Aabb;
 use hp_render::Overlay;
 
 use super::apply::{ApplyError, Target, create_curve, material_of, read_curve, replace_curve};
+use super::faces::{Align, ArchError, FacePick, MIN_RISE, MIN_SPAN, default_apex, plan_arch, span_axis};
 use super::geom::{
     BuildError, CurveError, CurveLayout, MAX_CURVE_POINTS, MAX_HEIGHT, MAX_SUBDIVISIONS, MAX_THICKNESS, MIN_HEIGHT,
-    MIN_SUBDIVISIONS, MIN_THICKNESS, clamp_height, clamp_subdivisions, clamp_thickness, clean_points, layout,
+    MIN_SUBDIVISIONS, MIN_THICKNESS, clamp_height, clamp_subdivisions, clamp_thickness, clean_points, layout_capped,
     nearest_on_spline,
 };
 use super::meta::CurveMeta;
+use super::pick::{face_at, plane_point, snapped_2d, surface_point};
 use super::section::{
     MAX_AUTO_GAIN, MAX_AUTO_LIMIT, MAX_CURB_HEIGHT, MAX_CURB_WIDTH, MAX_DITCH_DEPTH, MAX_ROLL, Piece, PieceInput,
     Profile, Section, pieces,
 };
 use crate::block::{CreateAs, create_as_ui, new_depth_range};
 use crate::common::{
-    COLOR_PENDING, COLOR_REMOVED, COLOR_SHAPE, Edge, HANDLE_TOLERANCE, MIN_EXTENT, Mouse, Ov, Snap, active_material,
-    box_screen_rect, consume_plain_key, depth_axis, fgd_defaults, fmt_len, fmt_size, fresh, material_chip,
-    paint_handle, paint_label, rgba,
+    COLOR_FRONT, COLOR_GHOST, COLOR_PENDING, COLOR_REMOVED, COLOR_SHAPE, Edge, HANDLE_TOLERANCE, MIN_EXTENT, Mouse, Ov,
+    Snap, active_material, box_screen_rect, consume_plain_key, depth_axis, fgd_defaults, fmt_len, fmt_size, fresh,
+    material_chip, paint_handle, paint_label, rgba,
 };
 use crate::picker::ClassPicker;
 
@@ -39,6 +41,8 @@ pub struct CurveOptions {
     pub create_as: CreateAs,
     pub keep_active: bool,
     pub section: Section,
+    pub pick_faces: bool,
+    pub align: Align,
 }
 
 impl Default for CurveOptions {
@@ -51,6 +55,8 @@ impl Default for CurveOptions {
             create_as: CreateAs::World,
             keep_active: true,
             section: Section::default(),
+            pick_faces: false,
+            align: Align::Inner,
         }
     }
 }
@@ -66,6 +72,7 @@ struct Stroke {
     kind: ViewKind,
     points: Vec<DVec2>,
     depth: (f64, f64),
+    cap: Option<DVec2>,
 }
 
 impl Stroke {
@@ -82,9 +89,20 @@ struct Hover {
     frame: u64,
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+struct FaceSteps {
+    a: Option<FacePick>,
+    b: Option<FacePick>,
+    apex: Option<f64>,
+    hover: Option<(FacePick, usize, u64)>,
+    error: Option<ArchError>,
+    built: Option<(f64, Align)>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Drag {
     Point { view: usize, index: usize },
+    Point3d { view: usize, index: usize },
     Freehand { view: usize },
     Depth { view: usize, end: Option<Edge>, start: (f64, f64), from: f64 },
     Swallow,
@@ -108,11 +126,24 @@ pub struct CurveTool {
     initialized: bool,
     picker: ClassPicker,
     wheel: f32,
+    faces: FaceSteps,
+    point_hover: Option<(usize, usize, u64)>,
 }
 
 impl Default for CurveTool {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+pub(crate) fn arch_error_text(e: &ArchError) -> String {
+    match e {
+        ArchError::NotVertical => t!("curve.arch.err.vertical").to_owned(),
+        ArchError::NotAligned => t!("curve.arch.err.aligned").to_owned(),
+        ArchError::TooNarrow => tf!("curve.arch.err.narrow", MIN_SPAN),
+        ArchError::TooFlat => tf!("curve.arch.err.flat", MIN_RISE),
+        ArchError::NoDepth => tf!("curve.arch.err.depth", MIN_HEIGHT),
+        ArchError::OutOfRange => t!("curve.err.range").to_owned(),
     }
 }
 
@@ -142,6 +173,8 @@ impl CurveTool {
             initialized: false,
             picker: ClassPicker::default(),
             wheel: 0.0,
+            faces: FaceSteps::default(),
+            point_hover: None,
         }
     }
 
@@ -171,7 +204,7 @@ impl CurveTool {
 
     pub fn layout(&self) -> Option<Result<CurveLayout, CurveError>> {
         let s = self.stroke.as_ref()?;
-        Some(layout(&s.points, self.options.subdivisions, self.total_width()))
+        Some(layout_capped(&s.points, self.options.subdivisions, self.total_width(), s.cap))
     }
 
     fn total_width(&self) -> f64 {
@@ -218,7 +251,8 @@ impl CurveTool {
         self.options.tex_scale = meta.tex_scale;
         self.options.section = meta.section;
         self.options.height = None;
-        self.stroke = Some(Stroke { kind: meta.kind, points: meta.points, depth: meta.depth });
+        self.faces = FaceSteps::default();
+        self.stroke = Some(Stroke { kind: meta.kind, points: meta.points, depth: meta.depth, cap: meta.cap });
         self.phase = CurvePhase::Adjusting;
         self.drag = None;
         self.hover = None;
@@ -303,7 +337,7 @@ impl CurveTool {
                     Some(h) => (lo, lo + clamp_height(h)),
                     None => (lo, hi),
                 };
-                self.stroke = Some(Stroke { kind, points: vec![p], depth });
+                self.stroke = Some(Stroke { kind, points: vec![p], depth, cap: None });
                 self.phase = CurvePhase::Drawing;
                 true
             }
@@ -311,6 +345,9 @@ impl CurveTool {
     }
 
     pub fn remove_last_point(&mut self) -> bool {
+        if self.face_mode_active() {
+            return self.face_step_back();
+        }
         let floor = if self.editing.is_some() { 2 } else { 0 };
         let Some(s) = self.stroke.as_mut() else { return false };
         if s.points.len() <= floor {
@@ -350,6 +387,276 @@ impl CurveTool {
         was
     }
 
+    pub fn face_mode_active(&self) -> bool {
+        self.options.pick_faces && self.editing.is_none() && self.phase == CurvePhase::Drawing
+    }
+
+    pub fn set_pick_faces(&mut self, on: bool) {
+        if self.options.pick_faces == on {
+            return;
+        }
+        self.options.pick_faces = on;
+        self.faces = FaceSteps::default();
+        if self.editing.is_none() && self.phase == CurvePhase::Drawing {
+            self.stroke = None;
+        }
+        self.drag = None;
+    }
+
+    pub fn set_align(&mut self, align: Align) {
+        self.options.align = align;
+        if self.faces.b.is_some() {
+            self.rebuild_from_faces();
+        }
+    }
+
+    pub fn picked_faces(&self) -> usize {
+        usize::from(self.faces.a.is_some()) + usize::from(self.faces.b.is_some())
+    }
+
+    pub fn arch_error(&self) -> Option<&ArchError> {
+        self.faces.error.as_ref()
+    }
+
+    pub fn pick_face(&mut self, state: &AppState, face: FacePick) -> bool {
+        self.ensure_init(state);
+        if !self.options.pick_faces || self.editing.is_some() {
+            return false;
+        }
+        if let Err(e) = span_axis(face.normal) {
+            self.faces.error = Some(e);
+            return false;
+        }
+        self.faces.error = None;
+        self.faces.hover = None;
+        match (&self.faces.a, &self.faces.b) {
+            (None, _) => {
+                self.faces.a = Some(face);
+                true
+            }
+            (Some(_), None) => {
+                self.faces.b = Some(face);
+                self.faces.apex = None;
+                if self.rebuild_from_faces() {
+                    true
+                } else {
+                    self.faces.b = None;
+                    false
+                }
+            }
+            (Some(_), Some(_)) => false,
+        }
+    }
+
+    pub fn set_apex(&mut self, z: f64) -> bool {
+        if self.faces.b.is_none() || !z.is_finite() {
+            return false;
+        }
+        let old = self.faces.apex;
+        self.faces.apex = Some(z);
+        if self.rebuild_from_faces() {
+            true
+        } else {
+            self.faces.apex = old;
+            self.rebuild_from_faces();
+            false
+        }
+    }
+
+    pub fn apex(&self) -> Option<f64> {
+        let (a, b) = (self.faces.a.as_ref()?, self.faces.b.as_ref()?);
+        Some(self.faces.apex.unwrap_or_else(|| default_apex(a, b)))
+    }
+
+    fn rebuild_from_faces(&mut self) -> bool {
+        let (Some(a), Some(b), Some(apex)) = (self.faces.a.as_ref(), self.faces.b.as_ref(), self.apex()) else {
+            return false;
+        };
+        match plan_arch(a, b, apex, self.options.thickness, self.options.align) {
+            Ok(plan) => {
+                self.faces.error = None;
+                self.faces.built = Some((self.options.thickness, self.options.align));
+                self.stroke =
+                    Some(Stroke { kind: plan.kind, points: plan.points, depth: plan.depth, cap: Some(plan.cap) });
+                true
+            }
+            Err(e) => {
+                self.faces.error = Some(e);
+                false
+            }
+        }
+    }
+
+    fn sync_faces(&mut self) {
+        if self.faces.b.is_some() && self.faces.built != Some((self.options.thickness, self.options.align)) {
+            self.rebuild_from_faces();
+        }
+    }
+
+    fn face_status(&self) -> Option<String> {
+        if !self.face_mode_active() {
+            return None;
+        }
+        let back = key_label(Key::Backspace);
+        let escape = key_label(Key::Escape);
+        let enter = key_label(Key::Enter);
+        let hint = match (&self.faces.a, &self.faces.b) {
+            (None, _) => t!("curve.hint_face_a").to_owned(),
+            (Some(_), None) => tf!("curve.hint_face_b", back, escape),
+            (Some(_), Some(_)) => tf!("curve.hint_face_apex", enter, back, escape),
+        };
+        Some(match &self.faces.error {
+            Some(e) => format!("{hint} {}", arch_error_text(e)),
+            None => hint,
+        })
+    }
+
+    fn face_step_back(&mut self) -> bool {
+        self.faces.error = None;
+        if self.faces.b.take().is_some() {
+            self.faces.apex = None;
+            self.stroke = None;
+            return true;
+        }
+        self.faces.a.take().is_some()
+    }
+
+    fn apex_from(&self, view: &ViewInfo, pos: Pos2, snap: &Snap) -> Option<f64> {
+        let s = self.stroke.as_ref()?;
+        let z = if view.is_2d() {
+            let (_, u, _) = view.kind.axes_2d()?;
+            if u != 2 {
+                return None;
+            }
+            view.screen_to_2d(pos).y
+        } else {
+            let d = s.depth_axis();
+            plane_point(view, pos, d, (s.depth.0 + s.depth.1) * 0.5)?.z
+        };
+        z.is_finite().then(|| snap.v(z, 2))
+    }
+
+    fn face_mouse(&mut self, state: &mut AppState, view: &ViewInfo, m: &Mouse) -> ToolFlow {
+        let Some(pos) = m.pos else { return ToolFlow::Ignored };
+        let snap = Snap::new(state, view, m.modifiers);
+        if self.faces.b.is_some() {
+            if let Some(z) = self.apex_from(view, pos, &snap) {
+                self.set_apex(z);
+            }
+            if m.hovering() {
+                return ToolFlow::Ignored;
+            }
+            if (m.clicked && !m.drag_started) || m.drag_stopped {
+                self.validate();
+            }
+            return ToolFlow::Handled;
+        }
+        let face = face_at(state, view, pos, &snap);
+        if m.hovering() {
+            self.faces.hover = face.map(|f| (f, view.index, state.frame.index));
+            return ToolFlow::Ignored;
+        }
+        if m.clicked && !m.drag_started {
+            return match face {
+                Some(f) => {
+                    if !self.pick_face(state, f)
+                        && let Some(e) = &self.faces.error
+                    {
+                        state.notify(Severity::Warning, arch_error_text(e));
+                    }
+                    ToolFlow::Handled
+                }
+                None if view.is_2d() => ToolFlow::Handled,
+                None => ToolFlow::Ignored,
+            };
+        }
+        if view.is_2d() { ToolFlow::Handled } else { ToolFlow::Ignored }
+    }
+
+    fn point_at_3d(&self, view: &ViewInfo, pos: Pos2) -> Option<usize> {
+        let s = self.stroke.as_ref()?;
+        let mid = (s.depth.0 + s.depth.1) * 0.5;
+        s.points
+            .iter()
+            .enumerate()
+            .filter_map(|(i, p)| view.world_to_screen(s.kind.from_2d(*p, mid)).map(|q| (i, q.distance(pos))))
+            .filter(|(_, d)| *d <= HANDLE_TOLERANCE + 2.0)
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(i, _)| i)
+    }
+
+    fn point_from_3d(&self, state: &AppState, view: &ViewInfo, pos: Pos2, snap: &Snap) -> Option<DVec2> {
+        let s = self.stroke.as_ref()?;
+        let fallback = (s.depth_axis(), (s.depth.0 + s.depth.1) * 0.5);
+        let q = s.kind.to_2d(surface_point(state, view, pos, snap, fallback)?);
+        q.is_finite().then_some(q)
+    }
+
+    fn mouse_3d(&mut self, state: &mut AppState, view: &ViewInfo, m: &Mouse) -> ToolFlow {
+        let Some(pos) = m.pos else { return ToolFlow::Ignored };
+        if self.stroke.is_none() {
+            return ToolFlow::Ignored;
+        }
+        let snap = Snap::new(state, view, m.modifiers);
+        if m.hovering() {
+            self.point_hover = self.point_at_3d(view, pos).map(|i| (view.index, i, state.frame.index));
+            return ToolFlow::Ignored;
+        }
+        let origin = m.origin().unwrap_or(pos);
+        if m.drag_started {
+            self.drag = self.point_at_3d(view, origin).map(|index| Drag::Point3d { view: view.index, index });
+            if self.drag.is_none() {
+                return ToolFlow::Ignored;
+            }
+        }
+        if (m.dragging || m.drag_stopped)
+            && let Some(Drag::Point3d { view: vi, index }) = self.drag
+        {
+            if vi == view.index
+                && let Some(p) = self.point_from_3d(state, view, pos, &snap)
+                && let Some(slot) = self.stroke.as_mut().and_then(|s| s.points.get_mut(index))
+            {
+                *slot = p;
+            }
+            if m.drag_stopped {
+                self.drag = None;
+            }
+            return ToolFlow::Handled;
+        }
+        if m.clicked && !m.drag_started && self.drag.is_none() {
+            if m.double_clicked {
+                match self.phase {
+                    CurvePhase::Drawing => {
+                        self.validate();
+                    }
+                    CurvePhase::Adjusting => {
+                        self.create(state);
+                    }
+                }
+                return ToolFlow::Handled;
+            }
+            if m.modifiers.command
+                && let Some(index) = self.point_at_3d(view, origin)
+            {
+                self.remove_point_at(index);
+                return ToolFlow::Handled;
+            }
+            if let Some(p) = self.point_from_3d(state, view, origin, &snap) {
+                if m.modifiers.shift {
+                    self.insert_point_near(p);
+                    return ToolFlow::Handled;
+                }
+                if self.phase == CurvePhase::Drawing
+                    && let Some(kind) = self.view_kind()
+                {
+                    self.add_point(state, kind, p);
+                    return ToolFlow::Handled;
+                }
+            }
+        }
+        ToolFlow::Ignored
+    }
+
     fn meta(&self) -> Option<CurveMeta> {
         let s = self.stroke.as_ref()?;
         Some(CurveMeta {
@@ -360,6 +667,7 @@ impl CurveTool {
             thickness: clamp_thickness(self.options.thickness),
             tex_scale: self.options.tex_scale,
             section: self.options.section.clamped(),
+            cap: s.cap,
         })
     }
 
@@ -406,6 +714,7 @@ impl CurveTool {
                 state.runtime.brush.last_created = Some(bounds);
                 self.finish_edit();
                 self.stroke = None;
+                self.faces = FaceSteps::default();
                 self.phase = CurvePhase::Drawing;
                 self.hover = None;
                 self.drag = None;
@@ -492,8 +801,11 @@ impl CurveTool {
 
     pub(crate) fn handle_mouse(&mut self, state: &mut AppState, view: &ViewInfo, m: &Mouse) -> ToolFlow {
         self.ensure_init(state);
+        if self.face_mode_active() {
+            return self.face_mouse(state, view, m);
+        }
         if !view.is_2d() {
-            return ToolFlow::Ignored;
+            return self.mouse_3d(state, view, m);
         }
         let Some(pos) = m.pos else { return ToolFlow::Ignored };
         let snap = Snap::new(state, view, m.modifiers);
@@ -503,7 +815,7 @@ impl CurveTool {
             self.depth_hover = self.depth_handle_at(view, pos).map(|e| (view.index, e, state.frame.index));
             self.hover = (drawing_view && adding).then(|| Hover {
                 kind: view.kind,
-                point: snap.v2(view.screen_to_2d(pos)),
+                point: snapped_2d(state, view, pos, &snap),
                 full: self.points().len() >= MAX_CURVE_POINTS,
                 frame: state.frame.index,
             });
@@ -520,7 +832,7 @@ impl CurveTool {
                     self.drag = Some(Drag::Depth { view: view.index, end, start: s.depth, from });
                 }
             } else if drawing_view && adding {
-                self.add_point(state, view.kind, snap.v2(view.screen_to_2d(origin)));
+                self.add_point(state, view.kind, snapped_2d(state, view, origin, &snap));
                 self.drag = Some(Drag::Freehand { view: view.index });
             } else {
                 self.drag = Some(Drag::Swallow);
@@ -529,7 +841,7 @@ impl CurveTool {
         if m.dragging || m.drag_stopped {
             match self.drag {
                 Some(Drag::Point { view: vi, index }) if vi == view.index => {
-                    let p = snap.v2(view.screen_to_2d(pos));
+                    let p = snapped_2d(state, view, pos, &snap);
                     if let Some(s) = self.stroke.as_mut()
                         && let Some(slot) = s.points.get_mut(index)
                         && p.is_finite()
@@ -585,9 +897,9 @@ impl CurveTool {
             {
                 self.remove_point_at(index);
             } else if m.modifiers.shift && self.stroke.is_some() {
-                self.insert_point_near(snap.v2(view.screen_to_2d(origin)));
+                self.insert_point_near(snapped_2d(state, view, origin, &snap));
             } else if adding {
-                self.add_point(state, view.kind, snap.v2(view.screen_to_2d(origin)));
+                self.add_point(state, view.kind, snapped_2d(state, view, origin, &snap));
             }
         }
         if m.drag_stopped {
@@ -627,6 +939,103 @@ impl CurveTool {
                 self.set_height(h);
             }
         }
+    }
+
+    fn faces_ui(&mut self, ui: &mut Ui) {
+        ui.separator();
+        let mut on = self.options.pick_faces;
+        if ui.toggle_value(&mut on, t!("curve.pick_faces")).on_hover_text(t!("curve.pick_faces_tip")).changed() {
+            self.set_pick_faces(on);
+        }
+        if !self.options.pick_faces {
+            return;
+        }
+        let name = |a: Align| match a {
+            Align::Inner => t!("curve.align.inner"),
+            Align::Center => t!("curve.align.center"),
+            Align::Outer => t!("curve.align.outer"),
+        };
+        ui.label(t!("curve.align")).on_hover_text(t!("curve.align_tip"));
+        let mut align = self.options.align;
+        egui::ComboBox::from_id_salt("hp_curve_align")
+            .selected_text(name(align))
+            .show_ui(ui, |ui| {
+                for a in Align::ALL {
+                    ui.selectable_value(&mut align, a, name(a));
+                }
+            })
+            .response
+            .on_hover_text(t!("curve.align_tip"));
+        if align != self.options.align {
+            self.set_align(align);
+        }
+        if self.faces.a.is_some() {
+            ui.label(tf!("curve.faces_picked", self.picked_faces()));
+        }
+    }
+
+    fn face_overlay(&self, state: &AppState, ov: &mut Ov<'_>) {
+        if !self.options.pick_faces || self.editing.is_some() {
+            return;
+        }
+        let picked = rgba(COLOR_FRONT, 1.0);
+        for f in [&self.faces.a, &self.faces.b].into_iter().flatten() {
+            ov.polygon_outline(&f.polygon, picked, true);
+            ov.point(f.point, picked, 8.0);
+        }
+        if !self.face_mode_active() || self.faces.b.is_some() {
+            return;
+        }
+        let Some((h, _, frame)) = &self.faces.hover else { return };
+        if !fresh(state, *frame) {
+            return;
+        }
+        let ghost = rgba(COLOR_GHOST, 1.0);
+        ov.polygon_outline(&h.polygon, ghost, true);
+        ov.point(h.point, ghost, 7.0);
+        if let Some(a) = &self.faces.a {
+            ov.xray_line(a.point, h.point, rgba(COLOR_PENDING, 0.8));
+        }
+    }
+
+    fn face_paint(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
+        if !self.face_mode_active() {
+            return;
+        }
+        if self.faces.b.is_some() {
+            let Some(s) = &self.stroke else { return };
+            let mid = (s.depth.0 + s.depth.1) * 0.5;
+            let Some(top) = s.points.get(s.points.len() / 2) else { return };
+            let Some(p) = view.world_to_screen(s.kind.from_2d(*top, mid)) else { return };
+            if !view.rect.contains(p) {
+                return;
+            }
+            let (text, color) = match &self.faces.error {
+                Some(e) => (arch_error_text(e), hp_app::theme::VIEW_ERROR),
+                None => {
+                    let a = self.faces.a.as_ref().map_or(0.0, |a| a.point.z);
+                    let b = self.faces.b.as_ref().map_or(0.0, |b| b.point.z);
+                    let rise = self.apex().unwrap_or(0.0) - (a + b) * 0.5;
+                    (tf!("curve.arch_rise", fmt_len(rise)), COLOR_PENDING)
+                }
+            };
+            paint_label(painter, p - Vec2::new(0.0, 14.0), Align2::CENTER_BOTTOM, &text, color);
+            return;
+        }
+        let Some((h, _, frame)) = &self.faces.hover else { return };
+        if !fresh(state, *frame) {
+            return;
+        }
+        let Some(p) = view.world_to_screen(h.point) else { return };
+        if !view.rect.contains(p) {
+            return;
+        }
+        let text = match (&self.faces.a, span_axis(h.normal)) {
+            (_, Err(e)) => arch_error_text(&e),
+            (Some(a), Ok(axis)) => tf!("curve.arch_span", fmt_len((h.point[axis] - a.point[axis]).abs())),
+            (None, Ok(_)) => tf!("curve.arch_start", fmt_len(h.point.z)),
+        };
+        paint_label(painter, p + Vec2::new(12.0, 12.0), Align2::LEFT_TOP, &text, COLOR_PENDING);
     }
 
     fn section_problem(&self) -> Option<(String, bool)> {
@@ -846,7 +1255,7 @@ impl Tool for CurveTool {
     }
 
     fn key_input(&mut self, state: &mut AppState, ctx: &egui::Context) -> bool {
-        if self.stroke.is_none() {
+        if self.stroke.is_none() && !(self.face_mode_active() && self.faces.a.is_some()) {
             return false;
         }
         if consume_plain_key(ctx, Key::Enter) {
@@ -874,6 +1283,7 @@ impl Tool for CurveTool {
 
     fn overlay(&self, state: &AppState, view: &ViewInfo, out: &mut Overlay) {
         let mut ov = Ov::new(out, view);
+        self.face_overlay(state, &mut ov);
         let line = rgba(COLOR_PENDING, 1.0);
         let Some(s) = &self.stroke else {
             if let Some(h) = self.hover_in(state, view.kind) {
@@ -925,10 +1335,28 @@ impl Tool for CurveTool {
                 ov.hull_faces(&c, if folded(piece.quad) { rgba(COLOR_REMOVED, 0.25) } else { fill });
             }
         }
+        if !view.is_2d() && !self.face_mode_active() {
+            let mid = (s.depth.0 + s.depth.1) * 0.5;
+            let hovered =
+                self.point_hover.filter(|(vi, _, frame)| *vi == view.index && fresh(state, *frame)).map(|(_, i, _)| i);
+            let dragged = match self.drag {
+                Some(Drag::Point3d { index, .. }) => Some(index),
+                _ => None,
+            };
+            for (i, p) in s.points.iter().enumerate() {
+                let big = hovered == Some(i) || dragged == Some(i);
+                ov.point(
+                    s.kind.from_2d(*p, mid),
+                    if big { rgba(COLOR_SHAPE, 1.0) } else { line },
+                    if big { 10.0 } else { 7.0 },
+                );
+            }
+        }
     }
 
     fn paint(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
         let painter = painter.with_clip_rect(view.rect.intersect(painter.clip_rect()));
+        self.face_paint(state, view, &painter);
         let Some(s) = &self.stroke else { return };
         if !view.is_2d() {
             if let Some(b) = self.preview_bounds()
@@ -1015,6 +1443,9 @@ impl Tool for CurveTool {
             {
                 self.options.keep_active = !self.options.keep_active;
             }
+            if self.editing.is_none() {
+                self.faces_ui(ui);
+            }
             let count = self.points().len();
             if ui
                 .add_enabled(count > 0 && self.phase == CurvePhase::Drawing, egui::Button::new(t!("curve.undo_point")))
@@ -1057,11 +1488,18 @@ impl Tool for CurveTool {
             }
         });
         self.adjust_window(ui, state);
+        self.sync_faces();
     }
 
     fn cursor(&self, _state: &AppState, view: &ViewInfo, pos: Pos2) -> Option<CursorIcon> {
+        if self.face_mode_active() {
+            return Some(CursorIcon::Crosshair);
+        }
         if !view.is_2d() {
-            return None;
+            return match self.drag {
+                Some(Drag::Point3d { .. }) => Some(CursorIcon::Grabbing),
+                _ => self.point_at_3d(view, pos).map(|_| CursorIcon::Grab),
+            };
         }
         match self.drag {
             Some(Drag::Point { .. }) => return Some(CursorIcon::Grabbing),
@@ -1088,6 +1526,9 @@ impl Tool for CurveTool {
         let back = key_label(Key::Backspace);
         let escape = key_label(Key::Escape);
         let ctrl = if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" };
+        if let Some(hint) = self.face_status() {
+            return Some(hint);
+        }
         Some(match (&self.stroke, self.phase) {
             (None, _) => t!("curve.hint_idle").to_owned(),
             (Some(_), _) if self.editing.is_some() => tf!("curve.hint_edit", enter, escape, ctrl),
@@ -1099,7 +1540,9 @@ impl Tool for CurveTool {
     }
 
     fn cancel(&mut self, _state: &mut AppState) -> bool {
-        let had = self.stroke.is_some() || self.drag.is_some();
+        let had = self.stroke.is_some() || self.drag.is_some() || self.faces.a.is_some();
+        self.faces = FaceSteps::default();
+        self.point_hover = None;
         self.wheel = 0.0;
         self.finish_edit();
         self.stroke = None;
@@ -1131,6 +1574,7 @@ impl Tool for CurveTool {
             "thickness" => match num {
                 Some(t) if (MIN_THICKNESS..=MAX_THICKNESS).contains(&t) => {
                     self.set_thickness(t);
+                    self.sync_faces();
                     true
                 }
                 _ => false,
@@ -1157,6 +1601,8 @@ impl Tool for CurveTool {
                 None => false,
             },
             "keep_active" => flag.map(|b| self.options.keep_active = b).is_some(),
+            "pick_faces" => flag.map(|b| self.set_pick_faces(b)).is_some(),
+            "arch_align" => Align::parse(v).map(|a| self.set_align(a)).is_some(),
             "profile" => Profile::parse(v).map(|p| self.options.section.profile = p).is_some(),
             "curb_width" => ranged(num, 1.0, MAX_CURB_WIDTH).map(|x| self.options.section.curb_width = x).is_some(),
             "curb_height" => ranged(num, 0.0, MAX_CURB_HEIGHT).map(|x| self.options.section.curb_height = x).is_some(),
@@ -1218,6 +1664,16 @@ impl Tool for CurveTool {
                 "keep_active",
                 if o.keep_active { "on" } else { "off" },
                 "on: stay in the curve tool after creating",
+            ),
+            ToolOption::new(
+                "pick_faces",
+                if o.pick_faces { "on" } else { "off" },
+                "on: Pick from faces mode, click a side face of an opening, the opposite face, then the top of the arch: the arch spans exactly between the faces and takes the wall depth",
+            ),
+            ToolOption::new(
+                "arch_align",
+                o.align.name(),
+                "Pick from faces: which edge of the arch touches the faces, inner (the opening keeps its width, the arch rests over the jambs), center or outer (the arch fits inside the opening)",
             ),
             ToolOption::new(
                 "profile",

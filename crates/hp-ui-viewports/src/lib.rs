@@ -398,6 +398,23 @@ impl Viewports {
         self.mouselook.is_some() && !self.fly_free
     }
 
+    fn aim_pointer(&self, slot: &Slot) -> Option<Pos2> {
+        if slot.kind != ViewKind::Perspective {
+            return None;
+        }
+        if let Some(ml) = self.mouselook {
+            return (ml.view == slot.index && !self.fly_free).then(|| slot.rect.center());
+        }
+        match self.gesture {
+            Some(Gesture::Look { view, kind: ViewKind::Perspective, press, looking: true, .. })
+                if view == slot.index =>
+            {
+                Some(press)
+            }
+            _ => None,
+        }
+    }
+
     pub fn is_context_menu_open(&self) -> bool {
         self.menu.is_some()
     }
@@ -1612,6 +1629,7 @@ impl Viewports {
         let view = view_info(i, slot.kind, slot.rect, &state.cameras, cfg, ppp);
         let is_hovered = hovered == Some(i);
         let pointer_here = if is_hovered || self.capture_view == Some(i) { input.pointer } else { None };
+        let pointer_here = if nav_here { self.aim_pointer(slot).or(pointer_here) } else { pointer_here };
 
         let mut hover_set = false;
         if is_hovered
@@ -1640,7 +1658,8 @@ impl Viewports {
                 || (self.capture_view.is_none()
                     && is_hovered
                     && slot.kind == ViewKind::Perspective
-                    && tool_works_while_navigating(tool.id()))
+                    && (tool_works_while_navigating(tool.id())
+                        || (self.mouselook_locked() && tool_aims_in_camera_mode(tool.id()))))
         } else {
             self.capture_view == Some(i) || (self.capture_view.is_none() && is_hovered)
         };
@@ -2212,6 +2231,36 @@ impl Viewports {
                                 });
                             });
                         }
+                        MenuEntry::Visgroups => {
+                            ui.add_enabled_ui(enabled, |ui| {
+                                ui.menu_button(t!("viewport.visgroups"), |ui| {
+                                    ui.set_min_width(200.0);
+                                    for action in [Action::MoveToVisgroup, Action::RemoveFromAllVisgroups] {
+                                        let sc = state.keys.shortcut(action);
+                                        let on = action.enabled(state);
+                                        if hp_app::widgets::action_button(ui, action.label(), sc.as_ref(), on) {
+                                            choice = Some(MenuChoice::Action(action));
+                                        }
+                                    }
+                                    let groups = if enabled {
+                                        state.doc.visgroups_of(&state.doc.selected_objects())
+                                    } else {
+                                        Vec::new()
+                                    };
+                                    ui.add_enabled_ui(!groups.is_empty(), |ui| {
+                                        ui.menu_button(t!("viewport.remove_from_visgroup"), |ui| {
+                                            ui.set_min_width(160.0);
+                                            for id in groups {
+                                                let Some(g) = state.doc.visgroup(id) else { continue };
+                                                if ui.button(g.name.as_str()).clicked() {
+                                                    choice = Some(MenuChoice::RemoveFromVisgroup(id));
+                                                }
+                                            }
+                                        });
+                                    });
+                                });
+                            });
+                        }
                         MenuEntry::CenterHere => {
                             if ui.add_enabled(enabled, egui::Button::new(t!("viewport.center_here"))).clicked() {
                                 choice = Some(MenuChoice::CenterHere);
@@ -2252,6 +2301,12 @@ impl Viewports {
     fn run_menu_choice(&mut self, state: &mut AppState, menu: &OpenMenu, choice: MenuChoice) {
         match choice {
             MenuChoice::Tool(_) => {}
+            MenuChoice::RemoveFromVisgroup(id) => {
+                let objs = state.doc.selected_objects();
+                if let Err(e) = state.doc.remove_from_visgroup(id, &objs) {
+                    state.notify(Severity::Warning, tf!("viewport.edit_failed", e));
+                }
+            }
             MenuChoice::Action(a) => {
                 if matches!(a, Action::PlaceAgainstWall | Action::PlaceAgainstWallAway) {
                     state.runtime.placement.menu_hit = menu
@@ -2491,6 +2546,7 @@ fn menu_context(state: &AppState, menu: &OpenMenu) -> MenuContext {
         has_point: menu.point.is_some(),
         has_entity_class: !state.current_entity_class.trim().is_empty(),
         team: state.runtime.collaboration.connected && state.runtime.collaboration.active_map,
+        has_objects: !state.doc.selection().objects.is_empty(),
     }
 }
 
@@ -2587,6 +2643,10 @@ pub fn fly_cursor_free(was_free: bool, alt_held: bool, buttons_down: &[bool]) ->
 
 pub fn tool_works_while_navigating(tool: ToolId) -> bool {
     tool == ToolId::Displacement
+}
+
+pub fn tool_aims_in_camera_mode(tool: ToolId) -> bool {
+    matches!(tool, ToolId::Foliage | ToolId::Decal)
 }
 
 pub fn format_zoom_percent(zoom: f64) -> String {

@@ -54,6 +54,7 @@ pub enum DepKind {
     Soundscape,
     Particle,
     ParticleManifest,
+    ParticleSystem,
     File,
 }
 
@@ -242,6 +243,7 @@ struct ParticleIndex {
     systems: HashMap<String, String>,
     files: HashMap<String, Arc<ParticleFile>>,
     in_base_manifest: HashSet<String>,
+    unlisted: std::sync::OnceLock<HashMap<String, String>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -612,12 +614,44 @@ impl<'a> Ctx<'a> {
         let mut e = Expansion::default();
         let key = name.trim().to_ascii_lowercase();
         let Some(index) = self.particles.as_ref() else { return e };
-        let Some(file) = index.systems.get(&key) else {
-            e.missing.push((DepKind::Particle, name.trim().to_owned()));
-            return e;
+        let file = match index.systems.get(&key) {
+            Some(f) => f,
+            None => match self.unlisted_systems(index).get(&key) {
+                Some(f) => f,
+                None => {
+                    e.missing.push((DepKind::ParticleSystem, name.trim().to_owned()));
+                    return e;
+                }
+            },
         };
         e.children.push((Req::File(DepKind::Particle), file.clone()));
         e
+    }
+
+    fn unlisted_systems<'i>(&self, index: &'i ParticleIndex) -> &'i HashMap<String, String> {
+        index.unlisted.get_or_init(|| {
+            let mut paths: Vec<String> = Vec::new();
+            let mut seen: HashSet<String> = HashSet::new();
+            for s in self.snapshot.iter().filter(|s| s.is_enabled()) {
+                s.for_each_path("particles", Some("pcf"), &mut |p| {
+                    if !index.files.contains_key(p) && seen.insert(p.to_owned()) {
+                        paths.push(p.to_owned());
+                    }
+                });
+            }
+            let parsed: Vec<(String, Option<ParticleFile>)> = paths
+                .par_iter()
+                .map(|f| (f.clone(), self.find(f).and_then(|s| s.read_cow(f).and_then(|b| parse_pcf(&b)))))
+                .collect();
+            let mut systems = HashMap::new();
+            for (file, pcf) in parsed {
+                let Some(pcf) = pcf else { continue };
+                for (system, _) in &pcf.systems {
+                    systems.entry(system.to_ascii_lowercase()).or_insert_with(|| file.clone());
+                }
+            }
+            systems
+        })
     }
 
     fn file(&self, vpath: &str, kind: DepKind) -> Expansion<'a> {
@@ -1073,6 +1107,7 @@ mod tests {
             b"particles_manifest { \"file\" \"particles/base.pcf\" }",
         );
         tmp.write("gmod/sourceengine/particles/base.pcf", &pcf::tests::build_pcf(&[("base_fire", "base/wall")]));
+        tmp.write("gmod/sourceengine/particles/unlisted.pcf", &pcf::tests::build_pcf(&[("unlisted_fx", "base/wall")]));
         for face in SKY_FACES {
             tmp.write(
                 &format!("gmod/sourceengine/materials/skybox/sky1{face}.vmt"),
@@ -1110,6 +1145,7 @@ mod tests {
             root(RootKind::Skybox, "sky1"),
             root(RootKind::Model, "models/missing.mdl"),
             root(RootKind::Particle, "nope_fx"),
+            root(RootKind::Particle, "Unlisted_FX"),
         ];
         let cache = DepsCache::new();
         let opts = ResolveOptions { map_name: "gm_t", ..ResolveOptions::default() };
@@ -1127,6 +1163,7 @@ mod tests {
             "scripts/soundscapes.txt",
             "particles/custom.pcf",
             "particles/base.pcf",
+            "particles/unlisted.pcf",
             "maps/gm_t_particles.txt",
             "materials/skybox/sky1up.vmt",
         ] {
@@ -1134,6 +1171,8 @@ mod tests {
         }
         let missing: Vec<&str> = g.missing.iter().map(|m| m.name.as_str()).collect();
         assert_eq!(missing, ["materials/custom/nope.vtf", "models/missing.mdl", "nope_fx"]);
+        assert_eq!(g.missing[2].kind, DepKind::ParticleSystem);
+        assert_eq!(g.missing[0].kind, DepKind::Texture);
         assert_eq!(g.missing[0].reasons, [DepReason::UsedBy("materials/custom/brick.vmt".into())]);
         let wall = g.find("materials/base/wall.vmt").unwrap();
         assert!(wall.reason_count >= 2);

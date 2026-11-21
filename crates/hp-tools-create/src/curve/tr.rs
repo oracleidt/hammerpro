@@ -66,8 +66,8 @@ pub const CURVE_TR: TrTable = &[
     ("curve.err.height", "The height must be {0} to {1} units", "La hauteur doit faire de {0} à {1} unités"),
     (
         "curve.hint_idle",
-        "Click points or drag a stroke in a 2D view to draw a curve",
-        "Cliquez des points ou faites glisser un tracé dans une vue 2D pour dessiner une courbe",
+        "Click points or drag a stroke in a 2D view to draw a curve, or turn on Pick from faces to fit an arch between two faces",
+        "Cliquez des points ou faites glisser un tracé dans une vue 2D pour dessiner une courbe, ou activez Choisir sur les faces pour placer un arc entre deux faces",
     ),
     (
         "curve.hint_points",
@@ -76,13 +76,13 @@ pub const CURVE_TR: TrTable = &[
     ),
     (
         "curve.hint_ready",
-        "Click or drag to add points, drag a point to move it. {0}: validate, {1}: remove the last point, {2}: cancel",
-        "Cliquez ou glissez pour ajouter des points, glissez un point pour le déplacer. {0} : valider, {1} : retirer le dernier point, {2} : annuler",
+        "Click or drag to add points, drag a point to move it (they snap to brush vertices and the grid in 2D, to surfaces and vertices in 3D). {0}: validate, {1}: remove the last point, {2}: cancel",
+        "Cliquez ou glissez pour ajouter des points, glissez un point pour le déplacer (accroche aux sommets des brushes et à la grille en 2D, aux surfaces et aux sommets en 3D). {0} : valider, {1} : retirer le dernier point, {2} : annuler",
     ),
     (
         "curve.hint_adjust",
-        "Choose the subdivisions and the thickness, points can still be dragged. {0}: create the brushes, {1}: back to drawing",
-        "Choisissez les subdivisions et l'épaisseur, les points se déplacent encore. {0} : créer les brushes, {1} : revenir au tracé",
+        "Choose the subdivisions and the thickness, points can still be dragged (in 3D they snap to surfaces and vertices). {0}: create the brushes, {1}: back to drawing",
+        "Choisissez les subdivisions et l'épaisseur, les points se déplacent encore (en 3D ils s'accrochent aux surfaces et aux sommets). {0} : créer les brushes, {1} : revenir au tracé",
     ),
     ("curve.profile", "Profile", "Profil"),
     (
@@ -150,4 +150,63 @@ pub const CURVE_TR: TrTable = &[
         "Editing a curve: drag points, click to add at the end, Shift+click to insert, {2}+click a point to remove it. {0}: apply, {1}: cancel",
         "Modification d'une courbe : glissez les points, cliquez pour ajouter à la fin, Maj+clic pour insérer, {2}+clic sur un point pour le retirer. {0} : appliquer, {1} : annuler",
     ),
+    ("curve.pick_faces", "Pick from faces", "Choisir sur les faces"),
+    (
+        "curve.pick_faces_tip",
+        "Arch between two faces: click a side face of the opening (3D or 2D view), then the opposite face, then the top of the arch. The arch spans exactly from face to face, takes the depth of the wall and its ends snap to the face edges and the grid.",
+        "Arc entre deux faces : cliquez une face latérale de l'ouverture (vue 3D ou 2D), puis la face opposée, puis le sommet de l'arc. L'arc va exactement d'une face à l'autre, prend la profondeur du mur et ses extrémités s'accrochent aux arêtes des faces et à la grille.",
+    ),
+    ("curve.align", "Fit", "Ajustement"),
+    (
+        "curve.align_tip",
+        "Which edge of the arch touches the picked faces: inner (the opening keeps its width, the arch rests over the jambs), center, or outer (the arch fits inside the opening)",
+        "Quel bord de l'arc touche les faces choisies : intérieur (l'ouverture garde sa largeur, l'arc repose sur les montants), centre, ou extérieur (l'arc tient dans l'ouverture)",
+    ),
+    ("curve.align.inner", "Inner edge on faces", "Bord intérieur sur les faces"),
+    ("curve.align.center", "Center on faces", "Centre sur les faces"),
+    ("curve.align.outer", "Outer edge on faces", "Bord extérieur sur les faces"),
+    ("curve.faces_picked", "{0}/2 faces", "{0}/2 faces"),
+    (
+        "curve.hint_face_a",
+        "Pick from faces: click the side face where the arch starts, in the 3D or a 2D view. The height snaps to the face edges and the grid (Alt: free).",
+        "Choisir sur les faces : cliquez la face latérale où l'arc commence, dans la vue 3D ou une vue 2D. La hauteur s'accroche aux arêtes de la face et à la grille (Alt : libre).",
+    ),
+    (
+        "curve.hint_face_b",
+        "Click the opposite face where the arch ends. {0}: pick the first face again, {1}: cancel",
+        "Cliquez la face opposée où l'arc se termine. {0} : choisir à nouveau la première face, {1} : annuler",
+    ),
+    (
+        "curve.hint_face_apex",
+        "Move the mouse to set the top of the arch, click or release to fix it. {0}: keep this height, {1}: pick the end face again, {2}: cancel",
+        "Bougez la souris pour régler le sommet de l'arc, cliquez ou relâchez pour le fixer. {0} : garder cette hauteur, {1} : choisir à nouveau la face de fin, {2} : annuler",
+    ),
+    (
+        "curve.arch.err.vertical",
+        "Pick vertical faces (the sides of the opening), not floors or ceilings.",
+        "Choisissez des faces verticales (les côtés de l'ouverture), pas des sols ni des plafonds.",
+    ),
+    (
+        "curve.arch.err.aligned",
+        "Both faces must face along the same axis, X or Y (rotated walls are not supported).",
+        "Les deux faces doivent être orientées selon le même axe, X ou Y (les murs tournés ne sont pas pris en charge).",
+    ),
+    (
+        "curve.arch.err.narrow",
+        "The two faces must be at least {0} units apart.",
+        "Les deux faces doivent être éloignées d'au moins {0} unités.",
+    ),
+    (
+        "curve.arch.err.flat",
+        "The top must be at least {0} unit above or under the ends.",
+        "Le sommet doit être au moins {0} unité au-dessus ou au-dessous des extrémités.",
+    ),
+    (
+        "curve.arch.err.depth",
+        "The faces must be at least {0} unit deep.",
+        "Les faces doivent avoir au moins {0} unité de profondeur.",
+    ),
+    ("curve.arch_rise", "Rise {0}", "Flèche {0}"),
+    ("curve.arch_span", "Span {0}", "Portée {0}"),
+    ("curve.arch_start", "Start height {0}", "Hauteur de départ {0}"),
 ];

@@ -19,6 +19,7 @@ struct RecordingTool {
     right_drag: bool,
     fly_clicks: Vec<(usize, Pos2, Modifiers)>,
     last_mods: Option<Modifiers>,
+    last_pointer: Option<Pos2>,
 }
 
 impl Tool for RecordingTool {
@@ -29,6 +30,7 @@ impl Tool for RecordingTool {
     fn view_input(&mut self, _state: &mut AppState, input: &ViewInput<'_>) -> ToolFlow {
         self.inputs.push((input.view.index, input.navigating, input.pointer.is_some()));
         self.last_mods = Some(input.modifiers);
+        self.last_pointer = input.pointer;
         if input.response.secondary_clicked() {
             self.secondary_clicks.push((input.view.index, input.modifiers));
         }
@@ -629,6 +631,73 @@ fn left_click_while_flying_reaches_the_tool_at_the_crosshair() {
     h.button(p, PointerButton::Primary, true);
     h.button(p, PointerButton::Primary, false);
     assert_eq!(h.tool.fly_clicks.len(), 2, "the displacement tool keeps its view input");
+}
+
+#[test]
+fn displacement_brush_aims_at_the_crosshair_in_camera_mode() {
+    let mut h = Harness::new();
+    h.tool.id = ToolId::Displacement;
+    let center = h.rect(0).center();
+    let p = center + vec2(120.0, -70.0);
+    h.move_to(p);
+    h.key(Key::Z, Some(Key::Z), true);
+    h.key(Key::Z, Some(Key::Z), false);
+    assert!(h.vp.is_mouselook());
+    for d in [vec2(15.0, 3.0), vec2(-9.0, 12.0), vec2(200.0, 40.0)] {
+        h.tool.last_pointer = None;
+        h.move_to(p + d);
+        assert_eq!(h.tool.last_pointer, Some(center), "the brush stays at the crosshair, not the hidden cursor");
+    }
+    h.modifiers = Modifiers::ALT;
+    h.move_to(p);
+    assert!(h.vp.is_cursor_free());
+    h.tool.last_pointer = None;
+    h.move_to(p + vec2(-30.0, 0.0));
+    assert_eq!(h.tool.last_pointer, Some(p + vec2(-30.0, 0.0)), "a freed cursor paints where it is");
+    h.modifiers = Modifiers::NONE;
+    h.key(Key::Escape, None, true);
+    assert!(!h.vp.is_mouselook());
+    let q = center + vec2(-60.0, 30.0);
+    h.move_to(q);
+    h.button(q, PointerButton::Secondary, true);
+    for d in [vec2(40.0, 0.0), vec2(80.0, 25.0), vec2(120.0, 30.0)] {
+        h.tool.last_pointer = None;
+        h.move_to(q + d);
+    }
+    assert_eq!(
+        h.tool.last_pointer,
+        Some(q),
+        "while looking with a held button the brush stays where the button went down"
+    );
+    h.button(q + vec2(120.0, 30.0), PointerButton::Secondary, false);
+}
+
+#[test]
+fn foliage_and_decals_aim_at_the_crosshair_in_camera_mode_only() {
+    for id in [ToolId::Foliage, ToolId::Decal] {
+        let mut h = Harness::new();
+        h.tool.id = id;
+        let center = h.rect(0).center();
+        let p = center + vec2(90.0, 40.0);
+        h.move_to(p);
+        h.key(Key::Z, Some(Key::Z), true);
+        h.key(Key::Z, Some(Key::Z), false);
+        assert!(h.vp.is_mouselook());
+        h.tool.last_pointer = None;
+        h.move_to(p + vec2(20.0, -10.0));
+        assert_eq!(h.tool.last_pointer, Some(center), "{id:?} previews at the crosshair");
+        assert_eq!(h.tool.inputs.last().map(|i| i.1), Some(true));
+        h.key(Key::Escape, None, true);
+        let q = center + vec2(-60.0, 30.0);
+        h.move_to(q);
+        h.button(q, PointerButton::Secondary, true);
+        let inputs = h.tool.inputs.len();
+        for d in [vec2(40.0, 0.0), vec2(80.0, 25.0)] {
+            h.move_to(q + d);
+        }
+        assert!(h.tool.inputs[inputs..].iter().all(|i| !i.1), "{id:?} gets no input while looking with a held button");
+        h.button(q + vec2(80.0, 25.0), PointerButton::Secondary, false);
+    }
 }
 
 #[test]

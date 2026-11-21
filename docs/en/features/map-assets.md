@@ -26,7 +26,7 @@ The header shows a summary: number of entries, files, textures, model files and 
 | **Collapse all** | Folds every expanded entry. |
 | **Refresh** | Builds the list again. |
 
-Entries are grouped in **Materials**, **Models**, **Sounds**, **Particles** and **Other**. Click a group name to fold it, click the arrow of an entry to see the files it needs (a model shows its model files and materials, a material its textures). The checkbox of an entry means *Collect this entry and everything it needs*.
+Entries are grouped in **Materials**, **Models**, **Sounds**, **Particles** and **Other**. Click a group name to fold it, click the arrow of an entry to see the files it needs (a model shows its model files and materials, a material its textures). The checkbox of an entry means *Collect this entry and everything it needs*. Unchecked entries are saved with the map and also left out of **Build and save as content**: an unchecked missing file or particle system no longer stops or warns a build (see [Missing content](build-content-release.md#missing-content)). Particle systems that no particle file has show as *Particle system*, not as files.
 
 Each file line shows a mark, the path, the size and the origin:
 

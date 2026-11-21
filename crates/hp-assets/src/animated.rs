@@ -276,9 +276,11 @@ impl AssetManager {
         skin: u32,
         body: u32,
         spec: &AnimSpec,
+        still_key: &str,
     ) -> Animated {
         let still = |static_prop: bool, frames: &[u32]| static_prop || frames.iter().all(|f| *f <= 1);
-        match self.models.map.get(path) {
+        let entry = self.models.map.get(still_key).or_else(|| self.models.map.get(path));
+        match entry {
             Some(ModelEntry::Ready(d)) if still(d.info.is_static_prop, &d.info.sequence_frames) => {
                 return Animated::Still;
             }

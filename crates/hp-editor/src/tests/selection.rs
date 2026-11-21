@@ -143,3 +143,67 @@ fn face_selection_back_and_forward() {
     assert!(doc.face_selection_back());
     assert_eq!(doc.selected_faces(), vec![f(a, 3)], "the deleted solid's face is left out");
 }
+
+#[test]
+fn select_filter_limits_box_selection() {
+    use crate::{FilterKind, RectMode, SelectFilter};
+    let mut doc = Document::new_empty();
+    let w = doc.create_solid(super::cube(glam::DVec3::ZERO, 16.0), Owner::World).expect("w");
+    let l1 = doc.create_point_entity("light", glam::DVec3::new(40.0, 0.0, 0.0), &[]).expect("l1");
+    let l2 = doc
+        .create_point_entity(
+            "light_spot",
+            glam::DVec3::new(80.0, 0.0, 0.0),
+            &[("targetname".into(), "door_lamp".into())],
+        )
+        .expect("l2");
+    let pr = doc
+        .create_point_entity(
+            "prop_static",
+            glam::DVec3::new(120.0, 0.0, 0.0),
+            &[("model".into(), "models/props/chair.mdl".into())],
+        )
+        .expect("pr");
+    let d = doc
+        .create_brush_entity(
+            "func_door",
+            &[("targetname".into(), "door1".into())],
+            vec![super::cube(glam::DVec3::new(160.0, 0.0, 0.0), 16.0)],
+        )
+        .expect("d");
+    let eb = |e: &hp_vmf::Entity| {
+        let o = e.origin()?;
+        Some(hp_geom::Aabb::new(o - glam::DVec3::splat(8.0), o + glam::DVec3::splat(8.0)))
+    };
+    let all = hp_geom::Aabb::new(glam::DVec3::splat(-500.0), glam::DVec3::splat(500.0));
+    let run = |doc: &mut Document, f: &SelectFilter| {
+        doc.select_in_box_filtered(&all, RectMode::Touching, &eb, crate::SelectOp::Replace, Some(f));
+        let mut v = doc.selected_objects();
+        v.sort_by_key(|o| match o {
+            ObjRef::Solid(i) | ObjRef::Entity(i) => *i,
+        });
+        v
+    };
+    assert_eq!(run(&mut doc, &SelectFilter::new("class:light")), vec![ObjRef::Entity(l1)]);
+    assert_eq!(run(&mut doc, &SelectFilter::new("class:light*")), vec![ObjRef::Entity(l1), ObjRef::Entity(l2)]);
+    assert_eq!(run(&mut doc, &SelectFilter::new("name:door*")), vec![ObjRef::Entity(l2), ObjRef::Entity(d)]);
+    assert_eq!(run(&mut doc, &SelectFilter::new("name:door* class:func_*")), vec![ObjRef::Entity(d)]);
+    assert_eq!(
+        run(&mut doc, &SelectFilter::new("class:light,prop_static")),
+        vec![ObjRef::Entity(l1), ObjRef::Entity(pr)]
+    );
+    assert_eq!(run(&mut doc, &SelectFilter::new("model:chair")), vec![ObjRef::Entity(pr)]);
+    assert_eq!(run(&mut doc, &SelectFilter::new("material:TOOLS/*")).len(), 0);
+    assert_eq!(run(&mut doc, &SelectFilter::new("material:dev/*")), vec![ObjRef::Solid(w), ObjRef::Entity(d)]);
+    let mut kinds = SelectFilter::default();
+    assert!(!kinds.is_active());
+    kinds.set_kinds(&[FilterKind::Brushes]);
+    assert!(kinds.is_active());
+    assert_eq!(run(&mut doc, &kinds), vec![ObjRef::Solid(w)]);
+    kinds.set_kinds(&[FilterKind::Lights, FilterKind::Props]);
+    assert_eq!(run(&mut doc, &kinds), vec![ObjRef::Entity(l1), ObjRef::Entity(l2), ObjRef::Entity(pr)]);
+    let neg = SelectFilter::new("-class:light*");
+    assert_eq!(run(&mut doc, &neg).len(), 3);
+    assert_eq!(run(&mut doc, &SelectFilter::default()).len(), 5);
+    assert_eq!(SelectFilter::new("class:light").summary(), "class:light");
+}

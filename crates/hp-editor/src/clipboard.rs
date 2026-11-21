@@ -142,6 +142,16 @@ pub fn cursor_paste_offset(bounds: &Aabb, point: DVec3, depth: Option<usize>) ->
     }
 }
 
+pub fn surface_paste_offset(bounds: &Aabb, point: DVec3, normal: DVec3) -> DVec3 {
+    let n = normal.try_normalize().unwrap_or(DVec3::Z);
+    if n.z >= 0.7 {
+        return cursor_paste_offset(bounds, point, None);
+    }
+    let half = (bounds.max - bounds.min) * 0.5;
+    let reach = half.dot(n.abs());
+    point + n * reach - bounds.center()
+}
+
 fn fragment_bounds(frag: &Fragment) -> Option<Aabb> {
     fragment_bounds_with(frag, &|_| None)
 }

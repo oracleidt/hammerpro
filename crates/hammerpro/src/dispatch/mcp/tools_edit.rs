@@ -284,10 +284,20 @@ domain! { "editing";
         the view's depth axis, with mitred joints (no gap, no overlap). The points snap to the editor's grid \
         unless snap is false. Without base and height the depth comes from the selection like the block tool \
         (else the last created object, else 0 to 64). The brushes are one undo step and are selected. Refused \
-        when a bend is too tight for the thickness or a segment would be under 1 unit.",
+        when a bend is too tight for the thickness or a segment would be under 1 unit. Arch between two faces (the \
+        curve tool's Pick from faces): give faces [start, end] instead of view and points, two vertical faces facing \
+        along X or Y (the sides of a door or window opening); the arch spans exactly from one face plane to the other, \
+        takes the depth of the wall (the overlap of the two faces), starts at start_height and end_height (default: \
+        the top edge of each face), rises to apex and its ends are cut flat along the faces. The answer adds span, \
+        apex and align.",
         {
-            "view": choice("2D view the curve is drawn in.", &["top", "front", "side"]),
-            "points": { "type": "array", "items": vec2("Point [a, b]."), "minItems": 2, "maxItems": 1024, "description": "Points the curve goes through, in order." },
+            "view": choice("2D view the curve is drawn in (required unless faces is given).", &["top", "front", "side"]),
+            "points": { "type": "array", "items": vec2("Point [a, b]."), "minItems": 2, "maxItems": 1024, "description": "Points the curve goes through, in order (required unless faces is given)." },
+            "faces": faces("Arch from faces: exactly two [{solid, side}], the start face then the end face, vertical and facing along the same axis (X or Y). Replaces view and points."),
+            "start_height": number("Arch from faces: height (z) where the arch leaves the start face (default: the top edge of the face).", -16384.0, 16384.0),
+            "end_height": number("Arch from faces: height (z) where the arch meets the end face (default: the top edge of the face).", -16384.0, 16384.0),
+            "apex": number("Arch from faces: height (z) of the top of the fitted edge of the arch (default: a half circle, half the span above the ends). Under the ends makes a hanging arch.", -16384.0, 16384.0),
+            "align": choice("Arch from faces: which edge of the arch touches the faces: inner (default, the opening keeps its width and the arch rests over the jambs), center, or outer (the arch fits inside the opening).", &["inner", "center", "outer"]),
             "subdivisions": integer("Number of brushes along the curve (default 16).", 2, 4096),
             "thickness": number("Width of the brushes across the curve, centered on it (default 16).", 1.0, 1024.0),
             "height": number("Height of the brushes along the view's depth axis (default: from the selection, else 64).", 1.0, 16384.0),
@@ -304,7 +314,7 @@ domain! { "editing";
             "roll_end": number("Banking: roll angle in degrees at the end of the curve, interpolated along the curve (default 0).", -60.0, 60.0),
             "auto_bank": number("Automatic banking: degrees of roll for a bend of radius 1000 units, proportional to the curvature, tilting toward the inside of the bend (default 0 is off).", 0.0, 90.0),
             "auto_bank_limit": number("Automatic banking: largest roll in degrees it may add (default 8).", 0.0, 45.0),
-        }, ["view", "points"];
+        }, [];
     edit_curve_brushes: Edit, "Edit curve brushes",
         "Re-open a curve made by the curve tool or create_curve_brushes and replace its brushes (one undo step): \
         give the solid_id of any brush of the curve (default: the selected curve brush) and only the fields that \
@@ -2655,6 +2665,55 @@ mod tests {
         err(&mut s, "create_curve_brushes", json!({ "view": "top", "points": [[0, 0], [1, 1]] }));
         err(&mut s, "create_curve_brushes", json!({ "view": "3d", "points": [[0, 0], [256, 0]] }));
         assert_eq!(s.doc.stats().solids, solids, "refused curves create nothing");
+    }
+
+    #[test]
+    fn curve_arch_spans_between_two_faces() {
+        let mut s = hp_app::testing::test_state();
+        s.doc.clear_selection();
+        let left = ok(&mut s, "create_brush", json!({ "min": [-64, 1000, 0], "max": [0, 1016, 112] }));
+        let right = ok(&mut s, "create_brush", json!({ "min": [128, 1000, 0], "max": [192, 1016, 112] }));
+        let face_toward = |s: &hp_app::AppState, id: u32, nx: f64| {
+            let n = s.doc.scene().solid(id).unwrap();
+            n.geom.faces.iter().find(|f| (f.plane.normal.x - nx).abs() < 1e-6).unwrap().side_index
+        };
+        let l = left["solid_ids"][0].as_u64().unwrap() as u32;
+        let r = right["solid_ids"][0].as_u64().unwrap() as u32;
+        let (ls, rs) = (face_toward(&s, l, 1.0), face_toward(&s, r, -1.0));
+        let (undo, _) = s.doc.history_len();
+        let out = ok(
+            &mut s,
+            "create_curve_brushes",
+            json!({ "faces": [{ "solid": l, "side": ls }, { "solid": r, "side": rs }], "thickness": 16, "align": "outer", "apex": 176, "material": "concrete/concretefloor001a" }),
+        );
+        assert_eq!(s.doc.history_len().0, undo + 1, "one undo step");
+        assert_eq!(out["view"], "side");
+        assert_eq!(out["span"], 128.0);
+        assert_eq!(out["flat_ends"], true);
+        assert_eq!(out["depth"], json!([1000.0, 1016.0]));
+        let b = &out["bounds"];
+        let (min, max) = (&b["min"], &b["max"]);
+        assert!((min[0].as_f64().unwrap() - 0.0).abs() < 1e-3, "{b}");
+        assert!((max[0].as_f64().unwrap() - 128.0).abs() < 1e-3, "{b}");
+        assert!((min[2].as_f64().unwrap() - 112.0).abs() < 1e-3, "springs from the top edges: {b}");
+        let got = ok(&mut s, "get_curve_brushes", json!({ "solid_id": out["solid_ids"][0] }));
+        assert_eq!(got["flat_ends"], true, "kept for editing");
+        let e = err(&mut s, "create_curve_brushes", json!({ "faces": [{ "solid": l, "side": ls }] }));
+        assert!(e.contains("exactly two"), "{e}");
+        let top =
+            s.doc.scene().solid(l).unwrap().geom.faces.iter().find(|f| f.plane.normal.z > 0.5).unwrap().side_index;
+        let e = err(
+            &mut s,
+            "create_curve_brushes",
+            json!({ "faces": [{ "solid": l, "side": top }, { "solid": r, "side": rs }] }),
+        );
+        assert!(e.contains("vertical"), "{e}");
+        let e = err(
+            &mut s,
+            "create_curve_brushes",
+            json!({ "faces": [{ "solid": l, "side": ls }, { "solid": r, "side": rs }], "points": [[0, 0], [1, 1]] }),
+        );
+        assert!(e.contains("not both"), "{e}");
     }
 
     #[test]

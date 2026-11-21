@@ -534,6 +534,7 @@ The **Build and save as content** window and the Map assets tab. See [Build and 
 | `lzma_level` | `6` | LZMA preset, 0 to 9. |
 | `pack_workshop` | `true` | Ship content from Workshop items (else listed as required items). |
 | `pack_mounted` | `false` | Ship content of `mount.cfg` games. |
+| `missing_as_errors` | `false` | Missing files and particle systems stop the build instead of asking to continue anyway. |
 | `keep_cubemaps` | `true` | Copy the built cubemaps of the previous BSP. |
 | `game_session` | `false` | Build cubemaps and the nav mesh in game. |
 | `write_gma` | `true` | Write the `.gma`. |

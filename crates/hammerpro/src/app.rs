@@ -196,6 +196,12 @@ fn tool_panel(ui: &mut egui::Ui, tool: &mut dyn Tool, state: &mut AppState) -> e
     })
 }
 
+fn leave_face_selection(state: &mut AppState, next: ToolId) {
+    if state.tool == ToolId::Displacement && next != ToolId::Texture {
+        state.doc.clear_face_selection();
+    }
+}
+
 fn tool_index(id: ToolId) -> usize {
     ToolId::ALL.iter().position(|&t| t == id).unwrap_or(0)
 }
@@ -511,6 +517,7 @@ impl HammerProApp {
         let new = tool_index(id);
         self.unrecorded_selection(|app| {
             app.tools[old].deactivate(&mut app.state);
+            leave_face_selection(&mut app.state, id);
             app.state.tool = id;
             app.tools[new].activate(&mut app.state);
         });
@@ -578,6 +585,7 @@ impl HammerProApp {
         }
         self.state.apply_selection_undo_setting();
         self.state.sync_pick_elements();
+        self.state.sync_lifted_face();
         let f = &mut self.state.frame;
         f.dt = dt;
         f.time = now.duration_since(self.start).as_secs_f64();
@@ -2175,6 +2183,7 @@ mod tests {
             return;
         }
         tools[super::tool_index(state.tool)].deactivate(state);
+        super::leave_face_selection(state, id);
         state.tool = id;
         tools[super::tool_index(id)].activate(state);
     }
@@ -2287,6 +2296,27 @@ mod tests {
         }
         hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
         assert!(grew.is_empty(), "tool panels wider than the narrow dock: {grew:#?}");
+    }
+
+    #[test]
+    fn leaving_the_displacement_tool_drops_its_face_selection_except_for_the_texture_tool() {
+        use hp_app::ToolId;
+        use hp_editor::{FaceRef, SelectOp};
+        super::register_all_translations();
+        let (mut tools, _) = super::make_tools();
+        let mut state = hp_app::testing::test_state();
+        let top = FaceRef::new(2, 0);
+        assert!(state.doc.create_displacements(&[top], 2).is_ok_and(|n| n > 0));
+        switch(&mut tools, &mut state, ToolId::Displacement);
+        state.doc.select_faces(&[top], SelectOp::Replace);
+        switch(&mut tools, &mut state, ToolId::Select);
+        assert!(state.doc.selected_faces().is_empty(), "no displacement stays tinted after the tool is left");
+        switch(&mut tools, &mut state, ToolId::Displacement);
+        state.doc.select_faces(&[top], SelectOp::Replace);
+        switch(&mut tools, &mut state, ToolId::Texture);
+        assert_eq!(state.doc.selected_faces(), vec![top], "the texture tool edits the same faces, as in Hammer");
+        switch(&mut tools, &mut state, ToolId::Block);
+        assert!(state.doc.selected_faces().is_empty());
     }
 
     #[test]

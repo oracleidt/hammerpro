@@ -63,6 +63,7 @@ fn after_switch(state: &mut AppState) {
     state.doc.mark_everything_changed();
     state.pick = None;
     state.hover_world = None;
+    state.clear_lifted_face();
 }
 
 impl Tabs {

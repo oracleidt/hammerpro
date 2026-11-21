@@ -1261,7 +1261,9 @@ impl AssetManager {
         if !display.render_effects {
             desc.tint[3] = 1.0;
             desc.body = 0;
-            desc.anim = None;
+            if desc.anim.is_some() {
+                desc.anim = Some(crate::models::FIRST_SEQUENCE_KEY.to_owned());
+            }
             desc.animation = None;
         }
         let flags = point_entity_flags(doc, id, self.scene.env.room.as_ref(), display.prop_shadows);
@@ -1284,7 +1286,10 @@ impl AssetManager {
             (Some((path, _)), true) if game_look && path.starts_with("models/editor/") => None,
             (Some((path, skin)), true) => {
                 let animated = match desc.animation.as_ref().filter(|_| animate) {
-                    Some(spec) => self.animated_model(renderer, path, *skin, desc.body, spec),
+                    Some(spec) => {
+                        let still_key = model_data_key(path, desc.anim.as_deref());
+                        self.animated_model(renderer, path, *skin, desc.body, spec, &still_key)
+                    }
                     None => crate::animated::Animated::Still,
                 };
                 match animated {

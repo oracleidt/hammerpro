@@ -576,9 +576,21 @@ impl Document {
         entity_bounds: &dyn Fn(&Entity) -> Option<Aabb>,
         op: SelectOp,
     ) -> usize {
+        self.select_in_box_filtered(bounds, mode, entity_bounds, op, None)
+    }
+
+    pub fn select_in_box_filtered(
+        &mut self,
+        bounds: &Aabb,
+        mode: RectMode,
+        entity_bounds: &dyn Fn(&Entity) -> Option<Aabb>,
+        op: SelectOp,
+        filter: Option<&crate::SelectFilter>,
+    ) -> usize {
         let objs: Vec<ObjRef> = self
             .scene
             .units()
+            .filter(|o| filter.is_none_or(|f| f.matches(&self.scene, *o)))
             .filter(|o| self.is_visible(*o))
             .filter(|o| {
                 self.scene.object_bounds(*o, entity_bounds).is_some_and(|b| match mode {

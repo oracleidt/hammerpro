@@ -348,10 +348,10 @@ impl AssetManager {
     }
 
     pub(crate) fn reload_model(&mut self, renderer: &mut Renderer, path: &str) {
-        self.models.map.remove(path);
-        self.models.pick.remove(path);
-        self.shared.bounds.write().remove(path);
         let stem = format!("{path}{}", crate::models::ANIM_SEPARATOR);
+        self.models.map.retain(|key, _| key != path && !key.starts_with(&stem));
+        self.models.pick.retain(|key, _| key != path && !key.starts_with(&stem));
+        self.shared.bounds.write().remove(path);
         let variants: Vec<crate::models::VariantKey> =
             self.models.variants.keys().filter(|(key, _, _)| key == path || key.starts_with(&stem)).cloned().collect();
         for key in variants {

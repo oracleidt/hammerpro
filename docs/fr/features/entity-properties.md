@@ -219,7 +219,7 @@ Les résultats donnent la classe, le nom et l'origine. Double-cliquez une ligne 
 | **Toute la map** / **Sélection** | Toute la map |
 | **Visibles uniquement** | désactivé |
 
-La ligne d'état compte les occurrences, les champs et les entités. **Suivant** (ou `Entrée` dans le champ de recherche) passe à l'occurrence suivante et sélectionne son entité ; **Remplacer** remplace dans le champ courant puis avance ; **Tout remplacer** remplace tout en une étape d'annulation. Double-cliquez un résultat pour sélectionner son entité. Les guillemets doubles sont refusés dans le remplacement.
+La ligne d'état compte les occurrences, les champs et les entités. **Suivant** (ou `Entrée` dans le champ de recherche) passe à l'occurrence suivante et sélectionne son entité ; **Remplacer** remplace dans le champ courant puis avance ; **Tout remplacer** remplace tout en une étape d'annulation. Double-cliquez un résultat pour sélectionner son entité. Les guillemets doubles sont refusés dans le remplacement. **Tout sélectionner** sélectionne d'un coup toutes les entités de la liste des résultats et les cadre dans les vues (MCP : `find_text` avec `select: true`).
 
 ## Rapport des entités
 

@@ -18,6 +18,7 @@ pub mod placement_fix;
 mod problems;
 mod roadside_meta;
 mod scene;
+mod select_filter;
 mod selection;
 mod shared_points;
 mod stats;
@@ -53,7 +54,7 @@ mod tests;
 
 pub use array::{ArrayAxis, ArrayFrame, ArrayPlan, ArraySpec, MAX_ARRAY_AXIS_COUNT, MAX_ARRAY_COPIES};
 pub use changes::Changes;
-pub use clipboard::{PREVIEW_MAX_LINES, PastePreview, PasteSpecial, cursor_paste_offset};
+pub use clipboard::{PREVIEW_MAX_LINES, PastePreview, PasteSpecial, cursor_paste_offset, surface_paste_offset};
 pub use curve_meta::{CURVE_KEY, CurveRecord, editor_curve_tag};
 pub use document::{Document, EditOptions, ManifestLink, SaveTicket, SnapshotJob};
 pub use glob::{glob_match, glob_replace};
@@ -72,6 +73,7 @@ pub use problems::{
 };
 pub use roadside_meta::{ROADSIDE_KEY, RoadsideRecord, editor_roadside_tag};
 pub use scene::{EntityNode, GroupNode, Owner, Scene, SolidNode};
+pub use select_filter::{FilterKind, MAX_FILTER_LEN, SelectFilter};
 pub use selection::{FaceRef, ObjRef, SelectMode, SelectOp, Selection};
 pub use shared_points::{SHARED_UPDATE_LABEL, SharedExport, SharedTouched, SharedUpdate};
 pub use stats::MapStats;

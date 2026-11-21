@@ -6,6 +6,7 @@ action_list! { visibility_actions {
     ToolCordon => "tool_cordon", Tools, ToolsSwitch, None, Ready;
     ToggleCordon => "toggle_cordon", View, ViewHide, None, Ready;
     MoveToVisgroup => "move_to_visgroup", View, ViewHide, None, Ready;
+    RemoveFromAllVisgroups => "remove_from_all_visgroups", View, ViewHide, None, Ready;
     HiddenToVisgroup => "hidden_to_visgroup", View, ViewHide, None, Ready;
 }}
 
@@ -27,7 +28,7 @@ fn any_hidden(state: &AppState) -> bool {
 
 pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
     match action {
-        Action::MoveToVisgroup => Some(!state.doc.selection().objects.is_empty()),
+        Action::MoveToVisgroup | Action::RemoveFromAllVisgroups => Some(!state.doc.selection().objects.is_empty()),
         Action::HiddenToVisgroup => Some(any_hidden(state)),
         _ => None,
     }
@@ -53,6 +54,8 @@ pub(super) const TR: TrTable = &[
     ("action.tool_cordon", "Cordon tool", "Outil cordon"),
     ("action.toggle_cordon", "Use cordons", "Utiliser les cordons"),
     ("action.move_to_visgroup", "Move to visgroup...", "Déplacer vers un visgroup..."),
+    ("action.remove_from_all_visgroups", "Remove from all visgroups", "Retirer de tous les visgroups"),
+    ("shell.undo.remove_from_all_visgroups", "Remove from all visgroups", "Retrait de tous les visgroups"),
     ("action.hidden_to_visgroup", "Make a visgroup of hidden objects", "Créer un visgroup des objets masqués"),
     ("tool.cordon", "Cordon", "Cordon"),
     ("shell.undo.toggle_cordons", "Toggle cordons", "Activation des cordons"),
@@ -81,6 +84,7 @@ mod tests {
         assert_eq!(enabled(&state, Action::MoveToVisgroup), Some(false));
         state.doc.set_selection(&[hp_editor::ObjRef::Solid(3)]);
         assert_eq!(enabled(&state, Action::MoveToVisgroup), Some(true));
+        assert_eq!(enabled(&state, Action::RemoveFromAllVisgroups), Some(true));
         assert_eq!(check(&state, Action::ToggleCordon), Some(Check::Toggle(false)));
         state.doc.set_cordons_enabled(true).expect("on");
         assert_eq!(check(&state, Action::ToggleCordon), Some(Check::Toggle(true)));

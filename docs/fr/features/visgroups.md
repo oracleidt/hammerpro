@@ -53,6 +53,17 @@ L'onglet a trois sections : vos visgroups, les **Cordons** (voir [Cordons](cordo
 
 Chaque modification (création, nom, couleur, déplacement, affichage, membres) est une étape d'annulation.
 
+### Retirer des objets des visgroups
+
+Sélectionnez les brushes ou les entités (brushes du monde, entités brush et entités point), puis :
+
+- Dans l'onglet **Visgroups**, une ligne **La sélection est dans :** sous la barre liste chaque visgroup de la sélection : cliquez **x Nom** pour sortir la sélection de ce visgroup, ou **Retirer de tous les visgroups**.
+- Clic droit sur une ligne de visgroup : **Retirer la sélection de ce visgroup**.
+- Clic droit dans une vue 2D ou 3D : **Visgroups > Retirer de > (les visgroups de la sélection)**, **Visgroups > Retirer de tous les visgroups** ou **Visgroups > Déplacer vers un visgroup...**.
+- **Affichage > Retirer de tous les visgroups** (action `remove_from_all_visgroups`).
+
+Chaque retrait est une étape d'annulation. Une entité brush quitte le visgroup avec ses brushes (Hammer y stocke aussi le visgroup). MCP : `set_visgroup_members` avec `action` `remove` ou `remove_all`.
+
 ## Déplacer vers un visgroup
 
 **Affichage > Déplacer vers un visgroup...** (ou le bouton dossier de l'onglet) ouvre une fenêtre : « Déplacer N objets sélectionnés vers : » avec l'arbre de vos visgroups et **Nouveau visgroup...** (avec un champ **Nom :**). Options :

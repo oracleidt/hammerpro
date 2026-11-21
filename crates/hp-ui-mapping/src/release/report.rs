@@ -33,7 +33,7 @@ struct Stats {
 
 #[derive(Default)]
 pub(crate) struct ReportView {
-    section: Section,
+    pub(crate) section: Section,
     filter: String,
     show_base: bool,
     filtered: Vec<usize>,
@@ -105,6 +105,31 @@ pub(crate) fn reason_text(r: &DepReason) -> String {
     }
 }
 
+pub(crate) fn used_by_chain(graph: &DependencyGraph, reasons: &[DepReason]) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    let mut next = reasons.first().cloned();
+    while let Some(r) = next.take() {
+        if parts.len() >= 8 {
+            break;
+        }
+        match r {
+            DepReason::Root(why) => parts.push(why),
+            DepReason::Generated => parts.push(t!("release.generated").to_owned()),
+            DepReason::UsedBy(v) => {
+                if parts.contains(&v) {
+                    break;
+                }
+                next = graph.find(&v).and_then(|n| n.reasons.first().cloned());
+                parts.push(v);
+            }
+        }
+    }
+    if parts.is_empty() {
+        return t!("release.used_by_unknown").to_owned();
+    }
+    tf!("release.used_by", parts.join(" < "))
+}
+
 pub(crate) fn filter_box(ui: &mut Ui, text: &mut String, hint: &str, width: f32) -> bool {
     let mut changed = ui.add(egui::TextEdit::singleline(text).hint_text(hint).desired_width(width)).changed();
     if !text.is_empty() && ui.small_button("✖").on_hover_text(t!("release.clear_filter")).clicked() {
@@ -133,6 +158,7 @@ fn kind_name(k: DepKind) -> &'static str {
         DepKind::Soundscape => t!("release.kind_soundscape"),
         DepKind::Particle => t!("release.kind_particle"),
         DepKind::ParticleManifest => t!("release.kind_manifest"),
+        DepKind::ParticleSystem => t!("release.kind_particle_system"),
         DepKind::File => t!("release.kind_file"),
     }
 }
@@ -162,7 +188,7 @@ impl ReleaseWindow {
         ui.horizontal(|ui| {
             ui.label(tf!("release.report_totals", graph.nodes.len(), shipped, fmt_bytes(shipped_bytes)));
             if !graph.missing.is_empty() {
-                ui.colored_label(theme::error(), tf!("release.report_missing", graph.missing.len()));
+                ui.colored_label(theme::warning(), tf!("release.report_missing", graph.missing.len()));
             }
             if ui.add_enabled(self.job.is_none(), egui::Button::new(t!("release.analyze"))).clicked() {
                 self.start(ui.ctx(), state, true);
@@ -184,7 +210,7 @@ impl ReleaseWindow {
         match self.report.section {
             Section::Files => self.files_section(ui, &graph, policy, mode),
             Section::Origins => origins_section(ui, state, &self.report.stats.origins, self.report.stats.mounted),
-            Section::Missing => missing_section(ui, &graph),
+            Section::Missing => missing_section(ui, state, &graph),
             Section::Sizes => self.sizes_section(ui),
             Section::Lint => self.lint_section(ui),
             Section::Workshop => workshop_section(ui, &self.report.stats.workshop),
@@ -343,25 +369,57 @@ fn origins_section(ui: &mut Ui, state: &mut AppState, origins: &[hp_fs::deps::Or
     }
 }
 
-fn missing_section(ui: &mut Ui, graph: &DependencyGraph) {
+fn missing_section(ui: &mut Ui, state: &mut AppState, graph: &DependencyGraph) {
     if graph.missing.is_empty() {
         ui.colored_label(theme::success(), t!("release.nothing_missing"));
         return;
     }
     ui.label(RichText::new(t!("release.missing_hint")).weak());
+    let mut unchecked = crate::mapassets::unchecked_entries(state);
+    let mut toggle: Option<String> = None;
+    let (systems, files): (Vec<_>, Vec<_>) = graph.missing.iter().partition(|m| m.kind == DepKind::ParticleSystem);
     egui::ScrollArea::vertical().id_salt("hp_release_missing").auto_shrink([false, false]).show(ui, |ui| {
-        for m in &graph.missing {
-            let why: Vec<String> = m.reasons.iter().map(reason_text).collect();
-            ui.horizontal(|ui| {
-                ui.colored_label(theme::error(), "✖");
-                ui.label(RichText::new(&m.name).monospace()).on_hover_text(why.join("\n"));
-                ui.label(RichText::new(kind_name(m.kind)).weak());
-                if let Some(first) = why.first() {
-                    ui.label(RichText::new(first).weak());
-                }
-            });
+        for (title, list) in
+            [(t!("release.missing_files_title"), &files), (t!("release.missing_systems_title"), &systems)]
+        {
+            if list.is_empty() {
+                continue;
+            }
+            ui.label(RichText::new(tf!("release.missing_group", title, list.len())).strong());
+            for m in list.iter() {
+                let left_out = unchecked.contains(&m.name);
+                let chain = used_by_chain(graph, &m.reasons);
+                let all: Vec<String> =
+                    m.reasons.iter().map(|r| used_by_chain(graph, std::slice::from_ref(r))).collect();
+                ui.horizontal(|ui| {
+                    if left_out {
+                        ui.label(RichText::new("-").weak());
+                    } else {
+                        ui.colored_label(theme::warning(), "⚠");
+                    }
+                    let name = RichText::new(&m.name).monospace();
+                    let name = if left_out { name.weak().strikethrough() } else { name };
+                    ui.label(name).on_hover_text(all.join(
+                        "
+",
+                    ));
+                    ui.label(RichText::new(kind_name(m.kind)).weak());
+                    let label = if left_out { t!("release.include_again") } else { t!("release.leave_out") };
+                    if ui.small_button(label).on_hover_text(t!("release.leave_out_tip")).clicked() {
+                        toggle = Some(m.name.clone());
+                    }
+                    ui.label(RichText::new(chain).weak());
+                });
+            }
+            ui.add_space(6.0);
         }
     });
+    if let Some(name) = toggle {
+        if !unchecked.remove(&name) {
+            unchecked.insert(name);
+        }
+        crate::mapassets::set_unchecked_entries(state, &unchecked);
+    }
 }
 
 fn workshop_section(ui: &mut Ui, items: &[(u64, String)]) {

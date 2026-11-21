@@ -420,6 +420,7 @@ impl Tool for CameraTool {
     }
 
     fn paint(&self, state: &AppState, view: &ViewInfo, painter: &Painter) {
+        crate::select::paint_filter_badge(state, view, painter);
         if !view.is_2d() {
             return;
         }

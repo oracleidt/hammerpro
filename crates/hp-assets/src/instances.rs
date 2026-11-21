@@ -270,9 +270,11 @@ impl InstanceProducer {
                 }
                 let model = match &desc.model {
                     Some((path, skin)) if cx.opts.show_models => {
-                        let m = cx.assets.render_model(cx.renderer, path, *skin);
-                        if m.is_none() && model_loading(cx.assets, path) {
-                            waiting.push(path.clone());
+                        let first = desc.anim.as_ref().map(|_| crate::models::FIRST_SEQUENCE_KEY);
+                        let m = cx.assets.render_model_for(cx.renderer, path, *skin, 0, first);
+                        let key = crate::models::model_data_key(path, first);
+                        if m.is_none() && model_loading(cx.assets, &key) {
+                            waiting.push(key);
                         }
                         m
                     }

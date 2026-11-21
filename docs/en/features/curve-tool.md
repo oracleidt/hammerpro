@@ -7,7 +7,7 @@ The curve tool builds curved walls, rails, kerbs, pipes seen from above or ramps
 ## Opening it
 
 - **Tools > Active tool > Curve tool**, the tool palette (creation group, next to the polygon tool), or `Shift+U`.
-- The tool draws in the 2D views only; clicks in the 3D view are ignored. The 3D view shows the live preview.
+- The tool draws in the 2D views; the 3D view shows the live preview, its point handles can be dragged onto surfaces and vertices, and **Pick from faces** works there too (see below).
 
 ## Drawing the curve
 
@@ -16,6 +16,32 @@ The curve tool builds curved walls, rails, kerbs, pipes seen from above or ramps
 3. While drawing, the preview already shows the brushes with the current subdivisions and thickness: in the drawing view as outlines along the smoothed curve, in the other 2D views and in the 3D view as the brushes themselves.
 4. **Drag a point** to move it. `Backspace` (or **Remove point**) removes the last point, `Escape` cancels the curve. A curve holds at most 1024 points.
 5. While the curve is drawn or adjusted, `Shift` + mouse wheel changes the **Subdivisions** (by one eighth of the value per notch, at least 1, from 2 to 4096); the brush count in the label follows. The plain wheel keeps zooming.
+
+## Pick from faces: arches between two faces
+
+To fit an arch, a curved door frame or a window head exactly into an opening, turn on **Pick from faces** in the options bar. Instead of drawing points you pick the two sides of the opening and the top of the arch:
+
+1. **Click the start face**: a side face of the opening, for example the inner face of the left door jamb, in the 3D view or in a 2D view where the face is seen edge on (a line). The hovered face is outlined in blue with the snapped point. The height where the arch starts snaps to the edges of the face (its top edge is the usual spring line), else to the grid; hold `Alt` to place it freely.
+2. **Click the opposite face**, where the arch ends. The label shows the span between the two faces.
+3. **Move the mouse** to set the top of the arch (the label shows its rise), in the 3D view or a Front or Side view, snapped to the grid. **Click** (or release a drag) to fix it, or press `Enter` to keep the default half circle.
+
+The arch is generated exactly between the faces: its span is the distance between the two face planes, its depth is the depth of the wall (the part where the two faces overlap), and it stands in the plane of the opening. Its two ends are cut flat along the faces, so they sit on the jambs without gap or overlap. The **Fit** list chooses which edge of the arch touches the faces:
+
+| Fit | Result |
+|---|---|
+| **Inner edge on faces** | The inside of the arch continues the faces: the opening keeps its width and the arch rests over the jambs, like a stone arch on its pillars. Default. |
+| **Center on faces** | The middle of the arch thickness is on the faces. |
+| **Outer edge on faces** | The outside of the arch touches the faces: the arch fits inside the opening and rounds its top. |
+
+The **Thickness** is the width of the arch band, and changing it or the fit rebuilds the arch on the same faces. Then the Curve window opens as usual: change the subdivisions, the profile or drag points, and `Enter` creates the brushes in one undo step. `Backspace` steps back (pick the end face again, then the start face), `Escape` cancels. After creating, the tool stays in Pick from faces for the next opening; turn the button off to draw points again.
+
+The faces must be vertical and face along X or Y (the sides of an opening in a wall that is not rotated); a floor, a ceiling or a rotated wall is refused with a message.
+
+## Snapping the points
+
+- In the 2D views, the points you click or drag snap to the vertices of the brushes near the mouse (within a few pixels), else to the grid.
+- In the 3D view, the control points of the curve are drawn as handles. Drag one to move it onto a surface: it snaps to the vertices of the face under the mouse, else to the grid on that face; away from any surface it moves in the plane of the curve. A click on a surface adds a point while drawing, `Shift+click` inserts one and `Ctrl+click` removes one, like in 2D.
+- Hold `Alt` to turn the snapping off.
 
 ## Validating and choosing the pieces
 
@@ -45,6 +71,7 @@ Like the block tool, the brushes take their range along the view depth from the 
 | Create as | **World brush**, **func_detail** or any brush entity class of the FGD. With a class, all the brushes go into one new brush entity. | World brush |
 | Current material | Material put on every face, like the block tool. Click it to show the texture browser. | the current material |
 | Pin (keep active) | Keep the curve tool active after creating. When off, the selection tool comes back. | on |
+| **Pick from faces**, **Fit** | Arch between two faces, see above. | off, Inner edge on faces |
 | **Remove point**, **Validate** / **Create** | Same as `Backspace`, then `Enter`. | |
 | Summary | **N point(s)**, then **N brushes, length L**, or in red why the curve cannot be built (hover it for the details). | |
 
@@ -94,7 +121,7 @@ If the brush has no curve data (it was not made by the curve tool, or the data w
 - Few clicks give the smoothest curves: the spline does the rounding. A freehand stroke on a fine grid follows the hand more closely, including its wobbles.
 - 16 to 64 subdivisions are enough for most curves; high counts make many small brushes, which cost compile time. Put decorative curves in a `func_detail` with **Create as**.
 - The joints are mitred, so the outer corners are not on the grid. They are still clean planes shared by the two neighbours, and the map compiles without leaks or invalid brushes.
-- The MCP tool `create_curve_brushes` builds the same brushes from a list of points (with the `profile`, `curb_width`, `curb_height`, `ditch_depth`, `roll_start`, `roll_end`, `auto_bank` and `auto_bank_limit` options), `get_curve_brushes` reads the stored curve, `edit_curve_brushes` replaces the brushes of a curve with changed points or options in one undo step, and `set_tool_options` with tool `curve` sets `subdivisions`, `thickness`, `height`, `tex_scale`, `create_as`, `keep_active` and the same cross section and banking options (see [MCP tool reference](../../MCP.md)).
+- The MCP tool `create_curve_brushes` builds the same brushes from a list of points, or an arch between two faces with `faces` (start and end `{solid, side}`), `start_height`, `end_height`, `apex` and `align` (with the `profile`, `curb_width`, `curb_height`, `ditch_depth`, `roll_start`, `roll_end`, `auto_bank` and `auto_bank_limit` options), `get_curve_brushes` reads the stored curve, `edit_curve_brushes` replaces the brushes of a curve with changed points or options in one undo step, and `set_tool_options` with tool `curve` sets `subdivisions`, `thickness`, `height`, `tex_scale`, `create_as`, `keep_active`, `pick_faces`, `arch_align` and the same cross section and banking options (see [MCP tool reference](../../MCP.md)).
 
 ## FAQ
 

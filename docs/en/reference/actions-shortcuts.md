@@ -228,6 +228,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Unhide all | `unhide_all` | `U` |  |  |
 | Use cordons | `toggle_cordon` |  |  |  |
 | Move to visgroup... | `move_to_visgroup` |  |  |  |
+| Remove from all visgroups | `remove_from_all_visgroups` |  |  |  |
 | Make a visgroup of hidden objects | `hidden_to_visgroup` |  |  |  |
 | Center 2D views on selection | `center_2d` | `Ctrl+E` |  |  |
 | Center 3D view on selection | `center_3d` | `Ctrl+Shift+E` |  |  |

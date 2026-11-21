@@ -214,6 +214,7 @@ pub(super) fn model_obj(path: &str, origin: DVec3, angles: DVec3, scale: f64, bo
         class: class.to_owned(),
         meshes: Vec::new(),
         models: vec![pw::ModelRef {
+            pose: hp_assets::pose_key_for(class, None, path),
             path: path.to_owned(),
             body,
             matrix: pw::model_matrix(origin, angles, scale),
@@ -1434,7 +1435,8 @@ fn fmt_v(v: DVec3) -> String {
 pub(super) fn exact_ray(state: &AppState) -> impl Fn(&hp_vmf::Entity, &hp_geom::Ray) -> hp_editor::EntityRay + '_ {
     move |e, ray| {
         let Some(path) = pw::model_of(state, e) else { return hp_editor::EntityRay::Bounds };
-        let Ok(shape) = pw::model_shape(state.assets.fs(), &path, pw::entity_body(e)) else {
+        let key = hp_shape::shape_key(&path, pw::entity_pose(e, &path).as_deref());
+        let Ok(shape) = pw::model_shape(state.assets.fs(), &key, pw::entity_body(e)) else {
             return hp_editor::EntityRay::Bounds;
         };
         let o = e.origin().filter(|o| o.is_finite()).unwrap_or(DVec3::ZERO);
@@ -1454,7 +1456,8 @@ pub(super) fn exact_bounds_fn(state: &AppState, exact: bool) -> impl Fn(&hp_vmf:
             return base;
         }
         let Some(path) = pw::model_of(state, e) else { return base };
-        let Some(shape) = pw::cached_shape(state.assets.fs(), &path, pw::entity_body(e)) else { return base };
+        let key = hp_shape::shape_key(&path, pw::entity_pose(e, &path).as_deref());
+        let Some(shape) = pw::cached_shape(state.assets.fs(), &key, pw::entity_body(e)) else { return base };
         let o = e.origin().filter(|o| o.is_finite()).unwrap_or(DVec3::ZERO);
         let ang = e.angles().filter(|a| a.is_finite()).unwrap_or(DVec3::ZERO);
         let b = shape.render.transformed(&pw::model_matrix(o, ang, pw::entity_scale(e))).bounds();

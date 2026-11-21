@@ -34,10 +34,19 @@ pub struct ContentRuntime {
     pub cancel_requested: bool,
     pub graph: Option<std::sync::Arc<hp_fs::deps::DependencyGraph>>,
     pub start_requested: Option<bool>,
+    pub start_allow_missing: bool,
+    pub awaiting_missing: Option<MissingCounts>,
     pub checklist_requested: bool,
     pub checklist: Option<Vec<ChecklistRow>>,
     pub last_release: Option<ReleaseReport>,
     pub map_assets: MapAssetsRuntime,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MissingCounts {
+    pub files: usize,
+    pub particle_systems: usize,
+    pub left_out: usize,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -70,6 +79,7 @@ pub struct MapAssetsRuntime {
     pub cancel_requested: bool,
     pub progress: Option<(usize, usize)>,
     pub last_collect: Option<AssetCollectSummary>,
+    pub unchecked_changed: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]

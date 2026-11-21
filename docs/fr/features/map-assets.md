@@ -26,7 +26,7 @@ L'en-tête résume : nombre d'entrées, de fichiers, de textures, de fichiers de
 | **Tout replier** | Replie toutes les entrées ouvertes. |
 | **Actualiser** | Reconstruit la liste. |
 
-Les entrées sont rangées dans **Matériaux**, **Modèles**, **Sons**, **Particules** et **Autres**. Cliquez le nom d'un groupe pour le replier, la flèche d'une entrée pour voir les fichiers dont elle a besoin (un modèle montre ses fichiers et ses matériaux, un matériau ses textures). La case d'une entrée signifie *Collecter cette entrée et tout ce dont elle a besoin*.
+Les entrées sont rangées dans **Matériaux**, **Modèles**, **Sons**, **Particules** et **Autres**. Cliquez le nom d'un groupe pour le replier, la flèche d'une entrée pour voir les fichiers dont elle a besoin (un modèle montre ses fichiers et ses matériaux, un matériau ses textures). La case d'une entrée signifie *Collecter cette entrée et tout ce dont elle a besoin*. Les entrées décochées sont enregistrées avec la map et laissées aussi hors de **Construire et enregistrer en contenu** : un fichier ou un système de particules manquant décoché n'arrête plus et ne signale plus une construction (voir [Contenu manquant](build-content-release.md#contenu-manquant)). Les systèmes de particules qu'aucun fichier de particules n'a apparaissent comme *Système de particules*, pas comme des fichiers.
 
 Chaque ligne de fichier affiche une marque, le chemin, la taille et la provenance :
 

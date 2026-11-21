@@ -95,22 +95,33 @@ fn input(fs: &GameFs, vmf: &Path, out: &Path, mode: ReleaseMode) -> ReleaseInput
         nav_fingerprint: None,
         protect_salt: "test-salt".to_owned(),
         workshop_id: Some(123),
+        unchecked: Default::default(),
+        allow_missing: false,
     }
 }
 
 fn run(input: ReleaseInput) -> (Result<ReleaseSummary, String>, Vec<String>) {
+    let (r, log, _) = run_full(input);
+    (r, log)
+}
+
+fn run_full(
+    input: ReleaseInput,
+) -> (Result<ReleaseSummary, String>, Vec<String>, Option<hp_app::runtime::MissingCounts>) {
     let (tx, rx) = mpsc::channel();
     pipeline::run(input, tx, Arc::new(AtomicBool::new(false)), Arc::new(|| {}));
     let mut log = Vec::new();
     let mut result = None;
+    let mut confirm = None;
     for e in rx.try_iter() {
         match e {
             ReleaseEvent::Log(_, text) => log.push(text),
+            ReleaseEvent::MissingConfirm(c) => confirm = Some(c),
             ReleaseEvent::Done(r) => result = Some(*r),
             _ => {}
         }
     }
-    (result.expect("Done event"), log)
+    (result.expect("Done event"), log, confirm)
 }
 
 #[test]
@@ -174,17 +185,50 @@ fn self_contained_and_server_kit() {
 }
 
 #[test]
-fn missing_files_block_and_nav_is_fixed_up() {
+fn missing_files_ask_to_continue_and_nav_is_fixed_up() {
     hp_app::register_translations();
     crate::register_translations();
     let dir = crate::test_scratch("release_missing");
     let (fs, vmf) = setup(&dir);
     let out = dir.join("out");
-    let mut i = input(&fs, &vmf, &out, ReleaseMode::WorkshopAddon);
-    i.roots.push(DepRoot { kind: RootKind::Model, name: "models/nope.mdl".into(), why: "test".into() });
-    let (result, _) = run(i);
+    let with_missing = || {
+        let mut i = input(&fs, &vmf, &out, ReleaseMode::WorkshopAddon);
+        i.roots.push(DepRoot { kind: RootKind::Model, name: "models/nope.mdl".into(), why: "prop 7".into() });
+        i.roots.push(DepRoot { kind: RootKind::Particle, name: "choreo_rocket_jet".into(), why: "fx 9".into() });
+        i
+    };
+    let (result, log, confirm) = run_full(with_missing());
     assert!(result.is_err());
-    assert!(!out.join("gm_rel.gma").exists(), "nothing is written when files are missing");
+    assert_eq!(confirm, Some(hp_app::runtime::MissingCounts { files: 1, particle_systems: 1, left_out: 0 }));
+    assert!(log.iter().any(|l| l.contains("models/nope.mdl") && l.contains("prop 7")), "{log:#?}");
+    assert!(log.iter().any(|l| l.contains("choreo_rocket_jet") && l.contains("fx 9")), "{log:#?}");
+    assert!(!out.join("gm_rel.gma").exists(), "nothing is written before the user continues");
+
+    let mut strict = with_missing();
+    strict.settings.missing_as_errors = true;
+    strict.allow_missing = true;
+    let (result, _, confirm) = run_full(strict);
+    assert!(result.is_err() && confirm.is_none());
+    assert!(!out.join("gm_rel.gma").exists());
+
+    let mut left_out = with_missing();
+    left_out.unchecked = ["models/nope.mdl".to_owned(), "choreo_rocket_jet".to_owned()].into_iter().collect();
+    let (result, log, confirm) = run_full(left_out);
+    result.unwrap_or_else(|e| panic!("{e}\n{log:#?}"));
+    assert!(confirm.is_none());
+
+    let mut anyway = with_missing();
+    anyway.allow_missing = true;
+    let (result, log, _) = run_full(anyway);
+    result.unwrap_or_else(|e| panic!("{e}\n{log:#?}"));
+    assert!(out.join("gm_rel.gma").is_file());
+
+    let mut skip_brick = input(&fs, &vmf, &out, ReleaseMode::WorkshopAddon);
+    skip_brick.unchecked = ["materials/custom/brick.vmt".to_owned()].into_iter().collect();
+    let (result, log, _) = run_full(skip_brick);
+    result.unwrap_or_else(|e| panic!("{e}\n{log:#?}"));
+    let gma = GmaArchive::open(out.join("gm_rel.gma")).unwrap();
+    assert!(!gma.contains("materials/custom/brick.vmt"), "unchecked entries are not shipped");
 
     let fp = hp_bsp::Bsp::read(vmf.with_extension("bsp")).unwrap().walkable_fingerprint().unwrap();
     let mut nav = hp_bsp::nav::NAV_MAGIC.to_le_bytes().to_vec();

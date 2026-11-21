@@ -66,6 +66,7 @@ mod instances;
 mod render;
 mod sync_stats;
 
+pub use entities::pose_key_for;
 pub use lights::set_designer_rad;
 use std::collections::VecDeque;
 use std::path::PathBuf;

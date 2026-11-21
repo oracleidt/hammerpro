@@ -47,7 +47,11 @@ pub fn class_of_dep(kind: DepKind, vpath: &str) -> AssetClass {
         DepKind::Model | DepKind::ModelPart => AssetClass::Model,
         DepKind::Material | DepKind::Texture => AssetClass::Material,
         DepKind::Sound => AssetClass::Sound,
-        DepKind::SoundScript | DepKind::Soundscape | DepKind::Particle | DepKind::ParticleManifest => {
+        DepKind::SoundScript
+        | DepKind::Soundscape
+        | DepKind::Particle
+        | DepKind::ParticleManifest
+        | DepKind::ParticleSystem => {
             let _ = vpath;
             AssetClass::Other
         }

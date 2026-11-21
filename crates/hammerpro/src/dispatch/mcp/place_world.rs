@@ -28,6 +28,11 @@ pub(super) struct ModelRef {
     pub(super) body: u32,
     pub(super) matrix: DMat4,
     pub(super) fallback: Option<Aabb>,
+    pub(super) pose: Option<String>,
+}
+
+pub(super) fn entity_pose(e: &hp_vmf::Entity, path: &str) -> Option<String> {
+    hp_assets::pose_key_for(&e.classname, e.get("DefaultAnim"), path)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -276,6 +281,7 @@ fn instance_parts(
                 let origin = fixed.origin().filter(|o| o.is_finite()).unwrap_or(DVec3::ZERO);
                 let angles = fixed.angles().filter(|a| a.is_finite()).unwrap_or(DVec3::ZERO);
                 models.push(ModelRef {
+                    pose: entity_pose(&fixed, &path),
                     path,
                     body: entity_body(&fixed),
                     matrix: model_matrix(origin, angles, entity_scale(&fixed)),
@@ -388,6 +394,7 @@ pub(super) fn entity_obj(state: &AppState, id: u32, include_tools: bool) -> Opti
         let o = origin.unwrap_or(DVec3::ZERO);
         obj.kind = if e.classname.to_ascii_lowercase().starts_with("prop_") { "prop" } else { "model_entity" };
         obj.models.push(ModelRef {
+            pose: entity_pose(e, &path),
             path,
             body: entity_body(e),
             matrix: model_matrix(o, angles, obj.scale),
@@ -654,7 +661,12 @@ pub(crate) fn pin_shape(path: &str, body: u32, shape: ModelShape) {
 
 pub(super) fn cached_shape(fs: Option<&hp_fs::GameFs>, path: &str, body: u32) -> Option<Arc<ModelShape>> {
     let key = (path.to_owned(), body);
-    if let Some(s) = PINNED.lock().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref().and_then(|p| p.get(&key))
+    let plain = (path.split(hp_mdl::POSE_SEPARATOR).next().unwrap_or(path).to_owned(), body);
+    if let Some(s) = PINNED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .as_ref()
+        .and_then(|p| p.get(&key).or_else(|| p.get(&plain)))
     {
         return Some(Arc::clone(s));
     }
@@ -666,7 +678,12 @@ pub(super) fn cached_shape(fs: Option<&hp_fs::GameFs>, path: &str, body: u32) ->
 
 pub(super) fn model_shape(fs: Option<&hp_fs::GameFs>, path: &str, body: u32) -> Result<Arc<ModelShape>, String> {
     let key = (path.to_owned(), body);
-    if let Some(s) = PINNED.lock().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref().and_then(|p| p.get(&key))
+    let plain = (path.split(hp_mdl::POSE_SEPARATOR).next().unwrap_or(path).to_owned(), body);
+    if let Some(s) = PINNED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .as_ref()
+        .and_then(|p| p.get(&key).or_else(|| p.get(&plain)))
     {
         return Ok(Arc::clone(s));
     }
@@ -721,7 +738,7 @@ impl Resolved {
 pub(super) fn resolve(obj: &Obj, fs: Option<&hp_fs::GameFs>, choice: MeshChoice) -> Resolved {
     let mut out = Resolved { pieces: obj.meshes.clone(), ..Resolved::default() };
     for m in &obj.models {
-        match model_shape(fs, &m.path, m.body) {
+        match model_shape(fs, &hp_shape::shape_key(&m.path, m.pose.as_deref()), m.body) {
             Ok(shape) => {
                 if choice == MeshChoice::Collision && !shape.collision.is_empty() {
                     out.pieces.extend(shape.collision.iter().map(|p| p.transformed(&m.matrix)));

@@ -1,7 +1,7 @@
 use egui::{Align2, Color32, FontId, Key, Painter, Pos2, Rect, Stroke, StrokeKind};
 use glam::DVec3;
 use hp_app::settings::SelectElement;
-use hp_app::theme::{VIEW_ACCENT, VIEW_SUCCESS};
+use hp_app::theme::{VIEW_ACCENT, VIEW_SUCCESS, VIEW_WARNING};
 use hp_app::{AppState, ViewInfo, t, tf};
 use hp_geom::Aabb;
 
@@ -566,6 +566,8 @@ impl SelectTool {
                 }
             });
             hp_app::widgets::vsep(ui);
+            self.filter_ui(ui, state);
+            hp_app::widgets::vsep(ui);
             let pivot = state.pivot.is_some();
             if ui
                 .add(egui::Button::selectable(pivot, t!("seltool.pivot")))
@@ -631,16 +633,73 @@ impl SelectTool {
         });
     }
 
+    fn filter_ui(&mut self, ui: &mut egui::Ui, state: &mut AppState) {
+        hp_app::widgets::keep_together(ui, "filter", |ui| {
+            let active = state.runtime.selection.filter.is_active();
+            let title = egui::RichText::new(t!("seltool.filter"));
+            let title = if active { title.color(hp_app::theme::warning()).strong() } else { title };
+            ui.label(title).on_hover_text(t!("seltool.filter.tip"));
+            let id = ui.make_persistent_id("hp_sel_filter");
+            let text = &mut self.filter_text;
+            if text.as_str() != state.runtime.selection.filter.text() && !ui.memory(|m| m.has_focus(id)) {
+                state.runtime.selection.filter.text().clone_into(text);
+            }
+            let resp = ui.add(
+                egui::TextEdit::singleline(text)
+                    .id(id)
+                    .hint_text(t!("seltool.filter.hint"))
+                    .desired_width(130.0)
+                    .char_limit(hp_editor::MAX_FILTER_LEN),
+            );
+            let resp = resp.on_hover_text(t!("seltool.filter.tip"));
+            if resp.changed() {
+                state.runtime.selection.filter.set_text(text);
+            }
+            if resp.has_focus() && ui.input(|i| i.key_pressed(Key::Escape)) {
+                text.clear();
+                state.runtime.selection.filter.clear();
+                resp.surrender_focus();
+            }
+            for kind in hp_editor::FilterKind::ALL {
+                let on = state.runtime.selection.filter.kind_enabled(kind);
+                let key = match kind {
+                    hp_editor::FilterKind::Brushes => "seltool.filter.brushes",
+                    hp_editor::FilterKind::Entities => "seltool.filter.entities",
+                    hp_editor::FilterKind::Props => "seltool.filter.props",
+                    hp_editor::FilterKind::Lights => "seltool.filter.lights",
+                };
+                if ui.add(egui::Button::selectable(on, t!(key))).on_hover_text(t!("seltool.filter.kind_tip")).clicked()
+                {
+                    state.runtime.selection.filter.set_kind(kind, !on);
+                }
+            }
+            if ui
+                .add_enabled(active, egui::Button::new(t!("seltool.filter.clear")))
+                .on_hover_text(t!("seltool.filter.clear_tip"))
+                .clicked()
+            {
+                text.clear();
+                state.runtime.selection.filter.clear();
+            }
+        });
+    }
+
     pub(super) fn hint(&self, state: &AppState) -> Option<String> {
         if let Some(d) = &self.drag {
             return Some(match &d.op {
                 DragOp::Band { .. } => {
-                    if self.centers_only {
+                    let base = if self.centers_only {
                         t!("seltool.hint.band_centers").to_owned()
                     } else if self.box_inside ^ d.mods.alt {
                         t!("seltool.hint.band_inside").to_owned()
                     } else {
                         t!("seltool.hint.band_touching").to_owned()
+                    };
+                    let filter = &state.runtime.selection.filter;
+                    if filter.is_active() {
+                        format!("{base}  |  {}", tf!("seltool.filter.badge", filter.summary()))
+                    } else {
+                        base
                     }
                 }
                 DragOp::BoxEdit { .. } => t!("seltool.hint.box_edit").to_owned(),
@@ -758,6 +817,22 @@ fn fmt_factors(s: DVec3) -> String {
     } else {
         format!("x{} x{} x{}", f(s.x), f(s.y), f(s.z))
     }
+}
+
+pub(crate) fn paint_filter_badge(state: &AppState, view: &ViewInfo, painter: &Painter) {
+    let filter = &state.runtime.selection.filter;
+    if !filter.is_active() {
+        return;
+    }
+    let text = tf!("seltool.filter.badge", filter.summary());
+    let galley = painter.layout_no_wrap(text, FontId::proportional(12.0), Color32::BLACK);
+    let pos = view.rect.left_bottom() + egui::vec2(6.0, -6.0);
+    let rect = Align2::LEFT_BOTTOM.anchor_size(pos, galley.size()).expand2(egui::vec2(5.0, 2.0));
+    if !view.rect.contains_rect(rect) {
+        return;
+    }
+    painter.rect_filled(rect, 3.0, VIEW_WARNING);
+    painter.galley(rect.min + egui::vec2(5.0, 2.0), galley, Color32::BLACK);
 }
 
 pub(super) fn label(painter: &Painter, pos: Pos2, anchor: Align2, text: &str) {

@@ -13,7 +13,7 @@ pub use analyze::{
 };
 pub use intersect::{Overlap, contains_point, overlap, separation, touches_box};
 pub use mesh::{TriMesh, round_to};
-pub use model::{Attachment, ModelShape, attachments, collision_pieces, load_shape, render_mesh};
+pub use model::{Attachment, ModelShape, attachments, collision_pieces, load_shape, render_mesh, shape_key};
 pub use raster::{Image, Layer, Marker, SheetOptions, ViewKind, render_sheet};
 pub use sweep::{Contact, ContactKind, Frame, RayHit, exit_depth, ray_cast, sweep};
 

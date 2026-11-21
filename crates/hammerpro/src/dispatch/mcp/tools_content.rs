@@ -33,7 +33,11 @@ domain! { "content and release";
         map is saved first. It runs on its own threads: follow it with get_release_status. With analyze_only, \
         only the dependencies are resolved (nothing is written). A build writes files: set confirm to true. \
         With protect, Protect your BSP ships a protected copy of the map (gameplay logic and entity wiring \
-        stripped, watermarked) and keeps the full one for the server.",
+        stripped, watermarked) and keeps the full one for the server. Missing files and particle systems that \
+        are not found never block a build: the build stops before compiling and get_release_status shows \
+        awaiting_missing_confirmation; start it again with allow_missing to continue anyway (the setting \
+        content.missing_as_errors makes them errors instead). leave_out and include change the entries left out \
+        of the build (the unchecked entries of the Map assets tab, saved with the map).",
         {
             "analyze_only": boolean("Only resolve the dependencies (default false)."),
             "confirm": boolean("Required for a build (it compiles and writes the content folder and the GMA)."),
@@ -42,6 +46,9 @@ domain! { "content and release";
             "game_session": boolean("Build the cubemaps and the navigation mesh in Garry's Mod during the build \
                 (starts the game; saved as the content setting). Only when the user asked; refused in automated runs."),
             "keep_cubemaps": boolean("Keep the cubemaps built in game when a compile replaces the map (saved)."),
+            "allow_missing": boolean("Continue anyway when files or particle systems are missing (default false)."),
+            "leave_out": strings("Asset paths or particle system names to leave out of the build (unchecked in Map assets).", 500),
+            "include": strings("Asset paths or particle system names to put back in the build.", 500),
         }, [];
     get_protect_options: Read, "Protect your BSP options",
         "Every option of Protect your BSP as saved in the content settings: protect, watermark, the decompile \
@@ -443,10 +450,19 @@ fn find_unused_assets(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
 fn release_json(state: &AppState) -> Value {
     let c = &state.runtime.content;
     let path = |p: &Option<PathBuf>| p.as_ref().map(|p| p.display().to_string());
+    let mut left_out: Vec<String> = mapassets::unchecked_entries(state).into_iter().collect();
+    left_out.sort_unstable();
     json!({
         "window_open": c.release_open,
         "running": c.progress.as_ref().map(|(step, f)| json!({ "step": step, "fraction": f })),
         "starting": c.start_requested.is_some(),
+        "awaiting_missing_confirmation": c.awaiting_missing.map(|m| json!({
+            "missing_files": m.files,
+            "particle_systems_not_found": m.particle_systems,
+            "left_out": m.left_out,
+            "note": "Start the build again with allow_missing true to continue anyway, or leave_out the entries.",
+        })),
+        "left_out": left_out,
         "cancel_requested": c.cancel_requested,
         "last_release": c.last_release.as_ref().map(|r| json!({
             "ok": r.error.is_none(),
@@ -512,6 +528,22 @@ fn start_release(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         state.settings.content.protect_watermark = mark.chars().filter(|c| !c.is_control()).take(120).collect();
         state.settings_dirty = true;
     }
+    let leave_out = a.strings("leave_out", 500)?;
+    let include = a.strings("include", 500)?;
+    if !leave_out.is_empty() || !include.is_empty() {
+        let mut set = mapassets::unchecked_entries(state);
+        for n in include {
+            set.remove(n.trim());
+        }
+        for n in leave_out {
+            let n = n.trim().replace('\\', "/");
+            if !n.is_empty() {
+                set.insert(n);
+            }
+        }
+        mapassets::set_unchecked_entries(state, &set);
+    }
+    state.runtime.content.start_allow_missing = a.opt_bool("allow_missing")?.unwrap_or(false);
     state.runtime.content.start_requested = Some(analyze_only);
     state.runtime.content.release_open = true;
     Ok(ToolResult::json(json!({
@@ -815,6 +847,24 @@ mod tests {
         s.runtime.content.start_requested = None;
         assert_eq!(ok(&mut s, "start_release", json!({ "analyze_only": true }))["started"], "analysis");
         assert_eq!(s.runtime.content.start_requested, Some(true));
+        assert!(!s.runtime.content.start_allow_missing);
+        s.runtime.content.start_requested = None;
+        let r = ok(
+            &mut s,
+            "start_release",
+            json!({ "analyze_only": true, "allow_missing": true, "leave_out": ["materials/path.vtf", "rocket_fx"] }),
+        );
+        assert_eq!(r["started"], "analysis");
+        assert!(s.runtime.content.start_allow_missing && s.runtime.content.map_assets.unchecked_changed);
+        s.runtime.content.awaiting_missing =
+            Some(hp_app::runtime::MissingCounts { files: 2, particle_systems: 3, left_out: 0 });
+        let st = ok(&mut s, "get_release_status", json!({}));
+        assert_eq!(st["left_out"], json!(["materials/path.vtf", "rocket_fx"]));
+        assert_eq!(st["awaiting_missing_confirmation"]["particle_systems_not_found"], 3);
+        s.runtime.content.start_requested = None;
+        ok(&mut s, "start_release", json!({ "analyze_only": true, "include": ["rocket_fx"] }));
+        assert_eq!(ok(&mut s, "get_release_status", json!({}))["left_out"], json!(["materials/path.vtf"]));
+        s.runtime.content.start_requested = Some(true);
         err(&mut s, "start_release", json!({ "confirm": true }));
         assert_eq!(ok(&mut s, "get_release_status", json!({}))["starting"], true);
         assert_eq!(ok(&mut s, "get_release_checklist", json!({}))["gathering"], true);

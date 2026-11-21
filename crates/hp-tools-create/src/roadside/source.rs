@@ -165,6 +165,7 @@ mod tests {
             thickness: 96.0,
             tex_scale: 0.25,
             section: Section::default(),
+            cap: None,
         }
     }
 

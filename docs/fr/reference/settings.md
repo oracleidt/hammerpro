@@ -534,6 +534,7 @@ La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de l
 | `lzma_level` | `6` | Niveau LZMA, de 0 à 9. |
 | `pack_workshop` | `true` | Livre le contenu venant d'éléments du Workshop (sinon ils sont listés comme éléments requis). |
 | `pack_mounted` | `false` | Livre le contenu des jeux de `mount.cfg`. |
+| `missing_as_errors` | `false` | Les fichiers et systèmes de particules manquants arrêtent la construction au lieu de proposer de continuer quand même. |
 | `keep_cubemaps` | `true` | Recopie les cubemaps construites du BSP précédent. |
 | `game_session` | `false` | Construit les cubemaps et le nav mesh en jeu. |
 | `write_gma` | `true` | Écrit le `.gma`. |

@@ -43,9 +43,14 @@ pub(crate) fn lod_job(fs: &hp_fs::GameFs, key: &str) -> Result<PreparedLods, Str
     };
     let files = hp_mdl::read_files(path, |p| fs.read(p)).map_err(|e| e.to_string())?;
     let load = |lod: u32| -> Result<hp_mdl::Model, String> {
-        let opts = hp_mdl::LoadOptions { lod, body_groups: hp_mdl::BodyGroupSelect::All, ..Default::default() };
+        let opts = hp_mdl::LoadOptions {
+            lod,
+            body_groups: hp_mdl::BodyGroupSelect::All,
+            pose: crate::models::pose_for_key(anim),
+            ..Default::default()
+        };
         let model = files.load(&opts).map_err(|e| e.to_string())?;
-        if let Some(anim) = anim
+        if let Some(anim) = crate::models::sequence_for_key(anim)
             && let Some(index) = model.sequences.iter().position(|s| s.name.eq_ignore_ascii_case(anim))
             && model.posed_sequence != Some(index)
         {

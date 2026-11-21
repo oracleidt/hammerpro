@@ -14,13 +14,34 @@ use hp_app::{AppState, Severity, t, tf};
 use hp_fs::collect::{ExistingFiles, UnusedReport};
 use hp_fs::deps::{DepRoot, DependencyGraph, DepsCache};
 
-pub use model::{AssetTree, Entry, Filter, Group, Item, Show, Totals, is_base};
+pub use model::{AssetTree, Entry, Filter, Group, Item, LeftOut, Show, Totals, is_base};
 pub use work::ResolveInput;
 use work::{CollectInput, check_output, map_name};
 
 type Resolved = Result<(DependencyGraph, Vec<String>), String>;
 
 pub const TAB: &str = "map_assets";
+
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct MapAssetsSidecar {
+    pub unchecked: Vec<String>,
+}
+
+impl hp_app::sidecar::SidecarSection for MapAssetsSidecar {
+    const NAME: &'static str = "map_assets";
+}
+
+pub fn unchecked_entries(state: &AppState) -> HashSet<String> {
+    state.sidecar.get::<MapAssetsSidecar>().unchecked.into_iter().collect()
+}
+
+pub fn set_unchecked_entries(state: &mut AppState, names: &HashSet<String>) {
+    let mut unchecked: Vec<String> = names.iter().cloned().collect();
+    unchecked.sort_unstable();
+    state.sidecar.set(&MapAssetsSidecar { unchecked });
+    state.runtime.content.map_assets.unchecked_changed = true;
+}
 
 const SETTLE: Duration = Duration::from_millis(800);
 
@@ -102,6 +123,8 @@ pub struct MapAssetsPanel {
     refresh_requested: bool,
     filter: Filter,
     unchecked: HashSet<String>,
+    saved_unchecked: HashSet<String>,
+    unchecked_serial: Option<u64>,
     expanded: HashSet<String>,
     collapsed: [bool; 5],
     visible: Vec<usize>,
@@ -140,6 +163,8 @@ impl Default for MapAssetsPanel {
             refresh_requested: false,
             filter: Filter::default(),
             unchecked: HashSet::new(),
+            saved_unchecked: HashSet::new(),
+            unchecked_serial: None,
             expanded: HashSet::new(),
             collapsed: [false; 5],
             visible: Vec::new(),
@@ -181,6 +206,7 @@ impl MapAssetsPanel {
         self.poll_collect(state);
         self.poll_unused();
         self.poll_pick();
+        self.sync_unchecked(state);
         let rt = &mut state.runtime.content.map_assets;
         if let Some(req) = rt.collect_request.take() {
             self.request = Some(req);
@@ -207,6 +233,21 @@ impl MapAssetsPanel {
         }
         if self.is_busy() || self.pick.is_some() || self.request.is_some() || self.changed_at.is_some() {
             ctx.request_repaint_after(Duration::from_millis(100));
+        }
+    }
+
+    fn sync_unchecked(&mut self, state: &mut AppState) {
+        let serial = state.sidecar.serial();
+        let reload = std::mem::take(&mut state.runtime.content.map_assets.unchecked_changed);
+        if self.unchecked_serial != Some(serial) || reload {
+            self.unchecked_serial = Some(serial);
+            self.unchecked = unchecked_entries(state);
+            self.saved_unchecked = self.unchecked.clone();
+            self.rows_dirty = true;
+        } else if self.unchecked != self.saved_unchecked {
+            self.saved_unchecked = self.unchecked.clone();
+            set_unchecked_entries(state, &self.saved_unchecked);
+            state.runtime.content.map_assets.unchecked_changed = false;
         }
     }
 

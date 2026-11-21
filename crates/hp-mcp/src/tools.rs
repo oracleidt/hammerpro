@@ -280,7 +280,7 @@ pub const EDITOR_TOOLS: &[ToolSpec] = &[
     ToolSpec {
         name: "get_selection",
         title: "Selection",
-        description: "The selected objects (ids and kinds), selected faces and the selection bounds.",
+        description: "The selected objects (ids and kinds), selected faces, the selection bounds and alignment_source: the face the texture tool uses as source for Alt + right click (solid, side, material; null when there is none).",
         kind: ToolKind::Read,
         schema: empty,
     },

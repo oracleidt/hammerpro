@@ -228,6 +228,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Tout afficher | `unhide_all` | `U` |  |  |
 | Utiliser les cordons | `toggle_cordon` |  |  |  |
 | Déplacer vers un visgroup... | `move_to_visgroup` |  |  |  |
+| Retirer de tous les visgroups | `remove_from_all_visgroups` |  |  |  |
 | Créer un visgroup des objets masqués | `hidden_to_visgroup` |  |  |  |
 | Centrer les vues 2D sur la sélection | `center_2d` | `Ctrl+E` |  |  |
 | Centrer la vue 3D sur la sélection | `center_3d` | `Ctrl+Maj+E` |  |  |

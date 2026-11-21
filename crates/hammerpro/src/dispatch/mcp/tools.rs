@@ -695,6 +695,9 @@ fn get_selection(state: &AppState) -> ToolResult {
         "faces": faces,
         "face_count": doc.selection().faces.len(),
         "bounds": bounds_json(doc.selection_bounds(&entity_bounds(state))),
+        "alignment_source": hp_ui_textures::tool::current_source(state).and_then(|f| {
+            doc.face_side(f).map(|s| json!({ "solid": f.solid, "side": f.side, "material": s.material }))
+        }),
     });
     if let (Some(map), Value::Object(extra)) = (out.as_object_mut(), super::tools_groups::element_json(state)) {
         map.extend(extra);
@@ -1519,6 +1522,12 @@ mod tests {
         ok(&mut state, "select_objects", json!({ "ids": [solid] }));
         let sel = ok(&mut state, "get_selection", json!({}));
         assert_eq!(sel["objects"][0]["kind"], "solid");
+        assert!(sel["alignment_source"].is_null());
+        state.lift_face(hp_editor::FaceRef::new(3, 5));
+        let sel = ok(&mut state, "get_selection", json!({}));
+        assert_eq!(sel["alignment_source"]["solid"], 3);
+        assert_eq!(sel["alignment_source"]["side"], 5);
+        state.clear_lifted_face();
         let text = ok(&mut state, "get_vmf_text", json!({}));
         let text = text.as_str().unwrap().to_owned();
         assert!(text.contains("solid"));

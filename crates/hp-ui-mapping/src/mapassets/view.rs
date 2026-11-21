@@ -47,6 +47,7 @@ fn kind_name(kind: DepKind) -> &'static str {
         DepKind::Soundscape => t!("mapassets.kind_soundscape"),
         DepKind::Particle => t!("mapassets.kind_particle"),
         DepKind::ParticleManifest => t!("mapassets.kind_manifest"),
+        DepKind::ParticleSystem => t!("mapassets.kind_particle_system"),
         DepKind::File => t!("mapassets.kind_file"),
     }
 }

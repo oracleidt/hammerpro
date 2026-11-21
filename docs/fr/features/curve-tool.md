@@ -7,7 +7,7 @@ L'outil courbe construit des murs courbes, des rambardes, des bordures, des tuya
 ## L'ouvrir
 
 - **Outils > Outil actif > Outil courbe**, la palette d'outils (groupe création, à côté de l'outil polygone), ou `Maj+U`.
-- L'outil dessine dans les vues 2D seulement ; les clics dans la vue 3D sont ignorés. La vue 3D montre l'aperçu en direct.
+- L'outil dessine dans les vues 2D ; la vue 3D montre l'aperçu en direct, ses poignées de points se posent sur les surfaces et les sommets, et **Choisir sur les faces** y fonctionne aussi (voir plus bas).
 
 ## Dessiner la courbe
 
@@ -16,6 +16,32 @@ L'outil courbe construit des murs courbes, des rambardes, des bordures, des tuya
 3. Pendant le tracé, l'aperçu montre déjà les brushes avec les subdivisions et l'épaisseur actuelles : dans la vue du tracé sous forme de contours le long de la courbe lissée, dans les autres vues 2D et dans la vue 3D sous forme de brushes.
 4. **Faites glisser un point** pour le déplacer. `Retour arrière` (ou **Retirer le point**) retire le dernier point, `Échap` annule la courbe. Une courbe compte au plus 1024 points.
 5. Pendant le tracé ou l'ajustement de la courbe, `Maj` + molette change les **Subdivisions** (d'un huitième de la valeur par cran, au moins 1, de 2 à 4096) ; le nombre de brushes de l'étiquette suit. La molette seule zoome toujours.
+
+## Choisir sur les faces : arcs entre deux faces
+
+Pour placer un arc, un encadrement de porte cintré ou un linteau de fenêtre exactement dans une ouverture, activez **Choisir sur les faces** dans la barre d'options. Au lieu de dessiner des points, vous choisissez les deux côtés de l'ouverture puis le sommet de l'arc :
+
+1. **Cliquez la face de départ** : une face latérale de l'ouverture, par exemple la face intérieure du montant gauche de la porte, dans la vue 3D ou dans une vue 2D où la face est vue par la tranche (une ligne). La face survolée est entourée en bleu avec le point aimanté. La hauteur où l'arc commence s'aimante aux arêtes de la face (son arête haute est la ligne de naissance habituelle), sinon à la grille ; maintenez `Alt` pour la placer librement.
+2. **Cliquez la face opposée**, où l'arc se termine. L'étiquette montre la portée entre les deux faces.
+3. **Bougez la souris** pour régler le sommet de l'arc (l'étiquette montre sa flèche), dans la vue 3D ou une vue de face ou de côté, aimanté à la grille. **Cliquez** (ou relâchez un glissement) pour le fixer, ou appuyez sur `Entrée` pour garder le demi cercle par défaut.
+
+L'arc est généré exactement entre les faces : sa portée est la distance entre les plans des deux faces, sa profondeur est celle du mur (la partie où les deux faces se recouvrent), et il se tient dans le plan de l'ouverture. Ses deux extrémités sont coupées à plat le long des faces, elles reposent donc sur les montants sans vide ni chevauchement. La liste **Ajustement** choisit quel bord de l'arc touche les faces :
+
+| Ajustement | Résultat |
+|---|---|
+| **Bord intérieur sur les faces** | L'intérieur de l'arc prolonge les faces : l'ouverture garde sa largeur et l'arc repose sur les montants, comme un arc de pierre sur ses piliers. Par défaut. |
+| **Centre sur les faces** | Le milieu de l'épaisseur de l'arc est sur les faces. |
+| **Bord extérieur sur les faces** | L'extérieur de l'arc touche les faces : l'arc tient dans l'ouverture et arrondit son haut. |
+
+L'**Épaisseur** est la largeur de la bande de l'arc ; la changer, ou changer l'ajustement, reconstruit l'arc sur les mêmes faces. Ensuite la fenêtre Courbe s'ouvre comme d'habitude : changez les subdivisions, le profil ou faites glisser des points, et `Entrée` crée les brushes en une seule étape d'annulation. `Retour arrière` revient d'une étape (choisir à nouveau la face de fin, puis la face de départ), `Échap` annule. Après la création, l'outil reste en mode Choisir sur les faces pour l'ouverture suivante ; désactivez le bouton pour dessiner des points à nouveau.
+
+Les faces doivent être verticales et orientées selon X ou Y (les côtés d'une ouverture dans un mur non tourné) ; un sol, un plafond ou un mur tourné est refusé avec un message.
+
+## Aimantation des points
+
+- Dans les vues 2D, les points cliqués ou glissés s'aimantent aux sommets des brushes proches de la souris (à quelques pixels), sinon à la grille.
+- Dans la vue 3D, les points de contrôle de la courbe sont dessinés comme des poignées. Faites en glisser un pour le poser sur une surface : il s'aimante aux sommets de la face sous la souris, sinon à la grille sur cette face ; hors de toute surface il se déplace dans le plan de la courbe. Un clic sur une surface ajoute un point pendant le tracé, `Maj+clic` en insère un et `Ctrl+clic` en retire un, comme en 2D.
+- Maintenez `Alt` pour couper l'aimantation.
 
 ## Valider et choisir les morceaux
 
@@ -94,7 +120,7 @@ Si le brush n'a pas de données de courbe (il n'a pas été créé par l'outil c
 - Peu de clics donnent les courbes les plus douces : la spline se charge de l'arrondi. Un tracé à main levée sur une grille fine suit davantage la main, tremblements compris.
 - 16 à 64 subdivisions suffisent pour la plupart des courbes ; un nombre élevé fait beaucoup de petits brushes, qui coûtent du temps de compilation. Mettez les courbes décoratives dans un `func_detail` avec **Créer comme**.
 - Les joints sont en onglet, donc les coins extérieurs ne tombent pas sur la grille. Ce sont quand même des plans propres partagés par les deux voisins, et la carte compile sans fuite ni brush invalide.
-- L'outil MCP `create_curve_brushes` construit les mêmes brushes à partir d'une liste de points (avec les options `profile`, `curb_width`, `curb_height`, `ditch_depth`, `roll_start`, `roll_end`, `auto_bank` et `auto_bank_limit`), `get_curve_brushes` lit la courbe enregistrée, `edit_curve_brushes` remplace les brushes d'une courbe avec des points ou des options modifiés en une seule étape d'annulation, et `set_tool_options` avec l'outil `curve` règle `subdivisions`, `thickness`, `height`, `tex_scale`, `create_as`, `keep_active` et les mêmes options de section et de dévers (voir la [référence des outils MCP](../../MCP.md)).
+- L'outil MCP `create_curve_brushes` construit les mêmes brushes à partir d'une liste de points, ou un arc entre deux faces avec `faces` (face de départ et de fin `{solid, side}`), `start_height`, `end_height`, `apex` et `align` (avec les options `profile`, `curb_width`, `curb_height`, `ditch_depth`, `roll_start`, `roll_end`, `auto_bank` et `auto_bank_limit`), `get_curve_brushes` lit la courbe enregistrée, `edit_curve_brushes` remplace les brushes d'une courbe avec des points ou des options modifiés en une seule étape d'annulation, et `set_tool_options` avec l'outil `curve` règle `subdivisions`, `thickness`, `height`, `tex_scale`, `create_as`, `keep_active`, `pick_faces`, `arch_align` et les mêmes options de section et de dévers (voir la [référence des outils MCP](../../MCP.md)).
 
 ## FAQ
 

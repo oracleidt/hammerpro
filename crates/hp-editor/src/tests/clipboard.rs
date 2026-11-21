@@ -159,3 +159,19 @@ fn paste_special_preview_matches_the_pasted_geometry() {
     let capped = Document::paste_special_preview(&text, &many).expect("many");
     assert!(capped.shown_copies < 10_000 && capped.lines.len() <= crate::PREVIEW_MAX_LINES);
 }
+
+#[test]
+fn surface_paste_touches_floors_walls_and_ceilings() {
+    let b = hp_geom::Aabb::new(DVec3::new(0.0, 0.0, 0.0), DVec3::new(32.0, 64.0, 16.0));
+    let floor = crate::surface_paste_offset(&b, DVec3::new(100.0, 100.0, 8.0), DVec3::Z);
+    assert_eq!(floor, crate::cursor_paste_offset(&b, DVec3::new(100.0, 100.0, 8.0), None));
+    let moved = hp_geom::Aabb::new(b.min + floor, b.max + floor);
+    assert!((moved.min.z - 8.0).abs() < 1e-9);
+    let wall = crate::surface_paste_offset(&b, DVec3::new(256.0, 0.0, 64.0), DVec3::new(-1.0, 0.0, 0.0));
+    let moved = hp_geom::Aabb::new(b.min + wall, b.max + wall);
+    assert!((moved.max.x - 256.0).abs() < 1e-9, "{moved:?}");
+    assert!((moved.center().z - 64.0).abs() < 1e-9);
+    let ceiling = crate::surface_paste_offset(&b, DVec3::new(0.0, 0.0, 128.0), DVec3::new(0.0, 0.0, -1.0));
+    let moved = hp_geom::Aabb::new(b.min + ceiling, b.max + ceiling);
+    assert!((moved.max.z - 128.0).abs() < 1e-9, "{moved:?}");
+}

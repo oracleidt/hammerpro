@@ -114,6 +114,10 @@ Quand des displacements sont sélectionnés, des options par face apparaissent :
 
 Chaque displacement sélectionné affiche la teinte de sélection et sa grille de triangles dans les vues (les masques cachent l'une ou l'autre). Les triangles marqués retirés sont teintés dans la vue 3D.
 
+Comme la fenêtre Face Edit de Hammer, la sélection de faces appartient à l'outil : passer à l'[outil Édition de faces](texture-tool.md) garde les mêmes faces sélectionnées (les deux outils modifient les mêmes faces), passer à n'importe quel autre outil vide la sélection de faces, donc aucun displacement ne reste teinté. Les solides sélectionnés restent sélectionnés, et **Sélection précédente** de l'outil Édition de faces rend les faces.
+
+En mode caméra (vue souris, `Z`), le cercle du pinceau, la peinture, la sculpture, l'alpha, les tags et les tampons Terraform suivent le viseur au centre de la vue 3D, pas le curseur caché ; maintenez `Alt` pour libérer le curseur et peindre là où il pointe. Quand vous regardez autour en maintenant un bouton de la souris, le pinceau reste là où le bouton a été enfoncé.
+
 ## Sculpter la géométrie
 
 Section **Sculpter la géométrie** (mode **Sculpter**) :

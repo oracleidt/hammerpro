@@ -49,6 +49,8 @@ pub const TR: TrTable = &[
     ("viewport.camera_pos", "Camera: {0}", "Caméra : {0}"),
     ("viewport.camera_angles", "Yaw {0}°, pitch {1}°", "Lacet {0}°, tangage {1}°"),
     ("viewport.center_here", "Center views here", "Centrer les vues ici"),
+    ("viewport.visgroups", "Visgroups", "Visgroups"),
+    ("viewport.remove_from_visgroup", "Remove from", "Retirer de"),
     ("viewport.create_here", "Create {0} here", "Créer {0} ici"),
     ("viewport.create_entity_here", "Create entity here", "Créer une entité ici"),
     ("viewport.team_ping", "Ping here for the team", "Signaler ici à l'équipe"),

@@ -139,6 +139,7 @@ enum VisAction {
     SelectMembers(Id),
     AddSelection(Id),
     RemoveSelection(Id),
+    RemoveSelectionFromAll,
     Delete(Id),
     NewChild(Id),
     Move(Id, Option<Id>),
@@ -168,6 +169,14 @@ pub struct VisgroupPanel {
     last_recount: Option<Instant>,
     force_recount: bool,
     cordons: crate::cordons::CordonList,
+    sel_groups: Option<(SelKey, Vec<Id>)>,
+}
+
+type SelKey = (u64, usize, Option<ObjRef>, Option<ObjRef>);
+
+fn sel_key(state: &AppState) -> SelKey {
+    let objs = &state.doc.selection().objects;
+    (state.doc.revision(), objs.len(), objs.first().copied(), objs.last().copied())
 }
 
 impl VisgroupPanel {
@@ -213,6 +222,7 @@ impl VisgroupPanel {
         let mut actions: Vec<VisAction> = Vec::new();
 
         self.toolbar(ui, state, &mut actions);
+        self.membership_ui(ui, state, &mut actions);
         ui.separator();
 
         egui::ScrollArea::vertical().id_salt("hp_visgroups_scroll").auto_shrink([false, false]).show(ui, |ui| {
@@ -330,6 +340,51 @@ impl VisgroupPanel {
                 let text = RichText::new(tf!(plural(n, "visgroups.count_one", "visgroups.count"), n)).weak();
                 ui.add(egui::Label::new(text).truncate());
             });
+        });
+    }
+
+    fn selection_visgroups(&mut self, state: &AppState) -> Vec<Id> {
+        if state.doc.selection().objects.is_empty() {
+            return Vec::new();
+        }
+        let key = sel_key(state);
+        if let Some((k, ids)) = &self.sel_groups
+            && *k == key
+        {
+            return ids.clone();
+        }
+        let ids = state.doc.visgroups_of(&state.doc.selected_objects());
+        self.sel_groups = Some((key, ids.clone()));
+        ids
+    }
+
+    fn membership_ui(&mut self, ui: &mut Ui, state: &mut AppState, actions: &mut Vec<VisAction>) {
+        let groups = self.selection_visgroups(state);
+        if groups.is_empty() {
+            return;
+        }
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new(t!("visgroups.selection_in")).weak());
+            for id in &groups {
+                let Some(g) = state.doc.visgroup(*id) else { continue };
+                let name = g.name.clone();
+                let short: String = if name.chars().count() > 20 {
+                    name.chars().take(19).chain(std::iter::once('.')).collect()
+                } else {
+                    name.clone()
+                };
+                if ui.small_button(format!("✖ {short}")).on_hover_text(tf!("visgroups.remove_from_tip", name)).clicked()
+                {
+                    actions.push(VisAction::RemoveSelection(*id));
+                }
+            }
+            if ui
+                .small_button(t!("visgroups.remove_from_all"))
+                .on_hover_text(t!("visgroups.remove_from_all_tip"))
+                .clicked()
+            {
+                actions.push(VisAction::RemoveSelectionFromAll);
+            }
         });
     }
 
@@ -478,7 +533,8 @@ impl VisgroupPanel {
                 actions.push(VisAction::AddSelection(id));
                 ui.close();
             }
-            if ui.add_enabled(has_sel, egui::Button::new(t!("visgroups.remove_selection"))).clicked() {
+            let in_group = has_sel && self.selection_visgroups(state).contains(&id);
+            if ui.add_enabled(in_group, egui::Button::new(t!("visgroups.remove_selection"))).clicked() {
                 actions.push(VisAction::RemoveSelection(id));
                 ui.close();
             }
@@ -660,6 +716,10 @@ impl VisgroupPanel {
                 VisAction::RemoveSelection(id) => {
                     let objs = state.doc.selected_objects();
                     state.doc.remove_from_visgroup(id, &objs).map(|_| ())
+                }
+                VisAction::RemoveSelectionFromAll => {
+                    let objs = state.doc.selected_objects();
+                    state.doc.remove_from_all_visgroups(&objs).map(|_| ())
                 }
                 VisAction::Delete(id) => {
                     if self.focused == Some(id) {

@@ -64,7 +64,16 @@ Les reconstructions sont incrémentales : `.hammerpro_release.toml` note chaque 
 
 La publication ajoute aussi à l'addon le Lua des changements de skybox (`point_hammerpro_skybox`) quand la map en utilise, car le jeu n'exécute jamais le Lua du pakfile d'une map.
 
-Une construction s'arrête avec un message clair si la map n'est pas enregistrée, si le jeu ou son contenu est introuvable, si la compilation échoue, si la map fuit, s'il manque des fichiers nécessaires (voir le rapport) ou si certains fichiers ne peuvent être chargés ni depuis une map ni depuis un addon.
+Une construction s'arrête avec un message clair si la map n'est pas enregistrée, si le jeu ou son contenu est introuvable, si la compilation échoue, si la map fuit ou si certains fichiers ne peuvent être chargés ni depuis une map ni depuis un addon.
+
+### Contenu manquant
+
+Les fichiers et systèmes de particules manquants ne bloquent jamais une construction. S'il en manque, la construction s'arrête avant de compiler et demande **Contenu manquant** : combien de fichiers manquent, combien de systèmes de particules ne sont dans aucun fichier de particules, et combien d'entrées vous avez laissées de côté. **Continuer quand même** construit la map sans eux (ils apparaissent manquants en jeu), **Voir ce qui manque** ouvre le rapport, **Annuler** arrête. L'onglet de construction garde ensuite un bouton **Continuer quand même** à côté du message.
+
+- Les systèmes de particules (le `effect_name` d'un `info_particle_system`, par exemple) sont listés comme *Système de particules introuvable*, jamais comme des fichiers. Hammer Pro les cherche dans les manifestes de particules et dans chaque fichier de particules du contenu monté, y compris ceux qu'aucun manifeste ne liste.
+- Le journal et le rapport disent où chaque élément manquant est utilisé, jusqu'à l'entité : par exemple `materials/path.vtf` utilisé par `materials/x.vmt` < `models/y.mdl` < `prop_static 12 (model)`. Les références laissées par des outils ou des éditeurs (`materials/path.vtf`, `noicon`) se retrouvent et se corrigent ainsi facilement.
+- **Laisser de côté** (rapport, section Manquants) ou décocher une entrée dans [Ressources de la map](map-assets.md) la laisse hors de la construction : elle n'est pas incluse et ne compte pas comme manquante. Le choix est enregistré avec la map ; **Inclure de nouveau** la remet.
+- **Contenu manquant = erreur** (options de construction, réglage `content.missing_as_errors`, désactivé par défaut) arrête la construction au lieu de demander.
 
 ### Session de jeu
 
@@ -87,7 +96,7 @@ Chaque ligne doit être verte avant de publier (**Actualiser** relit tout). Les 
 | **Aucune fuite** | La map est étanche. | **Construire** |
 | **Cubemaps** | Cubemaps construites par rapport au nombre d'`env_cubemap`. | **Construire en jeu** |
 | **Maillage de navigation** | Présent et à jour, absent, ou construit pour une autre géométrie. | **Construire en jeu** |
-| **Dépendances** | Tous les fichiers trouvés, ou le nombre de manquants. | **Afficher** (onglet Rapport) |
+| **Dépendances** | Tous les fichiers trouvés, ou le nombre de manquants (orange : une construction fonctionne quand même). | **Afficher** (onglet Rapport) |
 | **Miniature de la carte** | `maps/thumb/<map>.png` existe. | **Capturer** |
 | **Icône du Workshop** | L'icône existe (écrite à la prochaine construction à partir de la miniature). | **Capturer** |
 | **addon.json** | Titre, type et étiquettes valides. | **Modifier** (onglet Addon) |
@@ -138,7 +147,7 @@ Chaque fichier nécessaire à la map avec sa taille, son origine, sa destination
 
 - **Origines** : fichiers par origine (jeu de base, addons, Workshop, dossiers personnalisés, téléchargements, jeux montés, contenu supplémentaire, fichiers du jeu en vrac, généré), avec les choix d'inclusion pour le Workshop et les jeux montés.
 - **Objets du Workshop (N)** : les objets utilisés par la map, avec **Copier les identifiants** (listez-les comme objets requis quand leur contenu n'est pas inclus).
-- **Manquants (N)** : fichiers nommés par la map qu'aucun contenu monté n'a.
+- **Manquants (N)** : fichiers et systèmes de particules nommés par la map qu'aucun contenu monté n'a, en deux listes, chacun avec la chaîne de ce qui l'utilise (survol pour chaque usage) et **Laisser de côté** / **Inclure de nouveau**.
 - **Chemins (N)** : fichiers inclus dans des dossiers génériques, avec des espaces dans le chemin ou aussi fournis par un autre addon.
 - **Conseils de taille (N)** : textures qui pourraient être plus légères (DXT5 sans alpha, plus grandes que 1024, sans mipmaps, non compressées).
 

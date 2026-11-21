@@ -20,11 +20,18 @@ domain! { "groups and visibility";
         "Select the solids (or with faces: true, the faces) using a material pattern (* and ?).",
         { "pattern": string("Material pattern, for example \"tools/*\"."), "faces": boolean("Select faces instead of solids."), "op": op() }, ["pattern"];
     select_in_box: Editor, "Select in a box",
-        "Select the visible objects touching (or inside, or with their center inside) a box.",
+        "Select the visible objects touching (or inside, or with their center inside) a box. filter and kinds limit \
+        it to matching objects, like the selection filter of the selection tool (set_tool_options filter and \
+        filter_kinds); use_tool_filter: true applies the filter currently set in the selection tool.",
         {
             "min": vec3("Box minimum."), "max": vec3("Box maximum."),
             "mode": choice("Which objects (default touching).", &["touching", "inside", "center"]),
             "op": op(),
+            "filter": string("Filter terms: class:, name:, material:, model: with * and ?, comma for alternatives \
+                (class:light,light_spot), leading - to exclude, a bare word matches class or name. Terms of the same \
+                kind are alternatives, different kinds must all match."),
+            "kinds": { "type": "array", "items": { "type": "string", "enum": ["brushes", "entities", "props", "lights"] }, "maxItems": 4, "description": "Kinds of object to keep (default all): brushes (world brushes), entities (other brush and point entities), props (prop_*), lights (light*, point_spotlight, env_projectedtexture)." },
+            "use_tool_filter": boolean("Apply the selection filter set in the selection tool (ignored when filter or kinds is given)."),
         }, ["min", "max"];
     select_faces: Editor, "Select faces",
         "Select faces (texture application mode): [{solid, side}].",
@@ -88,9 +95,11 @@ domain! { "groups and visibility";
         "Delete a visgroup (its objects stay, they only leave it).",
         { "id": integer("Visgroup id.", 1, i64::from(u32::MAX)) }, ["id"];
     set_visgroup_members: Edit, "Visgroup members",
-        "Add objects to a visgroup, remove them from it, or set exactly the visgroups of objects.",
+        "Add objects to a visgroup, remove them from it, take them out of every visgroup (remove_all), or set exactly \
+        the visgroups of objects. Works on world brushes, brush entities (their brushes leave the visgroup too) and \
+        point entities; the default objects are the selection. One undo step.",
         {
-            "action": choice("add, remove, or set (the objects get exactly visgroups).", &["add", "remove", "set"]),
+            "action": choice("add, remove, remove_all (every visgroup), or set (the objects get exactly visgroups).", &["add", "remove", "remove_all", "set"]),
             "visgroup": integer("Visgroup (add and remove).", 1, i64::from(u32::MAX)),
             "visgroups": ids("Visgroups (set)."),
             "ids": target_ids(), "solid_ids": target_solid_ids(),
@@ -342,9 +351,36 @@ fn select_in_box(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         _ => RectMode::Touching,
     };
     let op = sel_op(a)?;
+    let text = a.opt_str("filter", hp_editor::MAX_FILTER_LEN)?.map(str::to_owned);
+    let kinds = match a.get("kinds") {
+        Some(Value::Array(list)) => {
+            let mut out = Vec::new();
+            for v in list {
+                let k = v
+                    .as_str()
+                    .and_then(hp_editor::FilterKind::from_id)
+                    .ok_or("kinds: brushes, entities, props or lights")?;
+                out.push(k);
+            }
+            Some(out)
+        }
+        Some(Value::Null) | None => None,
+        Some(_) => return Err("kinds must be a list".to_owned()),
+    };
+    let filter = if text.is_some() || kinds.is_some() {
+        let mut f = hp_editor::SelectFilter::new(text.as_deref().unwrap_or(""));
+        if let Some(k) = &kinds {
+            f.set_kinds(k);
+        }
+        Some(f)
+    } else if a.opt_bool("use_tool_filter")?.unwrap_or(false) {
+        Some(state.runtime.selection.filter.clone())
+    } else {
+        None
+    };
     let AppState { doc, assets, .. } = state;
     let f = |e: &hp_vmf::Entity| assets.entity_bounds(e);
-    let n = doc.select_in_box(&b, mode, &f, op);
+    let n = doc.select_in_box_filtered(&b, mode, &f, op, filter.as_ref().filter(|f| f.is_active()));
     Ok(ToolResult::json(json!({ "matched": n, "selection": selection_json(state) })))
 }
 
@@ -631,9 +667,16 @@ fn delete_visgroup(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
 }
 
 fn set_visgroup_members(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
-    let action = a.opt_enum("action", &["add", "remove", "set"])?.ok_or("action is required")?;
+    let action = a.opt_enum("action", &["add", "remove", "remove_all", "set"])?.ok_or("action is required")?;
     let objs = targets(state, a)?;
     let n = match action.as_str() {
+        "remove_all" => {
+            if state.doc.visgroups_of(&objs).is_empty() {
+                0
+            } else {
+                edit(state, "set_visgroup_members", |doc| doc.remove_from_all_visgroups(&objs))?
+            }
+        }
         "set" => {
             if a.get("visgroup").is_some() {
                 return Err("set takes visgroups (a list), not visgroup".to_owned());
@@ -900,6 +943,29 @@ mod tests {
         assert_eq!(s.doc.selected_faces().len(), 6);
         ok(&mut s, "select_in_box", json!({ "min": [-300, 250, -10], "max": [300, 300, 200], "mode": "inside" }));
         assert_eq!(s.doc.selected_objects(), vec![ObjRef::Solid(3)]);
+        let big = json!({ "min": [-5000, -5000, -5000], "max": [5000, 5000, 5000], "filter": "class:light" });
+        let r = ok(&mut s, "select_in_box", big);
+        assert!(r["matched"].as_u64().unwrap() >= 1, "{r}");
+        assert!(
+            s.doc.selected_entity_ids().iter().all(|e| s.doc.scene().entity(*e).unwrap().entity.classname == "light")
+        );
+        assert!(s.doc.selected_objects().iter().all(|o| matches!(o, ObjRef::Entity(_))));
+        let r = ok(
+            &mut s,
+            "select_in_box",
+            json!({ "min": [-5000, -5000, -5000], "max": [5000, 5000, 5000], "kinds": ["brushes"] }),
+        );
+        assert!(r["matched"].as_u64().unwrap() >= 1, "{r}");
+        assert!(s.doc.selected_objects().iter().all(|o| matches!(o, ObjRef::Solid(_))));
+        err(&mut s, "select_in_box", json!({ "min": [0, 0, 0], "max": [1, 1, 1], "kinds": ["walls"] }));
+        s.runtime.selection.filter.set_text("class:nothing_like_this");
+        let r = ok(
+            &mut s,
+            "select_in_box",
+            json!({ "min": [-5000, -5000, -5000], "max": [5000, 5000, 5000], "use_tool_filter": true }),
+        );
+        assert_eq!(r["matched"], 0, "{r}");
+        s.runtime.selection.filter.clear();
         ok(&mut s, "select_faces", json!({ "faces": [{ "solid": 2, "side": 0 }] }));
         assert_eq!(s.doc.selected_faces().len(), 1);
         ok(&mut s, "select_all", json!({}));
@@ -971,6 +1037,12 @@ mod tests {
         assert_eq!(vis["objects"][0]["visible"], false);
         ok(&mut s, "set_visgroup_visible", json!({ "all": true }));
         ok(&mut s, "set_visgroup_members", json!({ "action": "set", "visgroups": [], "solid_ids": [2] }));
+        ok(&mut s, "set_visgroup_members", json!({ "action": "add", "visgroup": child, "solid_ids": [2] }));
+        let r = ok(&mut s, "set_visgroup_members", json!({ "action": "remove_all", "solid_ids": [2] }));
+        assert_eq!(r["changed"], 1, "{r}");
+        assert!(s.doc.visgroups_of(&[hp_editor::ObjRef::Solid(2)]).is_empty());
+        let r = ok(&mut s, "set_visgroup_members", json!({ "action": "remove_all", "solid_ids": [2] }));
+        assert_eq!(r["changed"], 0, "{r}");
         ok(&mut s, "move_to_visgroup", json!({ "ids": [4], "new_name": "Spawns", "hide": true }));
         assert!(!s.doc.is_visible(ObjRef::Entity(4)));
         ok(&mut s, "delete_visgroup", json!({ "id": v }));

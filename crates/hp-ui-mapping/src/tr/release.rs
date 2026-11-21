@@ -252,7 +252,7 @@ pub const TR: TrTable = &[
         "Terminé : {0} fichiers ({1}) dans le pakfile, {2} fichiers dans l'addon, GMA {3}, navigation : {4}, en {5}.",
     ),
     ("release.summary_up_to_date", "{0} files were already up to date.", "{0} fichiers étaient déjà à jour."),
-    ("release.show_missing", "Show the missing files", "Voir les fichiers manquants"),
+    ("release.show_missing", "Show what is missing", "Voir ce qui manque"),
     ("release.nav_none", "none", "aucune"),
     ("release.nav_shipped", "included", "incluse"),
     ("release.nav_stale_short", "out of date", "périmée"),
@@ -269,10 +269,10 @@ pub const TR: TrTable = &[
     ("release.stage.done", "Done", "Terminé"),
     (
         "release.graph_summary",
-        "{0} files needed, {1} shipped ({2}), {3} missing.",
-        "{0} fichiers nécessaires, {1} inclus ({2}), {3} manquants.",
+        "{0} files needed, {1} shipped ({2}), {3} missing files, {4} particle systems not found.",
+        "{0} fichiers nécessaires, {1} inclus ({2}), {3} fichiers manquants, {4} systèmes de particules introuvables.",
     ),
-    ("release.missing_line", "Missing: {0}", "Manquant : {0}"),
+    ("release.missing_line", "Missing file: {0} ({1})", "Fichier manquant : {0} ({1})"),
     (
         "release.warn_script",
         "The soundscript entry {0} is defined in {1}, which the game does not load for a map: move it into maps/<map>_level_sounds.txt.",
@@ -352,8 +352,8 @@ pub const TR: TrTable = &[
     ("release.err_crashed", "The release stopped unexpectedly.", "La publication s'est arrêtée de façon inattendue."),
     (
         "release.err_missing",
-        "{0} needed files are missing: see the report.",
-        "{0} fichiers nécessaires sont manquants : voir le rapport.",
+        "{0} files or particle systems are missing and missing content counts as an error (build options): see the report.",
+        "{0} fichiers ou systèmes de particules manquent et le contenu manquant compte comme une erreur (options de construction) : voir le rapport.",
     ),
     (
         "release.err_bad_name",
@@ -453,6 +453,7 @@ pub const TR: TrTable = &[
     ("release.kind_soundscape", "Soundscape", "Soundscape"),
     ("release.kind_particle", "Particles", "Particules"),
     ("release.kind_manifest", "Manifest", "Manifeste"),
+    ("release.kind_particle_system", "Particle system", "Système de particules"),
     ("release.kind_file", "File", "Fichier"),
     ("release.col_origin", "Origin", "Origine"),
     ("release.col_files", "Files", "Fichiers"),
@@ -479,8 +480,8 @@ pub const TR: TrTable = &[
     ("release.nothing_missing", "Nothing is missing.", "Rien ne manque."),
     (
         "release.missing_hint",
-        "These files are named by the map but no mounted content has them. Fix the names or add the content, then analyze again.",
-        "La carte nomme ces fichiers mais aucun contenu monté ne les a. Corrigez les noms ou ajoutez le contenu, puis analysez de nouveau.",
+        "The map names these files or particle systems but no mounted content has them. They do not stop the build: fix the name where it is used, add the content, or leave them out.",
+        "La carte nomme ces fichiers ou systèmes de particules mais aucun contenu monté ne les a. Ils n'arrêtent pas la construction : corrigez le nom là où il est utilisé, ajoutez le contenu ou laissez-les de côté.",
     ),
     (
         "release.sizes_after_analysis",
@@ -666,4 +667,59 @@ pub const TR: TrTable = &[
         "La construction lance Garry's Mod pour construire les cubemaps et générer le maillage de navigation, puis le ferme. Fermez d'abord le jeu s'il est lancé et ne l'utilisez pas avant la fin. La carte est copiée dans le dossier maps du jeu.",
     ),
     ("release.confirm_game_start", "Start", "Lancer"),
+    (
+        "release.missing_system_line",
+        "Particle system not found: {0} ({1})",
+        "Système de particules introuvable : {0} ({1})",
+    ),
+    (
+        "release.left_out",
+        "Left out of the build (unchecked in Map assets): {0} files and {1} missing entries.",
+        "Laissés hors de la construction (décochés dans Ressources de la map) : {0} fichiers et {1} entrées manquantes.",
+    ),
+    (
+        "release.missing_paused",
+        "{0} files or particle systems are missing: continue anyway, leave them out or fix them (see the report).",
+        "{0} fichiers ou systèmes de particules manquent : continuez quand même, laissez-les de côté ou corrigez-les (voir le rapport).",
+    ),
+    (
+        "release.missing_continue",
+        "Continuing anyway: {0} files or particle systems are missing and are not shipped.",
+        "Construction poursuivie quand même : {0} fichiers ou systèmes de particules manquent et ne sont pas inclus.",
+    ),
+    ("release.used_by_unknown", "Where it is used is not known", "On ne sait pas où il est utilisé"),
+    ("release.missing_files_title", "Missing files", "Fichiers manquants"),
+    ("release.missing_systems_title", "Particle systems not found", "Systèmes de particules introuvables"),
+    ("release.missing_group", "{0}: {1}", "{0} : {1}"),
+    ("release.leave_out", "Leave out", "Laisser de côté"),
+    ("release.include_again", "Include again", "Inclure de nouveau"),
+    (
+        "release.leave_out_tip",
+        "Left out entries are unchecked in Map assets (saved with the map) and do not count as missing.",
+        "Les entrées laissées de côté sont décochées dans Ressources de la map (enregistré avec la carte) et ne comptent pas comme manquantes.",
+    ),
+    ("release.confirm_missing_title", "Missing content", "Contenu manquant"),
+    ("release.confirm_missing_files", "{0} files are missing.", "{0} fichiers manquent."),
+    (
+        "release.confirm_missing_systems",
+        "{0} particle systems are not found in any particle file.",
+        "{0} systèmes de particules ne sont dans aucun fichier de particules.",
+    ),
+    (
+        "release.confirm_missing_left_out",
+        "{0} more are left out (unchecked in Map assets).",
+        "{0} autres sont laissés de côté (décochés dans Ressources de la map).",
+    ),
+    (
+        "release.confirm_missing_text",
+        "The map still builds: what is missing shows as missing in game. The report lists where each one is used.",
+        "La carte se construit quand même : ce qui manque apparaît manquant en jeu. Le rapport indique où chacun est utilisé.",
+    ),
+    ("release.confirm_missing_go", "Continue anyway", "Continuer quand même"),
+    ("release.opt_missing_errors", "Missing content is an error", "Contenu manquant = erreur"),
+    (
+        "release.opt_missing_errors_tip",
+        "Stop the build when files or particle systems are missing, instead of asking to continue anyway.",
+        "Arrêter la construction quand des fichiers ou systèmes de particules manquent, au lieu de proposer de continuer quand même.",
+    ),
 ];

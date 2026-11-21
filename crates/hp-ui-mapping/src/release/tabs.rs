@@ -129,6 +129,11 @@ impl ReleaseWindow {
                     .changed();
                 changed |= ui.checkbox(&mut s.open_folder, t!("release.opt_open_folder")).changed();
                 ui.end_row();
+                changed |= ui
+                    .checkbox(&mut s.missing_as_errors, t!("release.opt_missing_errors"))
+                    .on_hover_text(t!("release.opt_missing_errors_tip"))
+                    .changed();
+                ui.end_row();
             });
             ui.add_space(6.0);
             ui.separator();
@@ -259,6 +264,7 @@ impl ReleaseWindow {
             }
         });
         self.stages_ui(ui, state);
+        let mut start_now = false;
         if let Some(result) = &self.summary {
             ui.add_space(4.0);
             match result {
@@ -299,14 +305,33 @@ impl ReleaseWindow {
                     });
                 }
                 Err(e) => {
-                    ui.colored_label(theme::error(), e);
-                    if self.graph.as_ref().is_some_and(|g| !g.missing.is_empty())
-                        && ui.button(t!("release.show_missing")).clicked()
-                    {
-                        self.tab = Tab::Report;
+                    let paused = state.runtime.content.awaiting_missing.is_some();
+                    ui.colored_label(if paused { theme::warning() } else { theme::error() }, e);
+                    if self.graph.as_ref().is_some_and(|g| !g.missing.is_empty()) {
+                        let mut go = false;
+                        ui.horizontal(|ui| {
+                            if ui.button(t!("release.show_missing")).clicked() {
+                                self.tab = Tab::Report;
+                                self.report.section = super::report::Section::Missing;
+                            }
+                            if paused
+                                && !state.settings.content.missing_as_errors
+                                && self.job.is_none()
+                                && ui.button(t!("release.confirm_missing_go")).clicked()
+                            {
+                                go = true;
+                            }
+                        });
+                        if go {
+                            self.allow_missing_next = true;
+                            start_now = true;
+                        }
                     }
                 }
             }
+        }
+        if start_now {
+            self.start(ui.ctx(), state, false);
         }
         ui.separator();
         let h = ui.available_height();
@@ -630,6 +655,53 @@ impl ReleaseWindow {
     }
 
     pub(super) fn modals(&mut self, ctx: &egui::Context, state: &mut AppState) {
+        if let Some(c) = self.confirm_missing
+            && self.job.is_none()
+        {
+            let modal = egui::Modal::new(egui::Id::unique("hp_release_confirm_missing")).show(ctx, |ui| {
+                ui.set_max_width(480.0);
+                ui.heading(t!("release.confirm_missing_title"));
+                if c.files > 0 {
+                    ui.label(tf!("release.confirm_missing_files", c.files));
+                }
+                if c.particle_systems > 0 {
+                    ui.label(tf!("release.confirm_missing_systems", c.particle_systems));
+                }
+                if c.left_out > 0 {
+                    ui.label(RichText::new(tf!("release.confirm_missing_left_out", c.left_out)).weak());
+                }
+                ui.label(RichText::new(t!("release.confirm_missing_text")).weak());
+                ui.add_space(8.0);
+                let mut answer = None;
+                ui.horizontal(|ui| {
+                    if ui.button(t!("release.confirm_missing_go")).clicked() {
+                        answer = Some(1);
+                    }
+                    if ui.button(t!("release.show_missing")).clicked() {
+                        answer = Some(2);
+                    }
+                    if ui.button(t!("release.cancel")).clicked() {
+                        answer = Some(0);
+                    }
+                });
+                answer
+            });
+            let answer = modal.inner.or_else(|| modal.should_close().then_some(0));
+            if let Some(a) = answer {
+                self.confirm_missing = None;
+                match a {
+                    1 => {
+                        self.allow_missing_next = true;
+                        self.start(ctx, state, false);
+                    }
+                    2 => {
+                        self.tab = super::Tab::Report;
+                        self.report.section = super::report::Section::Missing;
+                    }
+                    _ => {}
+                }
+            }
+        }
         if self.confirm_session {
             let modal = egui::Modal::new(egui::Id::unique("hp_release_confirm_game")).show(ctx, |ui| {
                 ui.set_max_width(440.0);

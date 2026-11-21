@@ -35,6 +35,7 @@ fn spec<'a>(points: &'a [DVec2], segments: u32, thickness: f64) -> CurveSpec<'a>
         tex_scale: 0.25,
         lightmap_scale: 16,
         section: Section::default(),
+        cap: None,
     }
 }
 
@@ -306,7 +307,12 @@ fn keys_cancel_entity_and_errors() {
     click(&mut tool, &mut state, &info_2d(ViewKind::Top, 1.0), DVec3::new(500.0, 500.0, 0.0));
     assert_eq!(tool.points().len(), 2, "other views do not add points");
     let view3d = info_3d(DVec3::new(0.0, -300.0, 64.0), 90.0, 0.0);
-    assert_eq!(tool.handle_mouse(&mut state, &view3d, &Mouse::click(view3d.rect.center())), ToolFlow::Ignored);
+    let flow = tool.handle_mouse(&mut state, &view3d, &Mouse::click(view3d.rect.center()));
+    if flow == ToolFlow::Handled {
+        assert_eq!(tool.points().len(), 3, "a click on a surface in 3D adds a point");
+        assert!(tool.remove_last_point());
+    }
+    assert_eq!(tool.points().len(), 2);
     tool.options.subdivisions = 4096;
     assert!(tool.validate());
     assert!(tool.create(&mut state).is_none(), "segments too short");
@@ -413,6 +419,8 @@ fn strings_are_translated_and_used() {
         include_str!("mod.rs"),
         include_str!("tr.rs"),
         include_str!("tests.rs"),
+        include_str!("faces.rs"),
+        include_str!("pick.rs"),
     ];
     for src in sources {
         assert!(!src.contains('\u{2014}') && !src.contains('\u{2013}'), "no em or en dash");
@@ -543,4 +551,196 @@ fn shift_wheel_changes_the_subdivisions_while_a_curve_is_drawn() {
     assert!(tool.status_hint(&state).is_some_and(|h| h.contains("Shift")));
     assert!(tool.cancel(&mut state));
     assert_eq!(tool.wheel(&mut state, &top, 1.0, shift), ToolFlow::Ignored);
+}
+
+mod arch_from_faces {
+    use super::*;
+    use crate::curve::apply::build_meta;
+    use crate::curve::faces::{Align, ArchError, FacePick, edge_height, plan_arch};
+
+    fn jamb_face(x: f64, nx: f64, y: (f64, f64), z: (f64, f64), at_z: f64) -> FacePick {
+        let poly =
+            vec![DVec3::new(x, y.0, z.0), DVec3::new(x, y.1, z.0), DVec3::new(x, y.1, z.1), DVec3::new(x, y.0, z.1)];
+        FacePick::new(DVec3::new(x, (y.0 + y.1) * 0.5, at_z), DVec3::new(nx, 0.0, 0.0), poly)
+    }
+
+    fn bounds_of(plan: &crate::curve::ArchPlan, thickness: f64) -> (Aabb, Vec<Vec<hp_vmf::Side>>) {
+        let meta = CurveMeta {
+            kind: plan.kind,
+            points: plan.points.clone(),
+            depth: plan.depth,
+            segments: 16,
+            thickness,
+            tex_scale: 0.25,
+            section: Section::default(),
+            cap: Some(plan.cap),
+        };
+        let solids = build_meta(&meta, "dev/dev_measuregeneric01b", 16, 1).unwrap();
+        let mut pts = Vec::new();
+        for s in &solids {
+            let g = hp_geom::build_solid(s);
+            assert!(g.valid);
+            pts.extend(g.faces.iter().flat_map(|f| f.vertices.iter().copied()));
+        }
+        (Aabb::from_points(pts), solids)
+    }
+
+    #[test]
+    fn outer_arch_spans_exactly_face_to_face() {
+        let a = jamb_face(32.0, 1.0, (-8.0, 24.0), (0.0, 96.0), 96.0);
+        let b = jamb_face(160.0, -1.0, (-8.0, 24.0), (0.0, 96.0), 96.0);
+        let plan = plan_arch(&a, &b, 160.0, 16.0, Align::Outer).unwrap();
+        assert_eq!(plan.kind, ViewKind::Side);
+        assert_eq!(plan.depth, (-8.0, 24.0));
+        assert!((plan.span - 128.0).abs() < 1e-9);
+        let (b, solids) = bounds_of(&plan, 16.0);
+        assert_eq!(solids.len(), 16);
+        assert!((b.min.x - 32.0).abs() < 1e-3, "{b:?}");
+        assert!((b.max.x - 160.0).abs() < 1e-3, "{b:?}");
+        assert!((b.min.y + 8.0).abs() < 1e-6 && (b.max.y - 24.0).abs() < 1e-6, "wall depth: {b:?}");
+        assert!((b.min.z - 96.0).abs() < 1e-3, "springs on the face top: {b:?}");
+        assert!((b.max.z - 160.0).abs() < 0.5, "apex: {b:?}");
+    }
+
+    #[test]
+    fn inner_arch_keeps_the_opening_width() {
+        let pa = vec![
+            DVec3::new(-16.0, 64.0, 0.0),
+            DVec3::new(16.0, 64.0, 0.0),
+            DVec3::new(16.0, 64.0, 112.0),
+            DVec3::new(-16.0, 64.0, 112.0),
+        ];
+        let pb: Vec<DVec3> = pa.iter().map(|p| DVec3::new(p.x, 192.0, p.z)).collect();
+        let a = FacePick::new(DVec3::new(0.0, 64.0, 112.0), DVec3::Y, pa);
+        let b = FacePick::new(DVec3::new(0.0, 192.0, 112.0), DVec3::NEG_Y, pb);
+        let plan = plan_arch(&a, &b, 176.0, 24.0, Align::Inner).unwrap();
+        assert_eq!(plan.kind, ViewKind::Front);
+        let (bb, _) = bounds_of(&plan, 24.0);
+        assert!((bb.min.y - 40.0).abs() < 1e-3 && (bb.max.y - 216.0).abs() < 1e-3, "{bb:?}");
+        assert!((bb.min.x + 16.0).abs() < 1e-6 && (bb.max.x - 16.0).abs() < 1e-6);
+        assert!((bb.max.z - 200.0).abs() < 1.0, "outer apex above the inner one: {bb:?}");
+        let first = plan.points[0];
+        assert!((first.x - 52.0).abs() < 1e-9 && (first.y - 112.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn bad_faces_are_refused() {
+        let a = jamb_face(0.0, 1.0, (0.0, 16.0), (0.0, 64.0), 64.0);
+        let b = jamb_face(128.0, -1.0, (0.0, 16.0), (0.0, 64.0), 64.0);
+        let floor = FacePick::new(DVec3::ZERO, DVec3::Z, vec![DVec3::ZERO, DVec3::X, DVec3::Y]);
+        assert_eq!(plan_arch(&a, &floor, 128.0, 16.0, Align::Inner), Err(ArchError::NotVertical));
+        let tilted = FacePick { normal: DVec3::new(0.7, 0.7, 0.0), ..b.clone() };
+        assert_eq!(plan_arch(&a, &tilted, 128.0, 16.0, Align::Inner), Err(ArchError::NotAligned));
+        assert_eq!(plan_arch(&a, &a, 128.0, 16.0, Align::Inner), Err(ArchError::TooNarrow));
+        assert_eq!(plan_arch(&a, &b, 64.25, 16.0, Align::Inner), Err(ArchError::TooFlat));
+        assert!(plan_arch(&a, &b, 32.0, 16.0, Align::Center).is_ok(), "hanging arches work too");
+    }
+
+    #[test]
+    fn heights_snap_to_face_edges() {
+        let a = jamb_face(0.0, 1.0, (0.0, 16.0), (0.0, 100.0), 0.0);
+        assert_eq!(edge_height(&a, 97.0, 4.0), Some(100.0));
+        assert_eq!(edge_height(&a, 2.5, 4.0), Some(0.0));
+        assert_eq!(edge_height(&a, 90.0, 4.0), None);
+        assert_eq!(Align::parse("OUTER"), Some(Align::Outer));
+    }
+}
+
+fn add_box(state: &mut AppState, min: DVec3, max: DVec3) -> u32 {
+    let b = Aabb::new(min, max);
+    let mut next = 900_000u32;
+    let sides = hp_geom::hull_solid(&b.corners(), "dev/dev_measuregeneric01b", 0.25, 16, &mut || {
+        next += 1;
+        next
+    })
+    .unwrap();
+    state.doc.create_solids(vec![sides], hp_editor::Owner::World).unwrap()[0]
+}
+
+#[test]
+fn pick_from_faces_builds_an_arch_between_the_jambs() {
+    let mut state = settle();
+    state.doc.clear_selection();
+    add_box(&mut state, DVec3::new(4936.0, 1000.0, 0.0), DVec3::new(5000.0, 1016.0, 112.0));
+    add_box(&mut state, DVec3::new(5128.0, 1000.0, 0.0), DVec3::new(5192.0, 1016.0, 112.0));
+    let mut tool = CurveTool::new();
+    assert!(tool.set_option(&mut state, "pick_faces", "on"));
+    assert!(tool.set_option(&mut state, "arch_align", "outer"));
+    assert!(!tool.set_option(&mut state, "arch_align", "sideways"));
+    assert!(tool.status_hint(&state).unwrap().contains("Pick from faces"));
+    let side = info_2d(ViewKind::Side, 1.0);
+    let hover = side.world_to_screen(DVec3::new(5002.0, 0.0, 109.0)).unwrap();
+    tool.handle_mouse(&mut state, &side, &Mouse::hover(hover));
+    click(&mut tool, &mut state, &side, DVec3::new(5002.0, 0.0, 109.0));
+    assert_eq!(tool.picked_faces(), 1);
+    click(&mut tool, &mut state, &side, DVec3::new(5126.0, 0.0, 110.0));
+    assert_eq!(tool.picked_faces(), 2, "{:?}", tool.arch_error());
+    assert_eq!(tool.view_kind(), Some(ViewKind::Side));
+    assert_eq!(tool.depth(), Some((1000.0, 1016.0)), "wall depth");
+    assert_eq!(tool.apex(), Some(176.0), "half circle by default");
+    let apex = side.world_to_screen(DVec3::new(5064.0, 0.0, 161.0)).unwrap();
+    tool.handle_mouse(&mut state, &side, &Mouse::hover(apex));
+    assert_eq!(tool.apex(), Some(160.0), "follows the mouse, on the grid");
+    tool.handle_mouse(&mut state, &side, &Mouse::click(apex));
+    assert_eq!(tool.phase(), CurvePhase::Adjusting);
+    let before = state.doc.stats().solids;
+    let (undo, _) = state.doc.history_len();
+    let n = tool.create(&mut state).unwrap();
+    assert_eq!(state.doc.stats().solids, before + n);
+    assert_eq!(state.doc.history_len().0, undo + 1, "one undo step");
+    let ids = state.doc.selected_solid_ids();
+    let b = state
+        .doc
+        .scene()
+        .objects_bounds(&ids.iter().map(|i| hp_editor::ObjRef::Solid(*i)).collect::<Vec<_>>(), &|_| None)
+        .unwrap();
+    assert!((b.min.x - 5000.0).abs() < 1e-3 && (b.max.x - 5128.0).abs() < 1e-3, "face to face: {b:?}");
+    assert!((b.min.z - 112.0).abs() < 1e-3 && (b.max.z - 160.0).abs() < 0.5, "{b:?}");
+    assert!((b.min.y - 1000.0).abs() < 1e-6 && (b.max.y - 1016.0).abs() < 1e-6);
+    assert!(tool.face_mode_active() && tool.picked_faces() == 0, "ready for the next opening");
+    let (_, meta) = crate::curve::apply::read_curve(&state.doc, ids[0]).unwrap();
+    assert_eq!(meta.cap, Some(DVec2::X));
+}
+
+#[test]
+fn pick_from_faces_steps_back_and_refuses_floors() {
+    let mut state = settle();
+    state.doc.clear_selection();
+    add_box(&mut state, DVec3::new(4936.0, 1000.0, 0.0), DVec3::new(5000.0, 1016.0, 112.0));
+    let mut tool = CurveTool::new();
+    tool.set_pick_faces(true);
+    let side = info_2d(ViewKind::Side, 1.0);
+    click(&mut tool, &mut state, &side, DVec3::new(4970.0, 0.0, 113.0));
+    assert_eq!(tool.picked_faces(), 0, "the top face is refused");
+    assert!(tool.arch_error().is_some());
+    click(&mut tool, &mut state, &side, DVec3::new(5002.0, 0.0, 50.0));
+    assert_eq!(tool.picked_faces(), 1);
+    assert!(tool.remove_last_point());
+    assert_eq!(tool.picked_faces(), 0);
+    tool.set_pick_faces(false);
+    assert!(!tool.face_mode_active());
+}
+
+#[test]
+fn points_snap_to_vertices_in_2d_and_surfaces_in_3d() {
+    let mut state = settle();
+    state.doc.clear_selection();
+    add_box(&mut state, DVec3::new(1003.0, 1005.0, 0.0), DVec3::new(1037.0, 1061.0, 50.0));
+    let mut tool = CurveTool::new();
+    let top = info_2d(ViewKind::Top, 1.0);
+    click(&mut tool, &mut state, &top, DVec3::new(1035.0, 1059.0, 0.0));
+    assert_eq!(tool.points(), [v(1037.0, 1061.0)], "snapped to the brush corner, not the grid");
+    click(&mut tool, &mut state, &top, DVec3::new(1200.0, 1200.0, 0.0));
+    let view = info_3d(DVec3::new(1020.0, 1033.0, 400.0), 0.0, -89.9);
+    let mid = tool.depth().map_or(0.0, |d| (d.0 + d.1) * 0.5);
+    let start = view.world_to_screen(DVec3::new(1200.0, 1200.0, mid));
+    let target = view.world_to_screen(DVec3::new(1019.0, 1031.0, 50.0)).unwrap();
+    if let Some(start) = start {
+        tool.handle_mouse(&mut state, &view, &Mouse::drag_start(start, start));
+        tool.handle_mouse(&mut state, &view, &Mouse::drag(start, target));
+        tool.handle_mouse(&mut state, &view, &Mouse::drag_end(start, target));
+        let p = tool.points()[1];
+        assert!(p.distance(v(1019.0, 1031.0)) <= 12.0, "dragged onto the top face: {p:?}");
+        assert_eq!(p.x.fract(), 0.0, "grid on the face");
+    }
 }

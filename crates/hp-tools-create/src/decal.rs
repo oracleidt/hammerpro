@@ -132,11 +132,11 @@ impl Tool for DecalTool {
     }
 
     fn view_input(&mut self, state: &mut AppState, input: &ViewInput<'_>) -> ToolFlow {
-        if input.navigating {
+        if input.navigating && !crate::common::camera_aim(state) {
             self.preview = None;
             return ToolFlow::Ignored;
         }
-        let m = Mouse::from_input(input);
+        let m = Mouse::aimed(input);
         self.handle_mouse(state, input.view, &m)
     }
 
