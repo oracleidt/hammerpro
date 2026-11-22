@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use ahash::AHashSet;
 use glam::DVec3;
 use hp_editor::{Document, Id, Owner, SolidNode};
@@ -22,9 +24,21 @@ const DLIGHT_MIN_LIGHT: f32 = 20.0 / 256.0;
 const MAX_SPOTLIGHTS: usize = 256;
 const SF_START_ON: i64 = 1;
 const SF_NO_DYNAMIC_LIGHT: i64 = 2;
+const SF_START_ROTATION: i64 = 4;
+const SF_REVERSE: i64 = 8;
+const SF_X_AXIS: i64 = 16;
+const SF_Y_AXIS: i64 = 32;
+const DEFAULT_ROTATION_SPEED: f64 = 100.0;
+const MAX_ROTATION_SPEED: f64 = 3600.0;
+const SPIN_STEP: Duration = Duration::from_millis(33);
 
 pub(crate) fn is_spotlight(class: &str) -> bool {
-    class.trim().eq_ignore_ascii_case("point_spotlight")
+    let c = class.trim();
+    c.eq_ignore_ascii_case("point_spotlight") || is_beam_spotlight(c)
+}
+
+pub(crate) fn is_beam_spotlight(class: &str) -> bool {
+    class.trim().eq_ignore_ascii_case("beam_spotlight")
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -37,6 +51,39 @@ pub(crate) struct Spotlight {
     pub hdr_scale: f32,
     pub on: bool,
     pub dynamic_light: bool,
+    pub angles: DVec3,
+    pub spin: Option<DVec3>,
+}
+
+impl Spotlight {
+    pub(crate) fn at_time(&self, seconds: f64) -> Spotlight {
+        let Some(spin) = self.spin else { return self.clone() };
+        let angles = self.angles + spin * seconds;
+        let angles = DVec3::new(angles.x % 360.0, angles.y % 360.0, angles.z % 360.0);
+        let dir = hp_geom::angles_to_vectors(angles).0.try_normalize().unwrap_or(self.dir);
+        Spotlight { dir, angles, ..self.clone() }
+    }
+}
+
+fn rotation(e: &Entity, flags: i64) -> Option<DVec3> {
+    if !is_beam_spotlight(&e.classname) || flags & SF_START_ROTATION == 0 {
+        return None;
+    }
+    let mut speed = num(e, "maxspeed").unwrap_or(DEFAULT_ROTATION_SPEED).clamp(-MAX_ROTATION_SPEED, MAX_ROTATION_SPEED);
+    if flags & SF_REVERSE != 0 {
+        speed = -speed;
+    }
+    if speed.abs() < 1e-6 {
+        return None;
+    }
+    let axis = if flags & SF_X_AXIS != 0 {
+        DVec3::Z
+    } else if flags & SF_Y_AXIS != 0 {
+        DVec3::X
+    } else {
+        DVec3::Y
+    };
+    Some(axis * speed)
 }
 
 fn num(e: &Entity, key: &str) -> Option<f64> {
@@ -70,6 +117,8 @@ pub(crate) fn spotlight(e: &Entity, on_override: Option<bool>) -> Option<Spotlig
         hdr_scale: num(e, "HDRColorScale").unwrap_or(1.0).clamp(0.0, 64.0) as f32,
         on: on_override.unwrap_or(flags & SF_START_ON != 0),
         dynamic_light: flags & SF_NO_DYNAMIC_LIGHT == 0,
+        angles,
+        spin: rotation(e, flags),
     })
 }
 
@@ -180,6 +229,9 @@ pub(crate) struct SpotlightProducer {
     overrides: Vec<(Id, bool)>,
     waiting: bool,
     dirty: bool,
+    spinning: bool,
+    clock: Option<Instant>,
+    last_spin: Option<Instant>,
 }
 
 impl SpotlightProducer {
@@ -196,6 +248,20 @@ impl SpotlightProducer {
         out.sort_unstable();
         out
     }
+
+    fn animate(cx: &ProducerCx<'_>) -> bool {
+        cx.assets.scene.display.is_none_or(|d| d.animate_models)
+    }
+
+    fn spin_due(&self, cx: &ProducerCx<'_>) -> bool {
+        if !self.spinning || !Self::animate(cx) {
+            return false;
+        }
+        if let Some(ctx) = cx.assets.shared.ctx() {
+            ctx.request_repaint_after(SPIN_STEP);
+        }
+        self.last_spin.is_none_or(|t| t.elapsed() >= SPIN_STEP)
+    }
 }
 
 impl DerivedProducer for SpotlightProducer {
@@ -207,6 +273,12 @@ impl DerivedProducer for SpotlightProducer {
         if changes.full || changes.entities || changes.doc.everything {
             self.dirty = true;
             return true;
+        }
+        if self.spin_due(cx) {
+            self.dirty = true;
+        }
+        if self.spinning && !Self::animate(cx) && self.last_spin.is_some() {
+            self.dirty = true;
         }
         if self.waiting
             && [BEAM_MATERIAL, HALO_MATERIAL].iter().all(|m| !matches!(cx.assets.mats.ana_look(m), AnaLook::Loading))
@@ -261,11 +333,22 @@ impl DerivedProducer for SpotlightProducer {
         });
         self.waiting = looks.iter().any(Option::is_none);
         let srgb = looks.map(|l| l.unwrap_or(true));
+        let animate = Self::animate(cx);
+        self.spinning = found.iter().any(|(_, s)| s.on && s.spin.is_some());
+        let seconds = if self.spinning && animate {
+            let now = Instant::now();
+            self.last_spin = Some(now);
+            now.duration_since(*self.clock.get_or_insert(now)).as_secs_f64()
+        } else {
+            self.last_spin = None;
+            0.0
+        };
         for (id, s) in found {
             self.ids.insert(id);
             if !s.on {
                 continue;
             }
+            let s = s.at_time(seconds);
             let end = beam_end(cx.doc, &s);
             beams.extend(beam_parts(&s, end, srgb, materials, entity_object(id)));
             if let Some(l) = dynamic_light(&s, end) {
@@ -355,6 +438,51 @@ mod tests {
         assert!((wide.width - MAX_BEAM_WIDTH).abs() < 1e-9, "the engine clamps the width to 102.3");
         assert!(end_width(&s, 1.0e9) <= MAX_BEAM_WIDTH);
         assert!(beam_parts(&s, s.origin, [true; 2], [1, 2], 7).is_empty(), "no beam when blocked at once");
+    }
+
+    fn beam_ent(keys: &[(&str, &str)]) -> Entity {
+        let mut e = ent(keys);
+        e.classname = "beam_spotlight".to_owned();
+        e
+    }
+
+    #[test]
+    fn beam_spotlight_reads_the_same_keys_and_its_rotation() {
+        assert!(is_spotlight("beam_spotlight") && is_spotlight(" BEAM_SPOTLIGHT") && is_spotlight("point_spotlight"));
+        assert!(!is_spotlight("light_spot"));
+        let s = spotlight(
+            &beam_ent(&[
+                ("angles", "90 0 0"),
+                ("spawnflags", "3"),
+                ("rendercolor", "0 255 0"),
+                ("SpotlightLength", "300"),
+                ("SpotlightWidth", "40"),
+                ("HDRColorScale", "0.7"),
+            ]),
+            None,
+        )
+        .expect("beam spotlight");
+        assert!(s.on && !s.dynamic_light);
+        assert!((s.dir - DVec3::NEG_Z).length() < 1e-9);
+        assert_eq!((s.length, s.width), (300.0, 40.0));
+        assert!((s.hdr_scale - 0.7).abs() < 1e-6);
+        assert_eq!(s.spin, None, "no rotation without Start rotation on");
+        assert_eq!(s.at_time(5.0), s);
+
+        let spin = spotlight(&beam_ent(&[("spawnflags", "5"), ("maxspeed", "90")]), None).expect("spin");
+        assert_eq!(spin.spin, Some(DVec3::new(0.0, 90.0, 0.0)), "yaw by default");
+        let quarter = spin.at_time(1.0);
+        assert!((quarter.dir - DVec3::Y).length() < 1e-9, "a quarter turn per second: {}", quarter.dir);
+        let back = spotlight(&beam_ent(&[("spawnflags", "13"), ("maxspeed", "90")]), None).expect("reverse");
+        assert!((back.at_time(1.0).dir - DVec3::NEG_Y).length() < 1e-9);
+        let pitch = spotlight(&beam_ent(&[("spawnflags", "37"), ("maxspeed", "90")]), None).expect("y axis");
+        assert_eq!(pitch.spin, Some(DVec3::new(90.0, 0.0, 0.0)));
+        assert!((pitch.at_time(1.0).dir - DVec3::NEG_Z).length() < 1e-9);
+        let roll = spotlight(&beam_ent(&[("spawnflags", "21")]), None).expect("x axis");
+        assert_eq!(roll.spin, Some(DVec3::new(0.0, 0.0, 100.0)), "maxspeed defaults to 100");
+        assert_eq!(spotlight(&beam_ent(&[("spawnflags", "5"), ("maxspeed", "0")]), None).expect("still").spin, None);
+        let point = spotlight(&ent(&[("spawnflags", "5")]), None).expect("point");
+        assert_eq!(point.spin, None, "point_spotlight never rotates");
     }
 
     #[test]

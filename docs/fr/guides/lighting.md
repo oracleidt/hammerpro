@@ -62,6 +62,8 @@ Dans la section **Props statiques** de la fenêtre de compilation :
 
 Vous pouvez aussi forcer `-StaticPropLighting` avec une compilation Normal via le menu des options d'éclairage. Chaque option est décrite dans [Options de compilation](../compiler/compile-options.md).
 
+**Grands props avec une marche de lumière nette.** Le jeu éclaire un prop statique par sommet et mélange les couleurs sur chaque triangle, donc un grand prop avec peu de sommets montre une marche nette là où un bord d'ombre ou la limite du soleil tombe entre deux sommets éloignés. Depuis la 2.2.9, le compilateur mesure les ombres de chaque sommet d'un grand triangle en plusieurs points des triangles qui l'entourent (jusqu'à 6, 12 avec `-final` ; `-staticpropsamplescale`, aussi écrit `-StaticPropSamplingScale`, change ce nombre), donc les sommets proches d'un bord d'ombre reçoivent une lumière partielle et la marche devient un dégradé. Les petits props gardent un échantillon par sommet. L'aperçu précalculé montre les mêmes couleurs de sommets (elles viennent de la même étape d'éclairage). Pour un bord lisse sur un très grand prop, subdivisez son modèle là où tombe l'ombre (plus de sommets, des marches plus petites) ; GMod n'a pas de props avec lightmap. Un prop avec **Disable Vertex Lighting** est éclairé par le jeu à son origine.
+
 <a id="step-7-ambient-occlusion-optional"></a>
 ## Étape 7 : occlusion ambiante (facultatif)
 

@@ -588,6 +588,7 @@ impl Document {
                 hp_vmf::parse_vec3(&origin).unwrap_or(DVec3::ZERO),
                 &[
                     ("model".to_owned(), model),
+                    ("angles".to_owned(), "0 0 0".to_owned()),
                     ("solid".to_owned(), if options.collision { "6" } else { "0" }.to_owned()),
                 ],
             )
@@ -681,6 +682,10 @@ mod tests {
         assert_eq!(e.classname, "prop_static");
         assert_eq!(e.get("model"), Some("models/hammerpro/test_0.mdl"));
         assert_eq!(e.origin(), Some(DVec3::new(0.0, 0.0, 16.0)));
+        assert_eq!(e.get("angles"), Some("0 0 0"), "the new prop carries angles so rotation tools turn it");
+        doc.rotate_axis(&[ObjRef::Entity(prop)], DVec3::new(0.0, 0.0, 16.0), DVec3::Z, 90.0).expect("rotate");
+        assert_eq!(doc.scene().entity(prop).and_then(|n| n.entity.get("angles")), Some("0 90 0"));
+        assert!(doc.undo(), "undo the rotation");
         assert!(doc.undo(), "one step back restores the box");
         assert!(doc.scene().solid(b).is_some());
     }

@@ -211,6 +211,18 @@ pub const TR: TrTable = &[
         "Converted materials and their VTF textures are copied here, under materials/.",
         "Les matériaux convertis et leurs textures VTF sont copiés ici, dans materials/.",
     ),
+    ("propper.recent_folders", "Recent folders", "Dossiers récents"),
+    (
+        "propper.no_recent_folders",
+        "No folder yet: the folder of each created prop is kept here.",
+        "Aucun dossier pour l'instant : le dossier de chaque prop créé est gardé ici.",
+    ),
+    ("propper.fresh_name", "New name in this folder", "Nouveau nom dans ce dossier"),
+    (
+        "propper.recent_folders_tip",
+        "Pick a recent model folder: the name gets the next free number",
+        "Choisir un dossier de modèles récent : le nom prend le prochain numéro libre",
+    ),
     ("propper.model_path", "Model path and name (models/… .mdl)", "Chemin et nom du modèle (models/… .mdl)"),
     ("propper.piece", "Piece", "Pièce"),
     ("propper.preview_collision", "Collision", "Collision"),

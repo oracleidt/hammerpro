@@ -62,6 +62,8 @@ In the **Static props** section of the compile window:
 
 You can also force `-StaticPropLighting` with a Normal compile through the lighting options menu. Each flag is described in [Compile options](../compiler/compile-options.md).
 
+**Big props with a hard light step.** The game lights a static prop per vertex and blends the colors across each triangle, so a large prop with few vertices shows a hard step where a shadow edge or the sun terminator falls between two far apart vertices. Since 2.2.9 the compiler samples the shadows of each vertex of a large triangle at several points of the triangles around it (up to 6, 12 with `-final`; `-staticpropsamplescale`, also spelled `-StaticPropSamplingScale`, scales the count), so the vertices near a shadow edge get a partial light and the step becomes a gradient. Small props keep one sample per vertex. The baked preview shows the same vertex colors (they come from the same lighting step). For a smooth edge on a very large prop, subdivide its model where the shadow falls (more vertices, more steps); GMod has no lightmapped props. A prop with **Disable Vertex Lighting** is lit by the game at its origin instead.
+
 ## Step 7: ambient occlusion (optional)
 
 Ambient occlusion darkens corners, the foot of walls and the ground under crates and furniture, which gives rooms more depth. It is a compile option, off by default (even in the Final preset), and the editor previews never show it:

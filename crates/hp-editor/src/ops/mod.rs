@@ -36,6 +36,19 @@ pub(crate) use create::Fragment;
 
 use glam::DVec3;
 
+pub(crate) fn turnable_angles(e: &hp_vmf::Entity) -> Option<DVec3> {
+    if let Some(a) = e.angles() {
+        return Some(a);
+    }
+    if e.get("angles").is_some() {
+        return None;
+    }
+    let model = e.get("model").map(str::trim).unwrap_or_default();
+    let modelled = model.len() > 4 && model.get(model.len() - 4..).is_some_and(|ext| ext.eq_ignore_ascii_case(".mdl"));
+    let prop = e.classname.get(..5).is_some_and(|head| head.eq_ignore_ascii_case("prop_"));
+    (modelled || prop).then_some(DVec3::ZERO)
+}
+
 pub(crate) fn clean_vec(v: DVec3) -> DVec3 {
     fn c(x: f64) -> f64 {
         if !x.is_finite() {

@@ -74,6 +74,9 @@ const VERTEX_COLOR: u32 = 0x4;
 const DIST_EPSILON: f32 = 0.031_25;
 const SOFT_CELL: f32 = 8.0;
 const NORMAL_BINS: f32 = 2.0;
+const TAP_MIN_REACH: f32 = 6.0;
+const TAP_SHARE: f32 = 0.5;
+const TAP_LIFT: f32 = 0.5;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PropOptions {
@@ -720,6 +723,46 @@ fn samples(scale: f32) -> usize {
     usize::try_from((162.0 * scale) as i32).unwrap_or(0)
 }
 
+pub(crate) fn max_taps(opts: &PropOptions) -> usize {
+    if opts.fast {
+        return 3;
+    }
+    (6.0 * opts.sample_scale.max(0.0).sqrt()).round().clamp(3.0, 12.0) as usize
+}
+
+pub(crate) fn vertex_taps(
+    verts: &[(Vec3A, Vec3A)],
+    unique: &[usize],
+    tris: &[[usize; 3]],
+    most: usize,
+) -> HashMap<usize, Vec<Vec3A>> {
+    let mut around: HashMap<usize, Vec<Vec3A>> = HashMap::default();
+    if most == 0 {
+        return around;
+    }
+    for t in tris {
+        let (Some(a), Some(b), Some(c)) = (verts.get(t[0]), verts.get(t[1]), verts.get(t[2])) else { continue };
+        let centroid = (a.0 + b.0 + c.0) / 3.0;
+        for &i in t {
+            let Some(&u) = unique.get(i) else { continue };
+            let (pos, normal) = verts[u];
+            let reach = centroid - pos;
+            if reach.length() < TAP_MIN_REACH {
+                continue;
+            }
+            let lift = normal.normalize_or_zero() * (TAP_LIFT + reach.length() * 0.05).min(4.0);
+            around.entry(u).or_default().push(pos + reach * TAP_SHARE + lift);
+        }
+    }
+    for list in around.values_mut() {
+        if list.len() > most {
+            let step = list.len() as f32 / most as f32;
+            *list = (0..most).filter_map(|k| list.get((k as f32 * step) as usize).copied()).collect();
+        }
+    }
+    around
+}
+
 fn sphere_table(opts: &PropOptions) -> Vec<Vec3A> {
     let n = [FAST_SAMPLES, SUN_SAMPLES, samples(opts.sky_sample_scale), samples(opts.sample_scale)]
         .into_iter()
@@ -734,7 +777,7 @@ fn direct_at(
     ctx: &Ctx<'_>,
     (opts, sphere): (&PropOptions, &[Vec3A]),
     cand: &[usize],
-    pos: Vec3A,
+    (pos, taps): (Vec3A, &[Vec3A]),
     normal: Vec3A,
     skip: u32,
     (ignore_normals, part): (bool, Part),
@@ -769,13 +812,23 @@ fn direct_at(
                     continue;
                 }
                 let end = if l.kind == Kind::Surface { l.origin + l.normal * DIST_EPSILON } else { l.origin };
-                let ray = end - pos;
-                let len = ray.length();
-                let vis = if len > 1e-4 { ctx.props.visible(ctx.shadow, pos, ray / len, len, skip) } else { 1.0 };
+                let seen = |from: Vec3A| {
+                    let ray = end - from;
+                    let len = ray.length();
+                    if len > 1e-4 { ctx.props.visible(ctx.shadow, from, ray / len, len, skip) } else { 1.0 }
+                };
+                let mut vis = seen(pos);
+                if !taps.is_empty() {
+                    for &t in taps {
+                        let away = end - t;
+                        vis += seen(t + away.normalize_or_zero() * 4.0f32.min(away.length() * 0.5));
+                    }
+                    vis /= (taps.len() + 1) as f32;
+                }
                 dot * fall * vis
             }
             Kind::Sun => {
-                let pos = pos - l.normal * 4.0;
+                let lifted = pos - l.normal * 4.0;
                 let dot = if ignore_normals { CONSTANT_DOT } else { (-normal.dot(l.normal)).max(0.0) };
                 if dot <= 0.0 {
                     continue;
@@ -785,13 +838,19 @@ fn direct_at(
                     (true, false) => SUN_SAMPLES,
                     (true, true) => SUN_SAMPLES / 4,
                 };
+                let n = if taps.is_empty() { n } else { n.max(taps.len() + 1) };
                 let mut seen = 0.0f32;
                 for d in 0..n {
                     let mut dir = -l.normal;
-                    if d > 0 {
-                        dir = (dir + sphere[d - 1] * ctx.lights.sun_extent).normalize_or(dir);
+                    if d > 0 && ctx.lights.sun_extent > 0.0 {
+                        let jitter = sphere.get((d - 1) % sphere.len().max(1)).copied().unwrap_or(Vec3A::ZERO);
+                        dir = (dir + jitter * ctx.lights.sun_extent).normalize_or(dir);
                     }
-                    seen += ctx.sees_sky_skip(pos, dir, skip);
+                    let from = match d % (taps.len() + 1) {
+                        0 => lifted,
+                        k => taps[k - 1] - l.normal * 4.0,
+                    };
+                    seen += ctx.sees_sky_skip(from, dir, skip);
                 }
                 dot * seen / n as f32
             }
@@ -961,7 +1020,16 @@ fn light_prop(
                     .map(|&i| {
                         let (pos, normal) = verts[i];
                         let mut sky = vec![Vec3A::ZERO; np];
-                        direct_at(ctx, (opts, sphere), &near, pos, normal, skip, (ignore, Part::Ambient), &mut sky);
+                        direct_at(
+                            ctx,
+                            (opts, sphere),
+                            &near,
+                            (pos, &[]),
+                            normal,
+                            skip,
+                            (ignore, Part::Ambient),
+                            &mut sky,
+                        );
                         let mut ind = vec![Vec3A::ZERO; np];
                         if bounces {
                             indirect_at(ctx, light, (opts, sphere), pos, normal, ignore, opts.fast, &mut ind);
@@ -971,6 +1039,32 @@ fn light_prop(
                     .collect()
             };
             ctx.work.add(firsts.len() as u64);
+            let taps = if opts.show_normals {
+                HashMap::default()
+            } else {
+                let mut tris: Vec<[usize; 3]> = Vec::new();
+                if let Some(lod0) = vtx.models.get(mi).and_then(|l| l.first()) {
+                    for (k, mesh) in sub.meshes.iter().enumerate() {
+                        for g in lod0.get(k).map_or(&[][..], Vec::as_slice) {
+                            for t in &g.tris {
+                                let at = |x: u16| {
+                                    g.orig.get(usize::from(x)).and_then(|o| {
+                                        usize::try_from(i64::from(mesh.vertex_offset) + i64::from(*o)).ok()
+                                    })
+                                };
+                                if let (Some(a), Some(b), Some(c)) = (at(t[0]), at(t[1]), at(t[2])) {
+                                    tris.push([a, b, c]);
+                                }
+                            }
+                        }
+                    }
+                }
+                let mut taps = vertex_taps(&verts, &unique, &tris, max_taps(opts));
+                for list in taps.values_mut() {
+                    list.retain(|t| !in_solid(*t));
+                }
+                taps
+            };
             let lit_one = |(&i, &g): (&usize, &usize)| -> Option<Vec<Vec3A>> {
                 let (pos, normal) = verts[i];
                 if g == usize::MAX {
@@ -980,7 +1074,8 @@ fn light_prop(
                 if opts.show_normals {
                     c.fill((normal + Vec3A::ONE) * 50.0);
                 } else {
-                    direct_at(ctx, (opts, sphere), &near, pos, normal, skip, (ignore, Part::Direct), &mut c);
+                    let own = taps.get(&i).map_or(&[][..], Vec::as_slice);
+                    direct_at(ctx, (opts, sphere), &near, (pos, own), normal, skip, (ignore, Part::Direct), &mut c);
                     let (sky, ind) = &soft[g];
                     for ((o, s), v) in c.iter_mut().zip(sky).zip(ind) {
                         *o += *s + *v;
@@ -1041,7 +1136,7 @@ fn light_prop(
                         ctx,
                         (opts, sphere),
                         all.get_or_init(|| candidate_lights(ctx, None)),
-                        best,
+                        (best, &[]),
                         *bnormal,
                         NO_PROP,
                         (false, Part::All),
@@ -1233,6 +1328,46 @@ mod tests {
             vec![(false, true), (true, true), (false, false), (false, false)]
         );
         assert_eq!(models_needed(3, &props, what(false, false)), vec![(false, false); 3]);
+    }
+
+    #[test]
+    fn big_triangles_spread_vertex_samples_over_their_neighbourhood() {
+        let quad = |size: f32| {
+            let up = Vec3A::Z;
+            let verts = vec![
+                (Vec3A::new(0.0, 0.0, 0.0), up),
+                (Vec3A::new(size, 0.0, 0.0), up),
+                (Vec3A::new(size, size, 0.0), up),
+                (Vec3A::new(0.0, size, 0.0), up),
+                (Vec3A::new(0.0, 0.0, 0.0), up),
+            ];
+            let unique = vec![0, 1, 2, 3, 0];
+            (verts, unique, vec![[0, 1, 2], [4, 2, 3]])
+        };
+        let (verts, unique, tris) = quad(4.0);
+        assert!(vertex_taps(&verts, &unique, &tris, 6).is_empty(), "small props keep one sample per vertex");
+        let (verts, unique, tris) = quad(256.0);
+        let taps = vertex_taps(&verts, &unique, &tris, 6);
+        let corner = taps.get(&0).expect("the shared corner samples both triangles");
+        assert_eq!(corner.len(), 2);
+        assert!(!taps.contains_key(&4), "duplicates fold into their first vertex");
+        for t in corner {
+            assert!(t.z > 0.0 && t.z < 8.0, "taps sit just above the surface: {t}");
+            assert!(t.x > 20.0 && t.x < 256.0 && t.y >= 0.0 && t.y < 256.0, "taps lie inside the triangles: {t}");
+        }
+        assert_eq!(vertex_taps(&verts, &unique, &tris, 1)[&0].len(), 1, "the tap count is capped");
+        assert!(vertex_taps(&verts, &unique, &tris, 0).is_empty());
+    }
+
+    #[test]
+    fn tap_count_follows_the_sample_scale() {
+        let at =
+            |sample_scale: f32, fast: bool| max_taps(&PropOptions { sample_scale, fast, ..PropOptions::default() });
+        assert_eq!(at(1.0, false), 6);
+        assert_eq!(at(4.0, false), 12);
+        assert_eq!(at(0.1, false), 3);
+        assert_eq!(at(16.0, false), 12);
+        assert_eq!(at(4.0, true), 3);
     }
 
     #[test]

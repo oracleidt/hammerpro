@@ -228,7 +228,7 @@ Groupe **Props statiques** (étape d'éclairage).
 | `-StaticPropPolys` | Les props statiques projettent leur ombre avec les triangles affichés au lieu de leur modèle de collision (ombres plus fines, plus lent). | désactivé |
 | `-textureshadows` | Avec `-StaticPropPolys` : les textures à transparence (feuillages, grillages) des modèles compilés avec `$casttextureshadows` laissent passer la lumière. | désactivé |
 | `-nossprops` | Les props statiques ne se font jamais d'ombre à eux-mêmes. | désactivé |
-| `-staticpropsamplescale <facteur>` | Multiplie le nombre de rayons qui éclairent les sommets des props statiques (avec `-StaticPropLighting`). | 1 (4 avec `-final`) |
+| `-staticpropsamplescale <facteur>` | Multiplie le nombre de rayons qui éclairent les sommets des props statiques (avec `-StaticPropLighting`) et des échantillons d'ombre répartis sur les triangles autour de chaque sommet d'un grand prop (3 à 12), qui adoucissent les marches de lumière nettes. `-StaticPropSamplingScale` est la même option. | 1 (4 avec `-final`) |
 | `-nostaticpropshadows` | Option de Hammer Pro : les props statiques ne projettent aucune ombre (lightmaps, lumière rebondie, props de détail, lumière ambiante, éclairage des props) ; leurs modèles ne sont même pas chargés. Écrit par **Ombres des props statiques**. | désactivé |
 
 ## Lumières de texture et ciel

@@ -513,7 +513,7 @@ impl IoSim {
                     self.fire(state, id, "OnExtinguished");
                 }
             }
-            "lighton" | "lightoff" if c == "point_spotlight" => {
+            "lighton" | "lightoff" if c == "point_spotlight" || c == "beam_spotlight" => {
                 let o = self
                     .projectors
                     .entry(id)

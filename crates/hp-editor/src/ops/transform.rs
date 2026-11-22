@@ -6,7 +6,7 @@ use hp_geom::{Aabb, GeomError, Ray, snap_vec3, transform_angles_mat, transform_s
 use hp_vmf::{Entity, Solid};
 use rayon::prelude::*;
 
-use super::clean_vec;
+use super::{clean_vec, turnable_angles};
 use crate::clipboard::SideLayout;
 use crate::document::Document;
 use crate::ids::{IdSet, id_set};
@@ -65,7 +65,7 @@ fn transform_entity(e: &mut Entity, xf: Xform, is_brush: bool, scale_lock: bool)
         && !is_brush
         && !is_overlay
         && is_conformal(&DMat3::from_mat4(m))
-        && let Some(a) = e.angles()
+        && let Some(a) = turnable_angles(e)
     {
         let new = transform_angles_mat(a, &DMat3::from_mat4(m));
         if new != a && new.is_finite() {
@@ -590,6 +590,39 @@ mod tests {
         let sunk = slab(&mut doc, DVec3::new(-200.0, -200.0, -4.0), DVec3::new(-168.0, -168.0, 28.0));
         assert_eq!(doc.drop_to_surface(&[ObjRef::Solid(sunk)], DVec3::NEG_Z, false, &no_bounds).expect("drop"), 1);
         assert_eq!(b(&doc, sunk).min.z, 0.0);
+    }
+
+    #[test]
+    fn rotating_props_without_an_angles_key_turns_them() {
+        let mut doc = Document::new_empty();
+        let kv = |k: &str, v: &str| (k.to_owned(), v.to_owned());
+        let made = doc
+            .create_point_entity(
+                "prop_static",
+                DVec3::new(64.0, 0.0, 0.0),
+                &[kv("model", "models/hammerpro/arch.mdl"), kv("solid", "6")],
+            )
+            .expect("prop");
+        let bare = doc.create_point_entity("prop_dynamic", DVec3::new(-64.0, 0.0, 0.0), &[]).expect("bare prop");
+        let target = doc.create_point_entity("info_target", DVec3::new(0.0, 64.0, 0.0), &[]).expect("target");
+        let brush = slab(&mut doc, DVec3::new(-16.0, -16.0, 0.0), DVec3::new(16.0, 16.0, 32.0));
+        let objs = [ObjRef::Entity(made), ObjRef::Entity(bare), ObjRef::Entity(target), ObjRef::Solid(brush)];
+        doc.rotate_axis(&objs, DVec3::ZERO, DVec3::Z, 90.0).expect("rotate");
+        let e = |doc: &Document, id| doc.scene().entity(id).expect("entity").entity.clone();
+        assert_eq!(e(&doc, made).get("angles"), Some("0 90 0"));
+        assert_eq!(e(&doc, made).origin(), Some(DVec3::new(0.0, 64.0, 0.0)), "origin turns around the pivot");
+        assert_eq!(e(&doc, bare).get("angles"), Some("0 90 0"));
+        assert_eq!(e(&doc, target).get("angles"), None, "entities without a model keep their keys");
+        assert_eq!(e(&doc, target).origin(), Some(DVec3::new(-64.0, 0.0, 0.0)));
+        doc.translate(&[ObjRef::Entity(made)], DVec3::new(8.0, 0.0, 0.0)).expect("move");
+        assert_eq!(e(&doc, made).get("angles"), Some("0 90 0"));
+        let still =
+            doc.create_point_entity("prop_static", DVec3::ZERO, &[kv("model", "models/still.mdl")]).expect("still");
+        doc.transform(&[ObjRef::Entity(still)], DMat4::from_translation(DVec3::new(4.0, 0.0, 0.0))).expect("shift");
+        assert_eq!(e(&doc, still).get("angles"), None, "a pure move adds no key");
+        let mut odd = Entity { classname: "prop_static".into(), ..Entity::default() };
+        odd.set("angles", "broken");
+        assert_eq!(super::turnable_angles(&odd), None, "an unreadable angles value is left alone");
     }
 
     #[test]

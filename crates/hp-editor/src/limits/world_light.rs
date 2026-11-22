@@ -920,6 +920,26 @@ impl PropLighting {
     pub fn style_scale(&self, style: usize) -> f32 {
         self.styles.get(style).copied().unwrap_or(1.0)
     }
+
+    pub fn settle_styles(&self, mut m: ModelLighting) -> ModelLighting {
+        let settle = |list: &mut Vec<LocalLight>| {
+            list.retain_mut(|l| {
+                if l.style == 0 {
+                    return true;
+                }
+                let k = self.style_scale(usize::from(l.style));
+                if !(k.is_finite() && k > 0.0) {
+                    return false;
+                }
+                l.color = l.color.map(|c| c * k);
+                l.style = 0;
+                true
+            });
+        };
+        settle(&mut m.lights);
+        settle(&mut m.styled);
+        m
+    }
 }
 
 pub type StaticPropRecord = (String, [f32; 3], [f32; 3], u32, [f32; 3]);
@@ -1402,6 +1422,28 @@ mod tests {
         p.lights.drain(1..5);
         let m = p.model_lighting([50.0, 50.0, 10.0]);
         assert_eq!(m.lights.iter().map(|l| l.style).collect::<Vec<_>>(), [0, 32]);
+    }
+
+    #[test]
+    fn start_dark_and_dimmed_styles_settle_for_models_without_animated_styles() {
+        let mut p = tree();
+        let point = |z: f32, style: i32| WorldLightSource {
+            origin: [50.0, 50.0, z],
+            intensity: [100.0; 3],
+            kind: EmitKind::Point,
+            quadratic: 1.0,
+            cluster: -1,
+            style,
+            ..WorldLightSource::default()
+        };
+        p.lights = vec![point(40.0, 0), point(30.0, 32), point(20.0, 33)];
+        p.styles[32] = 0.0;
+        p.styles[33] = 0.5;
+        let m = p.settle_styles(p.model_lighting([50.0, 50.0, 10.0]));
+        assert_eq!(m.lights.len(), 2, "a light that starts dark does not light the props");
+        assert!(m.lights.iter().all(|l| l.style == 0));
+        assert!(m.lights.iter().any(|l| l.color == [50.0; 3]), "a dimmed style keeps its initial brightness");
+        assert!(m.styled.iter().all(|l| l.style == 0 && l.color == [50.0; 3]));
     }
 
     #[test]

@@ -478,8 +478,8 @@ domain! { "editing";
         { "limit": limit(), "offset": offset() }, [];
     random_rotate_objects: Edit, "Random Z rotation",
         "Turn each point entity with an angles key (prop_static, prop_dynamic, prop_physics, lights...) by its own \
-        random yaw around Z, in one undo step, like Tools > Random Z rotation. Brushes, brush entities and \
-        entities without angles are skipped and counted. The options default to the selection.random_* settings.",
+        random yaw around Z, in one undo step, like Tools > Random Z rotation. Props with a model and no angles key \
+        count as angles 0 0 0. Brushes, brush entities and other entities without angles are skipped and counted. The options default to the selection.random_* settings.",
         {
             "ids": target_ids(), "solid_ids": target_solid_ids(),
             "min_yaw": number("Smallest turn in degrees (default selection.random_yaw_min, 0).", -360.0, 360.0),

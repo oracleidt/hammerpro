@@ -608,10 +608,20 @@ La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de l
 | `propper_static` | `true` | Compile `$staticprop` et crée un `prop_static` ; décoché, crée un `prop_dynamic`. Désactivé pour les props physiques. |
 | `propper_collision` | `true` | Génère la collision, obligatoire pour les props physiques. |
 | `propper_mass` | `10.0` | Masse physique en kg, de 0,1 à 50000. |
+| `propper_model_folder` | `""` | Dossier du dernier modèle fait par **Créer un prop à partir des brushes** (relatif à `models/`) ; le suivant y démarre avec un nom libre. Vide : un nom `hammerpro/` automatique. |
+| `propper_name_prefix` | `""` | Nom du dernier prop créé sans son numéro final ; le nom suivant est ce préfixe plus le premier numéro libre (`doorway01`, `doorway02`...). |
+| `propper_recent_folders` | `[]` | Jusqu'à 8 dossiers de modèles récents, du plus récent au plus ancien, proposés par la flèche à côté du chemin du modèle. |
+| `propper_export_dir` | `""` | Dernier dossier du contenu exporté. Vide : le dossier du jeu. |
+| `propper_source_dir` | `""` | Dernier dossier des sources QC/SMD. Vide : le dossier `propsrc` du cache. |
+| `propper_material_dir` | `""` | Dernier dossier `$cdmaterials` personnalisé. Vide : il suit le chemin du modèle. |
+| `propper_reuse_materials` | `true` | Dernier état de **Réutiliser les matériaux VertexLitGeneric**. |
+| `propper_surface` | `""` | Dernier `$surfaceprop` ; vide : automatique. |
 | `combine_origin` | `"center"` | Origine d'un modèle fait par **Combiner des props** : `center` (centre) ou `bottom` (centre du bas) de la sélection. |
 | `combine_keep_originals` | `true` | **Combiner des props** garde les props d'origine dans le visgroup caché `Combined props (originals)` ; désactivé : ils sont supprimés. |
 | `combine_collision` | `true` | **Combiner des props** construit la collision à partir des morceaux .phy des props. |
 | `combine_max_pieces` | `32` | Nombre maximal de morceaux de collision convexes d'un modèle combiné, de 1 à 128. |
+| `combine_model_folder` | `""` | Dossier du dernier modèle de **Combiner des props** ; le suivant y démarre. Vide : `hammerpro/combined`. |
+| `combine_export_dir` | `""` | Dernier dossier de destination de **Combiner des props**. Vide : le dossier du jeu. |
 | `model_keep_params` | `true` | L'import de modèles écrit la normal map, le brillant, l'auto-illumination et le tiling des textures du fichier dans les VMT. |
 
 ## `[sniffer]`

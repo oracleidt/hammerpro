@@ -67,6 +67,10 @@ struct DetailModel {
 
 type StaticPropIndex = HashMap<(String, [i32; 3]), usize>;
 
+pub(crate) fn derived_model(object: u32) -> bool {
+    (crate::producer::DERIVED_ID_BASE..crate::producer::DERIVED_ID_END).contains(&object)
+}
+
 fn in_region(region: Option<[[f64; 3]; 2]>, transform: &[[f32; 4]; 4]) -> bool {
     region.is_none_or(|[lo, hi]| (0..3).all(|k| (lo[k]..=hi[k]).contains(&f64::from(transform[3][k]))))
 }
@@ -943,7 +947,7 @@ impl AssetManager {
         let mut seen: std::collections::HashSet<u32> = std::collections::HashSet::with_capacity(list.len());
         let mut planned: Vec<(ModelInstance, Option<[f32; 3]>, PlannedLighting)> = Vec::new();
         for inst in list {
-            let entity = inst.object & crate::entities::ENTITY_BIT != 0;
+            let entity = inst.object & crate::entities::ENTITY_BIT != 0 || derived_model(inst.object);
             if !(entity || inst.object == crate::player::PLAYER_OBJECT) || !seen.insert(inst.object) {
                 continue;
             }
@@ -971,7 +975,9 @@ impl AssetManager {
         };
         if let Some(props) = props {
             use rayon::prelude::*;
-            let lit: Vec<(ModelLighting, bool)> = planned.par_iter().map(|(_, _, plan)| plan.finish(props)).collect();
+            let settle = world.is_none();
+            let lit: Vec<(ModelLighting, bool)> =
+                planned.par_iter().map(|(_, _, plan)| plan.finish(props, settle)).collect();
             for ((inst, at, _), (lighting, waits)) in planned.iter().zip(lit) {
                 self.play_world.model_lights.insert(inst.object, (inst.model, inst.transform, *at, lighting, waits));
             }
@@ -1083,11 +1089,12 @@ enum PlannedLighting {
 }
 
 impl PlannedLighting {
-    fn finish(&self, props: &world_light::PropLighting) -> (ModelLighting, bool) {
+    fn finish(&self, props: &world_light::PropLighting, settle: bool) -> (ModelLighting, bool) {
         match self {
             PlannedLighting::Done(lighting, waits) => (lighting.clone(), *waits),
             PlannedLighting::Sample { object, model, origin, colors, waits } => {
                 let lit = props.model_lighting(*origin);
+                let lit = if settle { props.settle_styles(lit) } else { lit };
                 let lighting = ModelLighting {
                     object: *object,
                     sample_origin: Some(*origin),
@@ -1410,6 +1417,15 @@ mod tests {
         assert!(in_region(r, &at(0.0, 50.0, -100.0)));
         assert!(!in_region(r, &at(0.0, 150.0, 0.0)));
         assert!(!in_region(r, &at(f32::NAN, 0.0, 0.0)));
+    }
+
+    #[test]
+    fn models_made_by_scene_producers_take_the_baked_light() {
+        assert!(derived_model(crate::producer::DERIVED_ID_BASE));
+        assert!(derived_model(crate::producer::DERIVED_ID_END - 1));
+        assert!(!derived_model(crate::producer::DERIVED_ID_END));
+        assert!(!derived_model(crate::producer::DERIVED_ID_BASE - 1));
+        assert!(!derived_model(static_prop_object(0)) && !derived_model(face_object(0)));
     }
 
     #[test]

@@ -384,7 +384,7 @@ domain! { "compile and play";
         fraction, sunlit_samples, shaded_samples, sky_camera, sky_cameras, warning true from 25 percent, when the \
         preview also warns the user), no_skybox_recurse (the compile uses -noskyboxrecurse, so the bake and the \
         compile ignore the 3D skybox for the sun and the sky light), and while the lit mode is on the realtime preview: lights drawn, suns, lights left out, \
-        crowded spots keeping only their strongest lights, HDR or LDR values, sky light occlusion, projectors (the env_projectedtexture entities drawn, setting render.projected_textures), dynamic_lights (the engine dynamic lights drawn: light_dynamic and the point_spotlight beam ends, also over the baked preview and the player view), sky_layers (how \
+        crowded spots keeping only their strongest lights, HDR or LDR values, sky light occlusion, projectors (the env_projectedtexture entities drawn, setting render.projected_textures), dynamic_lights (the engine dynamic lights drawn: light_dynamic and the point_spotlight and beam_spotlight beam ends, also over the baked preview and the player view), sky_layers (how \
         many skies lie one above the other toward the sun and straight up: each point is shadowed only by what lies \
         between it and the sky it reaches, like VRAD), relight (the last lighting update: full or incremental, \
         lights and changed lights, faces relit and faces sent, seconds of the lighting with its direct and bounce \

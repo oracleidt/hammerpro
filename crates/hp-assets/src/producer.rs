@@ -8,7 +8,7 @@ use crate::lights::SceneLight;
 use crate::AssetManager;
 
 pub(crate) const DERIVED_ID_BASE: u32 = 0x7000_0000;
-const DERIVED_ID_END: u32 = 0x8000_0000;
+pub(crate) const DERIVED_ID_END: u32 = 0x8000_0000;
 
 pub(crate) struct ProducerChanges<'a> {
     pub doc: &'a Changes,

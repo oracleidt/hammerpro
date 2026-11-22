@@ -608,10 +608,20 @@ The **Build and save as content** window and the Map assets tab. See [Build and 
 | `propper_static` | `true` | Compile `$staticprop` and create `prop_static`; off creates `prop_dynamic`. Disabled for physics props. |
 | `propper_collision` | `true` | Generate collision; required for physics props. |
 | `propper_mass` | `10.0` | Physics prop mass in kg, 0.1 to 50000. |
+| `propper_model_folder` | `""` | Model folder of the last prop made by **Create prop from brushes** (relative to `models/`); the next one starts there with a free name. Empty: an automatic `hammerpro/` name. |
+| `propper_name_prefix` | `""` | Name of the last created prop without its trailing number; the next name is this prefix plus the first free number (`doorway01`, `doorway02`...). |
+| `propper_recent_folders` | `[]` | Up to 8 recent model folders, newest first, offered by the arrow next to the model path. |
+| `propper_export_dir` | `""` | Last export content folder. Empty: the game folder. |
+| `propper_source_dir` | `""` | Last QC/SMD source folder. Empty: the cache `propsrc` folder. |
+| `propper_material_dir` | `""` | Last custom `$cdmaterials` folder. Empty: it follows the model path. |
+| `propper_reuse_materials` | `true` | Last state of **Reuse existing VertexLitGeneric materials**. |
+| `propper_surface` | `""` | Last `$surfaceprop`; empty is automatic. |
 | `combine_origin` | `"center"` | Origin of a model made by **Combine props**: `center` or `bottom` (bottom center) of the selection. |
 | `combine_keep_originals` | `true` | **Combine props** keeps the original props in the hidden visgroup `Combined props (originals)`; off deletes them. |
 | `combine_collision` | `true` | **Combine props** builds collision from the props' .phy pieces. |
 | `combine_max_pieces` | `32` | Most convex collision pieces of a combined model, 1 to 128. |
+| `combine_model_folder` | `""` | Model folder of the last **Combine props** model; the next one starts there. Empty: `hammerpro/combined`. |
+| `combine_export_dir` | `""` | Last **Combine props** destination folder. Empty: the game folder. |
 | `model_keep_params` | `true` | Model import writes the normal map, shine, self illumination and texture tiling of the file into the VMTs. |
 
 ## `[sniffer]`

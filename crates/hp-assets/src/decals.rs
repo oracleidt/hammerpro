@@ -229,6 +229,7 @@ pub(crate) fn project_decal_layers(
 
 struct DecalState {
     pending: bool,
+    missing: bool,
     reach: Option<Aabb>,
     solids: Vec<Id>,
 }
@@ -257,6 +258,7 @@ pub(crate) fn decal_size(assets: &mut AssetManager, material: &str) -> DecalSize
 pub(crate) struct DecalProducer {
     decals: AHashMap<Id, DecalState>,
     dirty: AHashSet<Id>,
+    loaded_seen: u64,
 }
 
 impl DecalProducer {
@@ -264,16 +266,19 @@ impl DecalProducer {
         let wanted =
             cx.assets.scene.ents.get(&id).and_then(|s| Some((s.desc.decal.clone()?, s.desc.origin, s.desc.color)));
         let (Some((material, origin, color)), Some(_)) = (wanted, decal_object(id)) else {
-            if self.decals.remove(&id).is_some() {
+            if cx.assets.scene.entity_queued.contains(&id) && cx.doc.scene().entity(id).is_some() {
+                self.decals.insert(id, DecalState { pending: true, missing: false, reach: None, solids: Vec::new() });
+                out.remove.push(u64::from(id));
+            } else if self.decals.remove(&id).is_some() {
                 out.remove.push(u64::from(id));
             }
             return;
         };
-        let mut state = DecalState { pending: false, reach: None, solids: Vec::new() };
+        let mut state = DecalState { pending: false, missing: false, reach: None, solids: Vec::new() };
         let mut shown = false;
         match decal_size(cx.assets, &material) {
             DecalSize::Loading => state.pending = true,
-            DecalSize::Missing => {}
+            DecalSize::Missing => state.missing = true,
             DecalSize::Ready(size, scale) => {
                 state.reach = Some(decal_reach(origin, size * scale));
                 if let Some(mesh) = project_decal(cx.doc, origin, size, scale) {
@@ -309,6 +314,10 @@ impl DerivedProducer for DecalProducer {
         if changes.full {
             self.decals.clear();
             self.dirty.clear();
+        }
+        let loaded = cx.assets.mats.loaded;
+        if std::mem::replace(&mut self.loaded_seen, loaded) != loaded {
+            self.dirty.extend(self.decals.iter().filter(|(_, d)| d.missing).map(|(id, _)| *id));
         }
         let doc = changes.doc;
         if changes.full || changes.entities {

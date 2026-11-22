@@ -10202,5 +10202,9 @@
   "shell.undo.remove_from_all_visgroups": "Удаление из всех визгрупп",
   "entities.fr_select_all": "Выбрать все",
   "entities.fr_select_all_tip": "Выделить все сущности из списка совпадений и показать их в видах",
-  "entities.fr_selected": "Выделено сущностей: {0}"
+  "entities.fr_selected": "Выделено сущностей: {0}",
+  "propper.recent_folders": "Недавние папки",
+  "propper.no_recent_folders": "Папок пока нет: здесь сохраняется папка каждого созданного пропа.",
+  "propper.fresh_name": "Новое имя в этой папке",
+  "propper.recent_folders_tip": "Выбрать недавнюю папку моделей: имя получит следующий свободный номер"
 }

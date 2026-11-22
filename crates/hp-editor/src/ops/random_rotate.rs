@@ -119,7 +119,7 @@ impl Document {
                 skipped += 1;
                 continue;
             };
-            let angles = node.entity.angles().filter(|a| a.is_finite());
+            let angles = super::turnable_angles(&node.entity).filter(|a| a.is_finite());
             match angles {
                 Some(a) if !self.scene.is_brush_entity(id) => targets.push((id, a)),
                 _ => skipped += 1,

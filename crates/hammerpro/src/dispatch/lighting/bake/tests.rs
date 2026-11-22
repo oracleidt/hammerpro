@@ -668,3 +668,45 @@ fn texture_lit_rooms_bake_like_the_compile() {
     assert!(compiled > 0.05, "the panel lights the compiled room: {compiled}");
     assert!((shown / compiled - 1.0).abs() < 0.2, "preview {shown} against the compile {compiled}");
 }
+
+fn outdoor_yard() -> (hp_vmf::Map, HashMap<u32, SolidInfo>) {
+    let sun = "entity { \"id\" \"30\" \"classname\" \"light_environment\" \"origin\" \"128 128 200\" \"angles\" \"0 30 0\" \"pitch\" \"-50\" \"_light\" \"255 240 220 400\" \"_ambient\" \"150 170 150 60\" }\n";
+    let (text, solids) = room_text(sun);
+    let start = text.find("solid { \"id\" \"3\"").expect("ceiling");
+    let end = start + text[start..].find("\n}\n").expect("ceiling end") + 3;
+    let sky = text[start..end].replace("DEV/DEV_MEASUREGENERIC01B", "TOOLS/TOOLSSKYBOX");
+    let pillar = solid(40, 400, [96.0, 96.0, 0.0], [144.0, 144.0, 160.0]);
+    let text = format!("{}{sky}{pillar}{}", &text[..start], &text[end..]);
+    (hp_vmf::parse(&text).expect("parse"), solids)
+}
+
+#[test]
+fn an_outdoor_yard_bakes_sun_and_shade_like_the_compile() {
+    let (map, solids) = outdoor_yard();
+    let mut h = Harness::new();
+    let baked = h.baked(job(43, Some(map.clone()), solids));
+    let texels: Vec<u32> = texels_by_bsp(&baked).into_values().flatten().collect();
+    assert!(!texels.is_empty());
+    let mut sorted: Vec<f32> = texels.iter().map(|t| lum(*t)).collect();
+    sorted.sort_by(f32::total_cmp);
+    let shown = sorted.iter().sum::<f32>() / sorted.len() as f32;
+    let (low, high) = (sorted[sorted.len() / 20], sorted[sorted.len() * 19 / 20]);
+    assert!(high > low * 3.0, "the sun and the shade differ like in the game: {low} {high}");
+    let brightest = texels.iter().copied().max_by(|a, b| lum(*a).total_cmp(&lum(*b))).expect("texel");
+    let c = hp_light::pack::unpack_rg11b10(brightest);
+    assert!(c[0] >= c[1] * 0.95, "sunlit floors take the sun colour, not the ambient tint: {c:?}");
+
+    let built = compile_map(&map, &hp_fs::GameFs::empty(), 2, &|| false, &mut |_| {}, false).ok().expect("compiled");
+    let opts = hp_bspc::rad::RadOptions {
+        hdr: true,
+        ldr: false,
+        bounces: 2,
+        quality: RadQuality::Draft,
+        threads: Some(2),
+        ..Default::default()
+    };
+    let lit = hp_bspc::rad::light_bsp(&built.bsp, &opts, &mut |_| {}).expect("lit");
+    let compiled = compiled_mean(&lit);
+    assert!(compiled > 0.05, "the sun lights the compiled yard: {compiled}");
+    assert!((shown / compiled - 1.0).abs() < 0.2, "preview {shown} against the compile {compiled}");
+}

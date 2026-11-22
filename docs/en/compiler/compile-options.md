@@ -227,7 +227,7 @@ Menu group **Static props** (lighting step).
 | `-StaticPropPolys` | Static props cast shadows with the triangles they draw instead of their collision model (finer shadows, slower). Models listed with `forcetextureshadow` in a `.rad` file always do (see [Light file (.rad)](#light-file-rad)). | off |
 | `-textureshadows` | With `-StaticPropPolys`: alpha tested prop textures (leaves, fences) of models compiled with `$casttextureshadows` let light through. | off |
 | `-nossprops` | Static props never shadow themselves. | off |
-| `-staticpropsamplescale <factor>` | Scales the number of rays that light static prop vertices (with `-StaticPropLighting`). | 1 (4 with `-final`) |
+| `-staticpropsamplescale <factor>` | Scales the number of rays that light static prop vertices (with `-StaticPropLighting`) and the shadow samples spread over the triangles around each vertex of a large prop (3 to 12), which soften hard light steps. `-StaticPropSamplingScale` is the same flag. | 1 (4 with `-final`) |
 | `-nostaticpropshadows` | Hammer Pro option: static props cast no shadow at all (lightmaps, bounced light, detail props, ambient light, prop lighting); their models are not even loaded. Written by **Static prop shadows**. | off |
 
 ## Texture lights and sky

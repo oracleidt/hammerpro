@@ -407,3 +407,115 @@ fn prop_geometry_preview_is_textured_editable_and_keeps_the_model_browser_image(
     );
     assert_eq!(assets.read_preview_rgba8().unwrap(), model_before);
 }
+
+fn decal_floor_vmf(count_per_side: usize) -> String {
+    let mut extra = String::new();
+    let step = 480.0 / count_per_side as f64;
+    let mut id = 1000;
+    for i in 0..count_per_side {
+        for j in 0..count_per_side {
+            let x = -240.0 + step * i as f64;
+            let y = -240.0 + step * j as f64;
+            extra.push_str(&format!(
+                "entity\n{{\n\t\"id\" \"{id}\"\n\t\"classname\" \"infodecal\"\n\t\"texture\" \"decals/test\"\n\t\"origin\" \"{x} {y} 1\"\n}}\n"
+            ));
+            id += 1;
+        }
+    }
+    hp_app::testing::TEST_VMF.replacen("cordon\n{", &format!("{extra}cordon\n{{"), 1)
+}
+
+fn drain(am: &mut AssetManager, doc: &mut Document, gfx: &mut Gfx, o: &SceneOptions) -> u32 {
+    let ctx = egui::Context::default();
+    assert!(settle(am, doc, gfx, o));
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut last = objects(gfx);
+    let mut stable = 0;
+    while stable < 5 {
+        am.begin_frame(&ctx, Some(gfx));
+        am.sync_scene(doc, gfx, o);
+        let now = objects(gfx);
+        stable = if now == last && am.scene_prepared() { stable + 1 } else { 0 };
+        last = now;
+        assert!(Instant::now() < deadline, "the scene never settled");
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    last
+}
+
+#[test]
+fn every_infodecal_shows_after_opening_a_map_with_many_of_them() {
+    hp_app::register_translations();
+    hp_assets::register_translations();
+    let Some(mut gfx) = gfx() else {
+        eprintln!("no GPU adapter available: test skipped");
+        return;
+    };
+    let gfx = &mut gfx;
+    publish_scene_display(SceneDisplay::default());
+    let root = fake_install("helpers_gpu_decals");
+    let side = 64;
+    let vmf = decal_floor_vmf(side);
+    let o = opts();
+
+    let mut am = AssetManager::new(&fake_settings(&root));
+    let mut plain = Document::from_map(hp_vmf::parse(hp_app::testing::TEST_VMF).expect("test map"));
+    am.sync_scene(&mut plain, gfx, &o);
+    let base = drain(&mut am, &mut plain, gfx, &o);
+
+    let mut doc = Document::from_map(hp_vmf::parse(&vmf).expect("decal map"));
+    am.sync_scene(&mut doc, gfx, &o);
+    let streamed = !am.scene_prepared();
+    let shown = drain(&mut am, &mut doc, gfx, &o);
+    eprintln!("decals: base {base} shown {shown} streamed {streamed}");
+    assert_eq!(shown, base + 2 * (side * side) as u32, "every infodecal has its entity box and its decal");
+    let mut p = view(DVec3::new(0.0, -300.0, 300.0), DVec3::ZERO);
+    for (i, mode) in [RenderMode::Textured, RenderMode::Flat, RenderMode::Lit].into_iter().enumerate() {
+        p.mode = mode;
+        gfx.renderer.render_view(3 + i as u32, &p, &Overlay::default());
+        save(gfx, 3 + i as u32, &format!("decals_on_open_{mode:?}"));
+    }
+}
+
+#[test]
+fn beam_spotlight_draws_its_beam_like_point_spotlight() {
+    hp_app::register_translations();
+    hp_assets::register_translations();
+    let Some(mut gfx) = gfx() else {
+        eprintln!("no GPU adapter available: test skipped");
+        return;
+    };
+    let gfx = &mut gfx;
+    publish_scene_display(SceneDisplay::default());
+    let settings = match common::real_gmod() {
+        Some(r) => common::real_settings(&r),
+        None => fake_settings(&fake_install("helpers_gpu_beam")),
+    };
+    let mut am = AssetManager::new(&settings);
+    let mut doc = Document::from_map(hp_vmf::parse(hp_app::testing::TEST_VMF).expect("test map"));
+    let o = opts();
+    am.sync_scene(&mut doc, gfx, &o);
+    assert!(settle(&mut am, &mut doc, gfx, &o));
+    let p = view(DVec3::new(-260.0, -360.0, 200.0), DVec3::new(0.0, 0.0, 60.0));
+    let kv = [
+        ("angles", "60 90 0"),
+        ("spawnflags", "0"),
+        ("rendercolor", "255 160 40"),
+        ("SpotlightLength", "400"),
+        ("SpotlightWidth", "60"),
+        ("HDRColorScale", "1"),
+    ]
+    .map(|(k, v)| (k.to_owned(), v.to_owned()));
+    let id = doc.create_point_entity("beam_spotlight", DVec3::new(0.0, -200.0, 200.0), &kv).expect("beam_spotlight");
+    assert!(settle(&mut am, &mut doc, gfx, &o));
+    gfx.renderer.render_view(1, &p, &Overlay::default());
+    let (_, _, empty) = gfx.renderer.read_view_rgba8(1).expect("readback");
+    doc.set_entity_key(&[id], "spawnflags", "1").expect("start on");
+    assert!(settle(&mut am, &mut doc, gfx, &o));
+    gfx.renderer.render_view(1, &p, &Overlay::default());
+    let (_, _, lit) = gfx.renderer.read_view_rgba8(1).expect("readback");
+    save(gfx, 1, "beam_spotlight_textured");
+    let changed = empty.chunks_exact(4).zip(lit.chunks_exact(4)).filter(|(a, b)| a != b).count();
+    eprintln!("beam_spotlight changed {changed} pixels");
+    assert!(changed > 500, "Start On adds the beam and its halo: {changed}");
+}

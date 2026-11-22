@@ -41,7 +41,7 @@ impl CombineSettings {
             collision: lab.combine_collision,
             max_pieces: lab.combine_pieces(),
             model: default_model(state, props),
-            destination: default_destination(state),
+            destination: remembered_destination(state),
             source_dir: hp_app::settings::Settings::cache_dir().join("propsrc"),
             lod: lab.model_lod,
         }
@@ -55,7 +55,23 @@ pub fn default_model(state: &AppState, props: &[Id]) -> String {
     }
     let stem = state.doc.path().and_then(|path| path.file_stem()).map_or("map".into(), |s| s.to_string_lossy());
     let stem: String = stem.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').take(40).collect();
-    format!("{MODEL_FOLDER}/{}_{hash:08x}", stem.to_ascii_lowercase())
+    let saved = state.settings.lab.combine_model_folder.trim().trim_matches('/');
+    let folder = if saved.is_empty() || creation::model_path(saved).is_none() { MODEL_FOLDER } else { saved };
+    format!("{folder}/{}_{hash:08x}", stem.to_ascii_lowercase())
+}
+
+pub fn remembered_destination(state: &AppState) -> PathBuf {
+    let saved = PathBuf::from(state.settings.lab.combine_export_dir.trim());
+    if saved.is_absolute() { saved } else { default_destination(state) }
+}
+
+pub fn remember(lab: &mut hp_app::settings::LabSettings, settings: &CombineSettings) {
+    if let Some(model) = creation::model_path(&settings.model) {
+        lab.combine_model_folder = model.rsplit_once('/').map(|(folder, _)| folder.to_owned()).unwrap_or_default();
+    }
+    if settings.destination.is_absolute() {
+        lab.combine_export_dir = settings.destination.to_string_lossy().into_owned();
+    }
 }
 
 pub fn default_destination(state: &AppState) -> PathBuf {
@@ -530,6 +546,8 @@ impl MapDialog for CombineDialog {
             };
             match fresh {
                 Ok(request) => {
+                    remember(&mut state.settings.lab, &settings);
+                    state.settings_dirty = true;
                     state.console.info(summary(&request));
                     state.runtime.lab.combine_request = Some(Box::new(request));
                     open = false;
@@ -565,6 +583,28 @@ mod tests {
             ));
         }
         out
+    }
+
+    #[test]
+    fn combine_remembers_the_model_folder_and_destination() {
+        let mut state = hp_app::testing::test_state();
+        let first = CombineSettings::from_state(&state, &[1, 2]);
+        assert!(first.model.starts_with("hammerpro/combined/"), "{}", first.model);
+        let export = std::env::temp_dir().join("hp-combine-remember");
+        let used = CombineSettings {
+            model: "models/city/blocks/house_a.mdl".into(),
+            destination: export.clone(),
+            ..first.clone()
+        };
+        remember(&mut state.settings.lab, &used);
+        let next = CombineSettings::from_state(&state, &[1, 2]);
+        assert!(next.model.starts_with("city/blocks/"), "{}", next.model);
+        assert_eq!(next.destination, export);
+        state.settings.lab.combine_export_dir = "relative".into();
+        state.settings.lab.combine_model_folder = "../bad".into();
+        let fallback = CombineSettings::from_state(&state, &[1, 2]);
+        assert_eq!(fallback.destination, first.destination);
+        assert_eq!(fallback.model, first.model);
     }
 
     #[test]

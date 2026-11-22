@@ -17,12 +17,22 @@ pub struct LabSettings {
     pub propper_static: bool,
     pub propper_collision: bool,
     pub propper_mass: f32,
+    pub propper_model_folder: String,
+    pub propper_name_prefix: String,
+    pub propper_recent_folders: Vec<String>,
+    pub propper_export_dir: String,
+    pub propper_source_dir: String,
+    pub propper_material_dir: String,
+    pub propper_reuse_materials: bool,
+    pub propper_surface: String,
     pub model_keep_params: bool,
     pub color_correction_preview: bool,
     pub combine_origin: CombineOrigin,
     pub combine_keep_originals: bool,
     pub combine_collision: bool,
     pub combine_max_pieces: u32,
+    pub combine_model_folder: String,
+    pub combine_export_dir: String,
     pub soundscape: SoundscapeSettings,
 }
 
@@ -101,12 +111,22 @@ impl Default for LabSettings {
             propper_static: true,
             propper_collision: true,
             propper_mass: 10.0,
+            propper_model_folder: String::new(),
+            propper_name_prefix: String::new(),
+            propper_recent_folders: Vec::new(),
+            propper_export_dir: String::new(),
+            propper_source_dir: String::new(),
+            propper_material_dir: String::new(),
+            propper_reuse_materials: true,
+            propper_surface: String::new(),
             model_keep_params: true,
             color_correction_preview: false,
             combine_origin: CombineOrigin::Center,
             combine_keep_originals: true,
             combine_collision: true,
             combine_max_pieces: 32,
+            combine_model_folder: String::new(),
+            combine_export_dir: String::new(),
             soundscape: SoundscapeSettings::default(),
         }
     }
@@ -114,6 +134,17 @@ impl Default for LabSettings {
 
 impl LabSettings {
     pub const MAX_COMBINE_PIECES: u32 = 128;
+    pub const MAX_RECENT_FOLDERS: usize = 8;
+
+    pub fn remember_propper_folder(&mut self, folder: &str) {
+        let folder = folder.trim().trim_matches('/').to_owned();
+        if folder.is_empty() {
+            return;
+        }
+        self.propper_recent_folders.retain(|old| !old.eq_ignore_ascii_case(&folder));
+        self.propper_recent_folders.insert(0, folder);
+        self.propper_recent_folders.truncate(Self::MAX_RECENT_FOLDERS);
+    }
 
     pub fn combine_pieces(&self) -> usize {
         self.combine_max_pieces.clamp(1, Self::MAX_COMBINE_PIECES) as usize
@@ -191,5 +222,24 @@ mod tests {
         })
         .unwrap();
         assert!(toml::from_str::<LabSettings>(&text).unwrap().soundscape.view);
+    }
+
+    #[test]
+    fn prop_creation_remembers_recent_folders_newest_first() {
+        let mut lab: LabSettings = toml::from_str("propper_mass = 5.0").unwrap();
+        assert!(lab.propper_recent_folders.is_empty() && lab.propper_reuse_materials, "older files load defaults");
+        for folder in ["a", "b", " /c/ ", "", "B"] {
+            lab.remember_propper_folder(folder);
+        }
+        assert_eq!(lab.propper_recent_folders, ["B", "c", "a"]);
+        for index in 0..20 {
+            lab.remember_propper_folder(&format!("f{index}"));
+        }
+        assert_eq!(lab.propper_recent_folders.len(), LabSettings::MAX_RECENT_FOLDERS);
+        assert_eq!(lab.propper_recent_folders[0], "f19");
+        lab.propper_model_folder = "custom/jedi".into();
+        lab.propper_export_dir = "E:/export".into();
+        let back: LabSettings = toml::from_str(&toml::to_string(&lab).unwrap()).unwrap();
+        assert_eq!(back, lab);
     }
 }

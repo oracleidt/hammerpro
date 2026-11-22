@@ -336,7 +336,7 @@ const DRAWN_HELPERS: [&str; 14] = [
     "worldtext",
 ];
 
-const VISUALIZED: [&str; 20] = [
+const VISUALIZED: [&str; 21] = [
     "func_door",
     "func_button",
     "func_movelinear",
@@ -355,6 +355,7 @@ const VISUALIZED: [&str; 20] = [
     "light_directional",
     "trigger_catapult",
     "point_spotlight",
+    "beam_spotlight",
     "env_beam",
     "func_fish_pool",
 ];
@@ -745,7 +746,7 @@ fn visualizers(
             out.arrow(origin, origin + light_direction(e) * 128.0, DIR);
         }
         "trigger_catapult" => catapult(cx, e, origin, out),
-        "point_spotlight" => {
+        "point_spotlight" | "beam_spotlight" => {
             let len = key_num(e, "spotlightlength").unwrap_or(500.0).clamp(1.0, MAX_EXTENT);
             let width = key_num(e, "spotlightwidth").unwrap_or(50.0).clamp(1.0, MAX_EXTENT);
             let c = e.get("rendercolor").and_then(parse_rgb).unwrap_or([255; 3]);

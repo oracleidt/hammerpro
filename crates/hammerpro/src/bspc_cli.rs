@@ -1191,7 +1191,7 @@ pub(crate) fn parse_rad_args(args: &[String]) -> Result<RadArgs, String> {
                 opts.quality = hp_bspc::rad::RadQuality::Final;
                 (opts.props.sky_sample_scale, opts.props.sample_scale) = (4.0, 4.0);
             }
-            "-staticpropsamplescale" | "-extrasky" => {
+            "-staticpropsamplescale" | "-staticpropsamplingscale" | "-extrasky" => {
                 let v =
                     args.get(i + 1).and_then(|v| v.trim().parse::<f32>().ok()).filter(|v| v.is_finite() && *v > 0.0);
                 match (a.eq_ignore_ascii_case("-extrasky"), v) {

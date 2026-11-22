@@ -81,6 +81,64 @@ pub(super) fn model_path(input: &str) -> Option<String> {
     .then(|| normalized.to_owned())
 }
 
+pub(super) fn name_prefix(name: &str) -> String {
+    let trimmed = name.trim_end_matches(|c: char| c.is_ascii_digit());
+    if trimmed.is_empty() { "prop".to_owned() } else { trimmed.to_owned() }
+}
+
+pub(super) fn split_model(model: &str) -> (String, String) {
+    match model_path(model) {
+        Some(path) => match path.rsplit_once('/') {
+            Some((folder, name)) => (folder.to_owned(), name.to_owned()),
+            None => (String::new(), path),
+        },
+        None => (String::new(), String::new()),
+    }
+}
+
+pub(super) fn next_model(folder: &str, prefix: &str, taken: &dyn Fn(&str) -> bool) -> String {
+    let folder = folder.trim().replace('\\', "/").trim_matches('/').to_ascii_lowercase();
+    let prefix = name_prefix(&prefix.trim().to_ascii_lowercase());
+    let join = |name: String| if folder.is_empty() { name } else { format!("{folder}/{name}") };
+    (1..100_000)
+        .map(|index| join(format!("{prefix}{index:02}")))
+        .find(|candidate| !taken(candidate))
+        .unwrap_or_else(|| join(prefix.clone()))
+}
+
+fn taken_models(state: &AppState, destination: &str) -> impl Fn(&str) -> bool + use<> {
+    let used: std::collections::HashSet<String> = state
+        .doc
+        .scene()
+        .entities()
+        .values()
+        .filter_map(|node| node.entity.get("model").and_then(model_path))
+        .collect();
+    let fs = state.assets.fs().cloned();
+    let root = PathBuf::from(destination.trim());
+    move |candidate: &str| {
+        let file = format!("models/{candidate}.mdl");
+        used.contains(candidate)
+            || (root.is_absolute() && root.join(&file).is_file())
+            || fs.as_ref().is_some_and(|fs| fs.exists(&file))
+    }
+}
+
+fn remembered_dir(saved: &str, fallback: PathBuf) -> String {
+    let saved = saved.trim();
+    if !saved.is_empty() && PathBuf::from(saved).is_absolute() {
+        saved.to_owned()
+    } else {
+        fallback.to_string_lossy().into_owned()
+    }
+}
+
+fn follows_model(material_folder: &str, model: &str) -> bool {
+    model_path(model).is_some_and(|model| {
+        material_folder.trim().replace('\\', "/").trim_matches('/').eq_ignore_ascii_case(&format!("models/{model}"))
+    })
+}
+
 fn solid_bounds(mut bounds: Aabb) -> Aabb {
     for axis in 0..3 {
         if bounds.max[axis] - bounds.min[axis] < 0.01 {
@@ -148,7 +206,6 @@ impl Draft {
         }
         let stem = state.doc.path().and_then(|path| path.file_stem()).map_or("map".into(), |s| s.to_string_lossy());
         let stem: String = stem.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').take(40).collect();
-        let model = format!("hammerpro/{stem}_{hash:08x}");
         let destination = state
             .assets
             .fs()
@@ -156,20 +213,38 @@ impl Draft {
             .map(PathBuf::from)
             .or_else(|| state.settings.game.gmod_root.as_ref().map(|root| root.join("garrysmod")))
             .unwrap_or_else(|| hp_app::settings::Settings::cache_dir().join("prop_exports"));
-        let source = hp_app::settings::Settings::cache_dir().join("propsrc");
+        let lab = &state.settings.lab;
+        let destination = remembered_dir(&lab.propper_export_dir, destination);
+        let source = remembered_dir(&lab.propper_source_dir, hp_app::settings::Settings::cache_dir().join("propsrc"));
+        let model = if lab.propper_model_folder.trim().is_empty() && lab.propper_name_prefix.trim().is_empty() {
+            format!("hammerpro/{stem}_{hash:08x}")
+        } else {
+            next_model(&lab.propper_model_folder, &lab.propper_name_prefix, &taken_models(state, &destination))
+        };
+        let lab = &state.settings.lab;
+        let material_folder = if lab.propper_material_dir.trim().is_empty() {
+            format!("models/{model}")
+        } else {
+            lab.propper_material_dir.trim().to_owned()
+        };
         let surfaces = state.assets.fs().map_or_else(|| vec!["default".into()], |fs| fs.surface_properties());
+        let surface = surfaces
+            .iter()
+            .find(|name| !lab.propper_surface.is_empty() && name.eq_ignore_ascii_case(&lab.propper_surface))
+            .cloned()
+            .unwrap_or_default();
         Ok(Self {
             source_serial: state.doc.revision(),
             ids,
             geometry,
-            material_folder: format!("models/{model}"),
+            material_folder,
             model,
-            destination: destination.to_string_lossy().into_owned(),
-            source: source.to_string_lossy().into_owned(),
-            surface: String::new(),
+            destination,
+            source,
+            surface,
             surfaces,
             surface_search: String::new(),
-            reuse_materials: true,
+            reuse_materials: lab.propper_reuse_materials,
             collision: Collision::Brushes,
             manual: None,
             hull: None,
@@ -290,12 +365,80 @@ impl Draft {
         }
     }
 
+    fn remember(&self, lab: &mut hp_app::settings::LabSettings) {
+        if model_path(&self.model).is_some() {
+            let (folder, name) = split_model(&self.model);
+            lab.remember_propper_folder(&folder);
+            lab.propper_model_folder = folder;
+            lab.propper_name_prefix = name_prefix(&name);
+        }
+        lab.propper_material_dir = if follows_model(&self.material_folder, &self.model) {
+            String::new()
+        } else {
+            self.material_folder.trim().to_owned()
+        };
+        lab.propper_export_dir = self.destination.trim().to_owned();
+        lab.propper_source_dir = self.source.trim().to_owned();
+        lab.propper_reuse_materials = self.reuse_materials;
+        lab.propper_surface = self.surface.clone();
+    }
+
+    fn set_model(&mut self, model: String) {
+        if follows_model(&self.material_folder, &self.model)
+            && let Some(path) = model_path(&model)
+        {
+            self.material_folder = format!("models/{path}");
+        }
+        self.model = model;
+    }
+
+    fn pick_folder(&mut self, folder: &str, state: &AppState) {
+        let (_, name) = split_model(&self.model);
+        let prefix = if name.is_empty() { state.settings.lab.propper_name_prefix.clone() } else { name };
+        let next = next_model(folder, &prefix, &taken_models(state, &self.destination));
+        self.set_model(next);
+    }
+
+    fn model_field(&mut self, ui: &mut Ui, state: &AppState) {
+        ui.horizontal(|ui| {
+            let width = (ui.available_width() - 36.0).max(80.0);
+            let mut typed = self.model.clone();
+            if ui.add(egui::TextEdit::singleline(&mut typed).desired_width(width)).changed() {
+                self.set_model(typed);
+            }
+            let recent = &state.settings.lab.propper_recent_folders;
+            let mut chosen = None;
+            ui.menu_button("▾", |ui| {
+                ui.label(RichText::new(t!("propper.recent_folders")).weak());
+                if recent.is_empty() {
+                    ui.label(RichText::new(t!("propper.no_recent_folders")).small().weak());
+                }
+                for folder in recent {
+                    if ui.button(format!("models/{folder}/")).clicked() {
+                        chosen = Some(folder.clone());
+                        ui.close();
+                    }
+                }
+                ui.separator();
+                if ui.button(t!("propper.fresh_name")).clicked() {
+                    chosen = Some(split_model(&self.model).0);
+                    ui.close();
+                }
+            })
+            .response
+            .on_hover_text(t!("propper.recent_folders_tip"));
+            if let Some(folder) = chosen {
+                self.pick_folder(&folder, state);
+            }
+        });
+    }
+
     fn controls(&mut self, ui: &mut Ui, state: &mut AppState) -> Option<Folder> {
         let mut folder = None;
         match self.tab {
             0 => {
                 ui.label(t!("propper.model_path"));
-                ui.text_edit_singleline(&mut self.model);
+                self.model_field(ui, state);
                 ui.label(t!("propper.export_directory"));
                 ui.horizontal(|ui| {
                     ui.text_edit_singleline(&mut self.destination);
@@ -761,6 +904,13 @@ impl MapDialog for CreateDialog {
             state.runtime.lab.propper_create_confirmed = create && !cancel;
             state.runtime.lab.propper_create_request =
                 if create && !cancel { self.draft.as_ref().map(|draft| Box::new(draft.request(state))) } else { None };
+            if create
+                && !cancel
+                && let Some(draft) = &self.draft
+            {
+                draft.remember(&mut state.settings.lab);
+                state.settings_dirty = true;
+            }
             self.draft = None;
             self.picker = None;
         }
@@ -824,6 +974,69 @@ mod tests {
         for invalid in ["", "../escape", "models//a", "models/a b", "/absolute", "C:/absolute"] {
             assert!(model_path(invalid).is_none(), "{invalid}");
         }
+    }
+
+    #[test]
+    fn the_dialog_remembers_folders_and_options_and_offers_a_fresh_name() {
+        let _lang = crate::lang_lock();
+        crate::register_translations();
+        let mut state = hp_app::testing::test_state();
+        let id = *state.doc.scene().solids().keys().min().unwrap();
+        state.doc.select(&[hp_editor::ObjRef::Solid(id)], hp_editor::SelectOp::Replace);
+        let first = Draft::new(&mut state).unwrap();
+        assert!(first.model.starts_with("hammerpro/"), "first use keeps the generated name: {}", first.model);
+        assert!(first.reuse_materials && first.surface.is_empty());
+        let root = std::env::temp_dir().join(format!("hp-prop-remember-{}", std::process::id()));
+        let export = root.join("export");
+        std::fs::create_dir_all(export.join("models/custom/jedi_temple")).unwrap();
+        std::fs::write(export.join("models/custom/jedi_temple/doorway02.mdl"), b"x").unwrap();
+        let mut used = first;
+        used.set_model("models/Custom/Jedi_Temple/doorway01.mdl".into());
+        assert_eq!(used.material_folder, "models/custom/jedi_temple/doorway01", "materials follow the typed path");
+        used.destination = export.to_string_lossy().into_owned();
+        used.source = root.join("src").to_string_lossy().into_owned();
+        used.reuse_materials = false;
+        used.surface = used.surfaces.first().cloned().unwrap_or_default();
+        used.remember(&mut state.settings.lab);
+        let lab = &state.settings.lab;
+        assert_eq!(lab.propper_model_folder, "custom/jedi_temple");
+        assert_eq!(lab.propper_name_prefix, "doorway");
+        assert_eq!(lab.propper_recent_folders, ["custom/jedi_temple"]);
+        assert_eq!(lab.propper_material_dir, "", "a material folder that follows the model is not pinned");
+        state
+            .doc
+            .create_point_entity(
+                "prop_static",
+                DVec3::ZERO,
+                &[("model".to_owned(), "models/custom/jedi_temple/doorway01.mdl".to_owned())],
+            )
+            .unwrap();
+        state.doc.select(&[hp_editor::ObjRef::Solid(id)], hp_editor::SelectOp::Replace);
+        let next = Draft::new(&mut state).unwrap();
+        assert_eq!(next.model, "custom/jedi_temple/doorway03", "skips names used in the map and on disk");
+        assert_eq!(next.material_folder, "models/custom/jedi_temple/doorway03");
+        assert_eq!(next.destination, used.destination);
+        assert_eq!(next.source, used.source);
+        assert!(!next.reuse_materials);
+        assert_eq!(next.surface, used.surface);
+        let mut other = next;
+        state.settings.lab.remember_propper_folder("props/rocks");
+        other.pick_folder("props/rocks", &state);
+        assert_eq!(other.model, "props/rocks/doorway01");
+        assert_eq!(other.material_folder, "models/props/rocks/doorway01");
+        other.material_folder = "materials/shared".into();
+        other.set_model("props/rocks/arch01".into());
+        assert_eq!(other.material_folder, "materials/shared", "a custom material folder stays");
+        other.remember(&mut state.settings.lab);
+        assert_eq!(state.settings.lab.propper_material_dir, "materials/shared");
+        assert_eq!(state.settings.lab.propper_recent_folders, ["props/rocks", "custom/jedi_temple"]);
+        state.settings.lab.propper_export_dir = "relative/dir".into();
+        let fallback = Draft::new(&mut state).unwrap();
+        assert!(PathBuf::from(&fallback.destination).is_absolute(), "a relative saved folder is not reused");
+        assert_eq!(fallback.material_folder, "materials/shared");
+        assert_eq!(name_prefix("12"), "prop");
+        assert_eq!(next_model("", "rock7", &|_| false), "rock01");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
