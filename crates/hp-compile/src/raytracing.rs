@@ -72,6 +72,7 @@ pub struct RayEffectsOptions {
     pub ao: bool,
     pub ao_strength: f32,
     pub ao_radius: f32,
+    #[serde(rename = "light_shafts")]
     pub shafts: bool,
     pub shaft_intensity: f32,
     pub shaft_length: f32,
@@ -93,7 +94,7 @@ impl Default for RayEffectsOptions {
             ao: true,
             ao_strength: 0.5,
             ao_radius: 48.0,
-            shafts: true,
+            shafts: false,
             shaft_intensity: 1.0,
             shaft_length: 1.0,
             shaft_softness: 1.0,
@@ -127,7 +128,7 @@ impl RayEffectsOptions {
             }
         };
         flag(!self.ao, "-rtnoao");
-        flag(!self.shafts, "-rtnoshafts");
+        flag(self.shafts, "-rtshafts");
         flag(!self.shaft_light_color, "-rtshaftwhite");
         flag(self.shaft_dust, "-rtshaftdust");
         flag(self.glow, "-rtglow");
@@ -355,7 +356,7 @@ mod tests {
             ao: false,
             ao_strength: 0.75,
             ao_radius: 64.0,
-            shafts: false,
+            shafts: true,
             shaft_intensity: 2.0,
             shaft_length: 1.5,
             shaft_softness: 0.5,
@@ -372,7 +373,7 @@ mod tests {
         assert_eq!(
             o.args(),
             words(
-                "-raytracing -rtnoao -rtnoshafts -rtshaftwhite -rtshaftdust -rtglow -rtnocubemaps -rtnoreflections -rtnotonemap \
+                "-raytracing -rtnoao -rtshafts -rtshaftwhite -rtshaftdust -rtglow -rtnocubemaps -rtnoreflections -rtnotonemap \
                  -rtcolorcorrection -rtaostrength 0.75 -rtaoradius 64 -rtshaftintensity 2 -rtshaftlength 1.5 \
                  -rtshaftsoftness 0.5 -rtglowintensity 3 -rtshaftsource sun"
             )
@@ -386,6 +387,10 @@ mod tests {
         assert_eq!(o.args(), words("-raytracing -rtreflections"));
         o.effects.reflections = "auto".into();
         assert_eq!(o.args(), [RAYTRACING_FLAG]);
+        let saved: RayEffectsOptions = serde_json::from_str(r#"{"shafts":true}"#).expect("saved");
+        assert!(!saved.shafts, "volumetric beams saved on by older versions start off");
+        let on: RayEffectsOptions = serde_json::from_str(r#"{"light_shafts":true}"#).expect("on");
+        assert!(on.shafts);
     }
 
     #[test]

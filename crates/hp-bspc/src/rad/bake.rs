@@ -36,6 +36,21 @@ const SUN_PROBES: usize = 6;
 const SUN_STRIDE: usize = 7;
 const MAX_STYLES: usize = 4;
 const MAX_CANDIDATE_STYLES: usize = 16;
+const STYLE_PROBES: usize = 24;
+
+fn luminance(v: Vec3A) -> f32 {
+    0.2126 * v.x + 0.7152 * v.y + 0.0722 * v.z
+}
+
+pub(crate) fn strongest_slots(energy: &[f32], max: usize) -> Vec<usize> {
+    let mut rest: Vec<usize> = (1..energy.len()).filter(|&k| energy[k] > 0.0).collect();
+    rest.sort_by(|a, b| energy[*b].total_cmp(&energy[*a]).then(a.cmp(b)));
+    rest.truncate(max.saturating_sub(1));
+    rest.sort_unstable();
+    let mut keep = vec![0];
+    keep.extend(rest);
+    keep
+}
 const SKYBOX_SHADE_SAMPLES: usize = 4096;
 const SKYBOX_SHADE_AREA: f64 = 64.0 * 64.0;
 
@@ -463,6 +478,24 @@ impl Ctx<'_> {
         Sample { pos: pos.as_vec3a(), normals, cluster: self.map.vis_cluster_at(pos) }
     }
 
+    pub(crate) fn style_energy(&self, cand: &[(usize, usize)], slots: usize, samples: &[Option<Sample>]) -> Vec<f32> {
+        let live: Vec<&Sample> = samples.iter().flatten().collect();
+        let mut energy = vec![0.0f32; slots];
+        if live.is_empty() {
+            return energy;
+        }
+        let step = live.len().div_ceil(STYLE_PROBES).max(1);
+        let mut out = vec![Vec3A::ZERO; self.passes * slots];
+        for sp in live.iter().step_by(step) {
+            out.iter_mut().for_each(|v| *v = Vec3A::ZERO);
+            self.gather_sun(cand, slots, 1, sp, Part::All, (0, 1), &mut out);
+            for (slot, e) in energy.iter_mut().enumerate() {
+                *e += (0..self.passes).map(|p| luminance(out[p * slots + slot])).fold(0.0f32, f32::max);
+            }
+        }
+        energy
+    }
+
     pub(crate) fn candidates(&self, f: &LitFace, clusters: &[i32]) -> (Vec<(usize, usize)>, Vec<u8>) {
         let (lo, hi) = (f.bounds.0.as_vec3a(), f.bounds.1.as_vec3a());
         let d = f.poly.first().map_or(0.0, |p| p.dot(f.normal));
@@ -748,16 +781,18 @@ impl Ctx<'_> {
                 (0..lux).map(|i| centers[i] != DVec2::new((i % f.w) as f64, (i / f.w) as f64)).collect();
             self.supersample(f, &cand, slots, nn, &pieces, &dark, (&sky, &moved), &mut acc);
         }
-        let keep: Vec<usize> = (0..slots)
-            .filter(|&slot| {
-                slot == 0
-                    || (0..lux).any(|i| {
+        let energy: Vec<f32> = (0..slots)
+            .map(|slot| {
+                (0..lux)
+                    .map(|i| {
                         (0..self.passes)
-                            .any(|p| (0..nn).any(|n| acc[i * stride + (p * slots + slot) * nn + n].max_element() > 0.0))
+                            .map(|p| luminance(acc[i * stride + (p * slots + slot) * nn]))
+                            .fold(0.0f32, f32::max)
                     })
+                    .sum()
             })
-            .take(MAX_STYLES)
             .collect();
+        let keep = strongest_slots(&energy, MAX_STYLES);
         let kept = keep.len();
         let mut values = vec![glam::Vec3::ZERO; self.passes * kept * nn * lux];
         for p in 0..self.passes {

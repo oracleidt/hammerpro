@@ -118,7 +118,7 @@ impl Default for Effects {
             ao: true,
             ao_strength: 0.5,
             ao_radius: 48.0,
-            shafts: true,
+            shafts: false,
             shaft_intensity: 1.0,
             shaft_length: 1.0,
             shaft_softness: 1.0,

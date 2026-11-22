@@ -1885,7 +1885,7 @@ mod tests {
         let mut line = vec!["map".to_owned()];
         line.splice(0..0, opts.args());
         let e = parse_rad_args(&line).expect("parsed").opts.raytracing.expect("on").effects;
-        assert!(e.glow && !e.ao && e.shafts, "the plan arguments read back");
+        assert!(e.glow && !e.ao && !e.shafts, "the plan arguments read back");
         let r = parse_rad_args(&args("-rtgpushare 0.3 map")).expect("parsed");
         assert_eq!(r.opts.raytracing.and_then(|rt| rt.gpu_share), Some(0.3));
         let r = parse_rad_args(&args("-rtgpushare 0.3 -rtgpushare AUTO map")).expect("parsed");

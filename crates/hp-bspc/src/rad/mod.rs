@@ -381,7 +381,14 @@ fn run_with(
     work.add(1);
     let (prop_tris, occluders) = if shadows {
         runner.par(|| {
-            static_props.occluders(opts.props.polys, opts.raytracing.is_none(), &rules, models, &mut prop_lines)
+            static_props.occluders(
+                opts.props.polys,
+                opts.raytracing.is_none(),
+                &rules,
+                models,
+                &props::lamp_origins(&entities),
+                &mut prop_lines,
+            )
         })
     } else {
         (Vec::new(), props::Occluders::default())
@@ -482,7 +489,11 @@ fn run_with(
         dispchop: disp::chop_or_default(opts.texlights.dispchop),
         ao: match &opts.raytracing {
             None => opts.ao.as_ref().map(|o| ao::Ao::new(o, opts.quality, &map)),
-            Some(rt) => raytrace::prop_ao(rt).map(|o| ao::Ao::new(&o, opts.quality, &map)),
+            Some(rt) => raytrace::prop_ao(rt).map(|o| {
+                let mut a = ao::Ao::new(&o, opts.quality, &map);
+                a.soft_only = true;
+                a
+            }),
         },
     };
     if let Some(shade) = runner.par(|| ctx.skybox_shade()) {

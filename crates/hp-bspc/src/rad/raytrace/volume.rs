@@ -357,6 +357,7 @@ mod tests {
             device: super::super::DevicePreference::Cpu,
             min_samples: Some(1),
             max_samples: Some(1),
+            effects: super::super::Effects { shafts: true, ..super::super::Effects::default() },
             ..super::super::RayTracing::with_quality(super::super::Quality::Draft)
         };
         let opts = crate::rad::RadOptions { raytracing: Some(rt), ..crate::rad::RadOptions::default() };

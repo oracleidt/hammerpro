@@ -336,14 +336,14 @@ mod tests {
         compile.raytracing.device = hp_app::settings::RayDeviceSetting::Cpu;
         compile.raytracing.seed = 5;
         compile.raytracing.bump = false;
-        compile.raytracing.shafts = false;
+        compile.raytracing.shafts = true;
         let args = hp_ui_mapping::raytracing_preview_args(&compile);
         assert!(!compile.raytracing.on, "the preview does not need the compile toggle");
         let s = settings_of(&RayOptions { args: args.clone() }).unwrap();
         assert_eq!((s.quality, s.device, s.seed, s.bump), (RtQuality::Final, RtDevice::Cpu, 5, false));
         let p = s.params();
         assert_eq!((p.bounces, p.denoise), (9, 0.0));
-        assert!(!s.effects.shafts, "the effect options of the compile");
+        assert!(s.effects.shafts, "the effect options of the compile");
         let plain: Vec<String> = args.into_iter().filter(|a| a != "-raytracing").collect();
         assert_eq!(settings_of(&RayOptions { args: plain }).unwrap(), s);
         compile.raytracing.make_optimal();

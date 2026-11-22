@@ -364,6 +364,10 @@ fn ambient_occlusion_never_brightens_prop_vertices() {
 }
 
 fn shadow_triangles(forced: bool, polys: bool, texture_shadows: bool) -> Vec<[Vec3A; 3]> {
+    shadow_triangles_with(forced, polys, texture_shadows, &[])
+}
+
+fn shadow_triangles_with(forced: bool, polys: bool, texture_shadows: bool, lamps: &[Vec3A]) -> Vec<[Vec3A; 3]> {
     let models = BoxModel { files: box_files() };
     let no_shadow = |_: &str| false;
     let force = move |m: &str| forced && m.eq_ignore_ascii_case("models/test/box.mdl");
@@ -375,7 +379,7 @@ fn shadow_triangles(forced: bool, polys: bool, texture_shadows: bool) -> Vec<[Ve
     let prop = super::Prop { origin: Vec3A::ZERO, angles: [0.0; 3], model: 0, flags: 0, lighting_origin: Vec3A::ZERO };
     let mut props =
         super::StaticProps { names: vec!["models/test/box.mdl".to_owned()], props: vec![prop], dicts: vec![dict] };
-    let (tris, _) = props.occluders(polys, true, &rules, &models, &mut log);
+    let (tris, _) = props.occluders(polys, true, &rules, &models, lamps, &mut log);
     tris.into_iter().map(|t| t.p).collect()
 }
 
@@ -389,4 +393,44 @@ fn forced_texture_shadow_models_shadow_with_their_render_mesh() {
     assert!(render(&shadow_triangles(true, false, true)));
     assert!(render(&shadow_triangles(false, true, false)), "-StaticPropPolys uses the render mesh");
     assert!(render(&shadow_triangles(true, true, true)));
+}
+
+#[test]
+fn props_holding_a_light_shadow_with_their_collision_model() {
+    let collision = |t: &[[Vec3A; 3]]| t.len() == 1 && t[0][0].z == 500.0;
+    let render = |t: &[[Vec3A; 3]]| t.len() == 12;
+    let inside = [Vec3A::new(0.0, 0.0, HEIGHT * 0.5)];
+    let outside = [Vec3A::new(0.0, 0.0, HEIGHT + 64.0)];
+    assert!(collision(&shadow_triangles_with(false, true, false, &inside)), "a lamp inside the mesh gets out");
+    assert!(render(&shadow_triangles_with(false, true, false, &outside)), "other props keep their render mesh");
+    assert!(render(&shadow_triangles_with(true, true, true, &inside)), "forced texture shadows stay");
+}
+
+fn vertex_mean(bsp: &[u8]) -> f32 {
+    let f = pak_file(bsp, "sp_0.vhv").expect("vhv");
+    let lin = |b: u8| (f32::from(b) / 255.0 * 2.0).powf(2.2);
+    (0..24).map(|v| lin(f[512 + v * 4 + 1])).sum::<f32>() / 24.0
+}
+
+#[test]
+fn ray_traced_contact_shadows_keep_prop_vertices_at_the_brightness_of_the_walls() {
+    use super::super::raytrace::{DevicePreference, Effects, Quality, RayTracing};
+    let models = BoxModel { files: box_files() };
+    let bsp = room_with_box("");
+    let rt = |ao: bool| RadOptions {
+        raytracing: Some(RayTracing {
+            device: DevicePreference::Cpu,
+            min_samples: Some(16),
+            max_samples: Some(32),
+            effects: Effects { ao, ao_strength: 1.0, ..Effects::none() },
+            bounces: Some(0),
+            ..RayTracing::with_quality(Quality::Draft)
+        }),
+        bounces: 0,
+        ..opts(true)
+    };
+    let with = vertex_mean(&light_bsp_with(&bsp, &rt(true), &models, &mut |_| {}).expect("ao"));
+    let without = vertex_mean(&light_bsp_with(&bsp, &rt(false), &models, &mut |_| {}).expect("no ao"));
+    assert!(with <= without * 1.001, "contact shadows never brighten");
+    assert!(with > without * 0.999, "contact shadows darkened the direct light of the prop: {with} vs {without}");
 }

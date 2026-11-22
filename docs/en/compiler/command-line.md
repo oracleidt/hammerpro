@@ -156,7 +156,7 @@ Lighting. With no range option, `--rad` computes LDR only.
 | `-rtnoao` / `-rtao` | | Ray tracing: baked ambient occlusion off / on (contact shadows in corners, under and at the base of static props, also in the prop vertex lighting). | on |
 | `-rtaostrength` | 0 to 1 | Ambient occlusion strength. | 0.5 |
 | `-rtaoradius` | 4 to 1024 units | Ambient occlusion radius. | 48 |
-| `-rtnoshafts` / `-rtshafts` | | Light shafts off / on: additive volumetric looking beams where the sun and strong spot cones pass through windows, doors and holes (no collision, no shadow, they fade with distance and view angle). | Light shafts off / on: baked volumetric light beams through framed openings and under strong spot cones, cut by the geometry (no collision, no shadow).
+| `-rtnoshafts` / `-rtshafts` | | Light shafts off / on: additive volumetric looking beams where the sun and strong spot cones pass through windows, doors and holes (no collision, no shadow, they fade with distance and view angle). Off by default since 2.3.0: the shells of the beams could show straight strips through round openings. | Light shafts off / on: baked volumetric light beams through framed openings and under strong spot cones, cut by the geometry (no collision, no shadow).
 | `-rtshaftintensity` | 0 to 8 | Light shaft brightness. | 1 |
 | `-rtshaftlength` | 0.1 to 8 | Light shaft length multiplier. | 1 |
 | `-rtshaftsoftness` | 0 to 4 | Light shaft edge softness. | 1 |

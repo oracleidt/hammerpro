@@ -62,7 +62,7 @@ pub(super) const SWITCHES: &[(&str, &str)] = &[
     ),
     (
         "rt_shafts",
-        "Ray tracing: light shafts, additive volumetric looking beams baked where the sun and strong spot cones pass through windows, doors and holes; no collision, no shadow, they fade with distance and view angle (default true; false is -rtnoshafts).",
+        "Ray tracing: light shafts, additive volumetric looking beams baked where the sun and strong spot cones pass through windows, doors and holes; no collision, no shadow, they fade with distance and view angle (default false since 2.3.0; true is -rtshafts).",
     ),
     (
         "rt_shaft_light_color",
@@ -417,7 +417,7 @@ mod tests {
         assert_eq!((o["rt_config"].as_str(), o["raytracing"].as_bool()), (Some("default"), Some(true)));
         assert_eq!(
             (o["rt_ao"].as_bool(), o["rt_shafts"].as_bool(), o["rt_glow"].as_bool()),
-            (Some(true), Some(true), Some(false))
+            (Some(true), Some(false), Some(false))
         );
         let o = ok(
             &mut s,

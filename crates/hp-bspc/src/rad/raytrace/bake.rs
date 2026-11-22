@@ -557,7 +557,6 @@ pub(crate) fn cinematic_light(light: &mut rts::Light, shadow: &hp_light::bvh::Bv
     let reach = light.reach.min(1.0e6);
     let (start, end) = light.fade;
     let end = if end > start && end < reach { end } else { reach };
-    let end = end.min(tail_distance(light, dref, end));
     light.constant = soft * soft;
     light.linear = 0.0;
     light.quadratic = 1.0;
@@ -588,25 +587,7 @@ pub(crate) const FIXTURE_KNEE: f32 = 1.4;
 pub(crate) const MIN_POOL_SOFTNESS: f32 = 14.0;
 const KNEE_SAMPLES: usize = 64;
 const SOFT_STEPS: usize = 24;
-const TAIL: f32 = 0.01;
 const KNEE_FLOOR: f32 = 0.25;
-
-fn tail_distance(l: &rts::Light, dref: f32, limit: f32) -> f32 {
-    let floor = base_falloff(l, dref) * TAIL;
-    let (mut lo, mut hi) = (dref, limit.max(dref));
-    if base_falloff(l, hi) > floor {
-        return hi;
-    }
-    for _ in 0..40 {
-        let mid = 0.5 * (lo + hi);
-        if base_falloff(l, mid) > floor {
-            lo = mid;
-        } else {
-            hi = mid;
-        }
-    }
-    hi
-}
 
 fn luminance3(c: [f32; 3]) -> f32 {
     0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
@@ -702,9 +683,18 @@ fn face_job(ctx: &Ctx<'_>, f: &LitFace, ss: usize, bump: bool, style_bounce: boo
     clusters.retain(|c| *c >= 0);
     let (cand, cand_styles) = ctx.candidates(f, &clusters);
     let mut styles: Vec<u8> = vec![0];
-    for st in &cand_styles {
-        if styles.len() < MAX_SLOTS && !styles.contains(st) {
-            styles.push(*st);
+    if cand_styles.len() > MAX_SLOTS {
+        let energy = ctx.style_energy(&cand, cand_styles.len(), &samples.samples);
+        for k in super::super::bake::strongest_slots(&energy, MAX_SLOTS) {
+            if !styles.contains(&cand_styles[k]) {
+                styles.push(cand_styles[k]);
+            }
+        }
+    } else {
+        for st in &cand_styles {
+            if !styles.contains(st) {
+                styles.push(*st);
+            }
         }
     }
     if style_bounce && styles.len() < MAX_SLOTS {

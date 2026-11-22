@@ -437,6 +437,7 @@ fn sunlight_and_spots_make_light_shafts_in_rooms() {
             device: DevicePreference::Cpu,
             min_samples: Some(8),
             max_samples: Some(16),
+            effects: Effects { shafts: true, ..Effects::default() },
             ..RayTracing::with_quality(Quality::Draft)
         }),
         ..quick()
@@ -637,4 +638,87 @@ fn cinematic_lights_make_pools_and_fixtures_shine_down() {
     let warm = super::bake::richer_bounce([0.6, 0.4, 0.2]);
     let lum = |c: [f32; 3]| 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
     assert!((lum(warm) - lum([0.6, 0.4, 0.2])).abs() < 1e-4 && warm[0] > 0.6 && warm[2] < 0.2);
+}
+
+fn named_sun_map() -> String {
+    shaft_test_map().replace(
+        "\"classname\" \"light_environment\"\n",
+        "\"classname\" \"light_environment\"\n\t\"targetname\" \"sun_day\"\n",
+    )
+}
+
+fn all_styles_at(bsp: &[u8], p: DVec3) -> f32 {
+    (0u8..=64).filter_map(|s| super::super::tests::style_luxel_at(bsp, p, DVec3::Z, s)).map(|v| v.x).sum()
+}
+
+fn crowded_styles_map() -> String {
+    let lamps: String = [("a", "256 100 128"), ("b", "256 400 128"), ("c", "300 256 40"), ("d", "200 256 40")]
+        .iter()
+        .enumerate()
+        .map(|(i, (name, at))| light_entity(9100 + i as u32, at, &format!("\t\"targetname\" \"lamp_{name}\"\n")))
+        .collect();
+    format!("{}{lamps}", named_sun_map())
+}
+
+#[test]
+fn named_sun_keeps_its_style_slot_when_more_styles_reach_a_face() {
+    let alone = compile_vmf(&named_sun_map());
+    let crowded = compile_vmf(&crowded_styles_map());
+    let open = DVec3::new(1040.0, 520.0, 0.0);
+    for (name, opts) in [("classic", quick()), ("ray tracing", rt(DevicePreference::Cpu))] {
+        let a = all_styles_at(&light_bsp(&alone, &opts, &mut |_| {}).expect("alone"), open);
+        let c = all_styles_at(&light_bsp(&crowded, &opts, &mut |_| {}).expect("crowded"), open);
+        assert!(a > 0.0, "{name}: the sun lights the open floor");
+        assert!(c > a * 0.8, "{name}: the sun lost its slot to lamps behind walls: {c} vs {a}");
+    }
+}
+
+#[test]
+fn strongest_slots_keep_style_zero_and_the_brightest_styles() {
+    let keep = super::super::bake::strongest_slots(&[0.0, 0.0, 0.1, 0.0, 9.0, 3.0, 0.2], 4);
+    assert_eq!(keep, vec![0, 4, 5, 6]);
+    assert_eq!(super::super::bake::strongest_slots(&[1.0, 0.0, 0.0], 4), vec![0]);
+}
+
+#[test]
+fn cinematic_strong_lights_keep_their_far_light() {
+    let hall = hp_raytrace::Light {
+        kind: hp_raytrace::LightKind::Point,
+        intensity: [[2000.0 * 10000.0 / 255.0; 3]; 2],
+        constant: 0.0,
+        linear: 0.0,
+        quadratic: 1.0,
+        cap: 1.0e22,
+        fade: (0.0, -1.0),
+        reach: 6000.0,
+        size: 8.0,
+        ..Default::default()
+    };
+    let none = hp_light::bvh::Bvh::new(&[]);
+    let mut pool = hall;
+    super::bake::cinematic_light(&mut pool, &none);
+    let mut lights = vec![pool];
+    super::bake::knee_lights(&mut lights, std::slice::from_ref(&hall));
+    let dir = Vec3A::NEG_Z;
+    let at = |l: &hp_raytrace::Light, d: f32| l.falloff(dir, d) * l.intensity[0][0];
+    for d in [300.0, 600.0, 900.0, 1400.0, 2500.0] {
+        assert!(at(&lights[0], d) >= at(&hall, d) * 0.9, "darker than the authored light at {d}");
+    }
+}
+
+#[test]
+fn volumetric_beams_are_off_unless_asked_for() {
+    assert!(!Effects::default().shafts);
+    let bsp = compile_vmf(&shaft_test_map());
+    let opts = RadOptions {
+        raytracing: Some(RayTracing {
+            device: DevicePreference::Cpu,
+            min_samples: Some(8),
+            max_samples: Some(16),
+            ..RayTracing::with_quality(Quality::Draft)
+        }),
+        ..quick()
+    };
+    let out = light_bsp(&bsp, &opts, &mut |_| {}).expect("light");
+    assert_eq!(sprites_in(&out, DVec3::splat(-1.0e5), DVec3::splat(1.0e5)), 0);
 }

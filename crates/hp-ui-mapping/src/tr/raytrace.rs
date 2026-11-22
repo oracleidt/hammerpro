@@ -235,8 +235,8 @@ pub const TR: TrTable = &[
     ("raytrace.shafts", "Light shafts", "Rayons de lumière"),
     (
         "raytrace.shafts_tip",
-        "Beams of light baked as additive, volumetric looking meshes where the sun (and strong spot cones if chosen) pass through windows, doors and holes. No collision, no shadow; they fade with distance and view angle (-rtnoshafts turns them off).",
-        "Faisceaux de lumière précalculés en maillages additifs d'aspect volumétrique là où le soleil (et les cônes de spots puissants si choisis) passent par les fenêtres, portes et trous. Sans collision ni ombre ; ils s'estompent avec la distance et l'angle de vue (-rtnoshafts les désactive).",
+        "Beams of light baked as additive, volumetric looking meshes where the sun (and strong spot cones if chosen) pass through windows, doors and holes. No collision, no shadow; they fade with distance and view angle Off by default (-rtshafts turns them on).",
+        "Faisceaux de lumière précalculés en maillages additifs d'aspect volumétrique là où le soleil (et les cônes de spots puissants si choisis) passent par les fenêtres, portes et trous. Sans collision ni ombre ; ils s'estompent avec la distance et l'angle de vue Désactivés par défaut (-rtshafts les active).",
     ),
     ("raytrace.shaft_intensity", "Shaft brightness", "Luminosité des rayons"),
     (

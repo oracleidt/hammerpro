@@ -609,8 +609,8 @@ fn tonemap() -> Vec<hp_bsp::Entity> {
     ]);
     for (input, value) in [
         ("SetBloomScale", "0.35"),
-        ("SetAutoExposureMin", "0.7"),
-        ("SetAutoExposureMax", "1.6"),
+        ("SetAutoExposureMin", "1.0"),
+        ("SetAutoExposureMax", "2.0"),
         ("SetTonemapRate", "0.9"),
     ] {
         auto.pairs.push(("OnMapSpawn".to_owned(), format!("hp_rt_tonemap,{input},{value},0,-1")));
@@ -697,7 +697,7 @@ pub(crate) fn build(
         } else {
             out.entities.extend(tonemap());
             out.lines
-                .push("ray tracing effects: env_tonemap_controller added (bloom 0.35, exposure 0.7 to 1.6)".to_owned());
+                .push("ray tracing effects: env_tonemap_controller added (bloom 0.35, exposure 1.0 to 2.0)".to_owned());
         }
     }
     if fx.color_correction {

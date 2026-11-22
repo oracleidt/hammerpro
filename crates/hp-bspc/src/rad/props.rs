@@ -459,10 +459,12 @@ impl StaticProps {
         strict: bool,
         rules: &ShadowRules<'_>,
         models: &dyn ModelSource,
+        lamps: &[Vec3A],
         log: &mut Vec<String>,
     ) -> (Vec<Triangle>, Occluders) {
         let mut tris = Vec::new();
         let mut occ = Occluders::default();
+        let mut holders = 0usize;
         for d in &mut self.dicts {
             if let (Some(list), Some(s)) = (d.alpha_of_texture.as_mut(), d.studio.as_ref()) {
                 *list = occ.textures.load_for_model(s, &|p| models.read_file(p), &mut |l| log.push(l.to_owned()));
@@ -476,7 +478,14 @@ impl StaticProps {
             let m = angle_matrix(prop.angles);
             let xf = |p: [f32; 3]| m * Vec3A::from_array(p) + prop.origin;
             let id = PROP_BIT | (pi as u32 & INDEX_MASK);
-            let render_mesh = polys || (dict.alpha_of_texture.is_some() && dict.vtx.is_some());
+            let holds_light = polys
+                && dict.studio.as_ref().is_some_and(|s| {
+                    let (lo, hi) = rotated_bounds(&m, s.hull_min, s.hull_max);
+                    let (lo, hi) = (lo + prop.origin - LAMP_MARGIN, hi + prop.origin + LAMP_MARGIN);
+                    lamps.iter().any(|l| l.cmpge(lo).all() && l.cmple(hi).all())
+                });
+            holders += usize::from(holds_light);
+            let render_mesh = (polys && !holds_light) || (dict.alpha_of_texture.is_some() && dict.vtx.is_some());
             let no_mesh = !strict && (dict.studio.is_none() || dict.vtx.is_none());
             if !render_mesh || no_mesh {
                 for t in &dict.collide {
@@ -538,8 +547,41 @@ impl StaticProps {
                 }
             }
         }
+        if holders > 0 {
+            log.push(format!(
+                "{holders} static props hold a light inside them: they cast shadows with their collision model, like VRAD, so their light gets out"
+            ));
+        }
         (tris, occ)
     }
+}
+
+const LAMP_MARGIN: f32 = 1.0;
+
+fn rotated_bounds(m: &glam::Mat3A, lo: [f32; 3], hi: [f32; 3]) -> (Vec3A, Vec3A) {
+    let (mut a, mut b) = (Vec3A::splat(f32::INFINITY), Vec3A::splat(f32::NEG_INFINITY));
+    for k in 0..8 {
+        let c = Vec3A::new(
+            if k & 1 == 0 { lo[0] } else { hi[0] },
+            if k & 2 == 0 { lo[1] } else { hi[1] },
+            if k & 4 == 0 { lo[2] } else { hi[2] },
+        );
+        let p = *m * c;
+        a = a.min(p);
+        b = b.max(p);
+    }
+    (a, b)
+}
+
+pub(crate) fn lamp_origins(entities: &[hp_bsp::Entity]) -> Vec<Vec3A> {
+    entities
+        .iter()
+        .filter(|e| {
+            let c = e.classname();
+            c.eq_ignore_ascii_case("light") || c.eq_ignore_ascii_case("light_spot")
+        })
+        .filter_map(|e| e.origin().map(|o| Vec3A::new(o[0] as f32, o[1] as f32, o[2] as f32)))
+        .collect()
 }
 
 pub(crate) struct RenderTri {
@@ -1077,11 +1119,20 @@ fn light_prop(
                     let own = taps.get(&i).map_or(&[][..], Vec::as_slice);
                     direct_at(ctx, (opts, sphere), &near, (pos, own), normal, skip, (ignore, Part::Direct), &mut c);
                     let (sky, ind) = &soft[g];
-                    for ((o, s), v) in c.iter_mut().zip(sky).zip(ind) {
-                        *o += *s + *v;
-                    }
-                    if let (Some(ao), Some(term)) = (&ctx.ao, ctx.ao_vertex(pos, normal, ao_radius, skip)) {
-                        ao.shade(term, &mut c);
+                    let mut gentle: Vec<Vec3A> = sky.iter().zip(ind).map(|(s, v)| *s + *v).collect();
+                    let ao_skip = if ctx.ao.as_ref().is_some_and(|ao| ao.soft_only) { pi as u32 } else { skip };
+                    let term =
+                        ctx.ao.as_ref().and_then(|ao| Some((ao, ctx.ao_vertex(pos, normal, ao_radius, ao_skip)?)));
+                    match term {
+                        Some((ao, t)) if ao.soft_only && !ao.debug => {
+                            ao.shade(t, &mut gentle);
+                            c.iter_mut().zip(&gentle).for_each(|(o, s)| *o += *s);
+                        }
+                        Some((ao, t)) => {
+                            c.iter_mut().zip(&gentle).for_each(|(o, s)| *o += *s);
+                            ao.shade(t, &mut c);
+                        }
+                        None => c.iter_mut().zip(&gentle).for_each(|(o, s)| *o += *s),
                     }
                 }
                 Some(c)

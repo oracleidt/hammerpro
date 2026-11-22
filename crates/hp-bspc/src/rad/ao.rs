@@ -73,6 +73,7 @@ pub(crate) struct Ao {
     pub face_samples: usize,
     pub prop_samples: usize,
     pub debug: bool,
+    pub soft_only: bool,
     sky: Vec<f32>,
 }
 
@@ -85,6 +86,7 @@ impl Ao {
             face_samples: count(o.face_samples, face_samples(q)),
             prop_samples: count(o.prop_samples, prop_samples(q)),
             debug: o.debug,
+            soft_only: false,
             sky: sky_scales(map),
         }
     }

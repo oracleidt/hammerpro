@@ -218,6 +218,7 @@ pub struct RayTracingSettings {
     pub ao: bool,
     pub ao_strength: f32,
     pub ao_radius: f32,
+    #[serde(rename = "light_shafts")]
     pub shafts: bool,
     pub shaft_intensity: f32,
     pub shaft_length: f32,
@@ -259,7 +260,7 @@ impl Default for RayTracingSettings {
             ao: true,
             ao_strength: 0.5,
             ao_radius: 48.0,
-            shafts: true,
+            shafts: false,
             shaft_intensity: 1.0,
             shaft_length: 1.0,
             shaft_softness: 1.0,
@@ -815,7 +816,13 @@ on = true
         rt.settle_after_change(&before);
         assert_eq!(rt.config, RayConfigSetting::Custom);
         rt.reset_to_default();
-        assert!(rt.on && rt.is_default_state() && rt.config == RayConfigSetting::Default && rt.ao && rt.shafts);
+        assert!(rt.on && rt.is_default_state() && rt.config == RayConfigSetting::Default && rt.ao && !rt.shafts);
+        let saved: RayTracingSettings = toml::from_str(
+            "shafts = true
+",
+        )
+        .expect("saved");
+        assert!(!saved.shafts, "volumetric beams saved on by older versions start off");
         let before = rt.clone();
         rt.on = false;
         rt.settle_after_change(&before);

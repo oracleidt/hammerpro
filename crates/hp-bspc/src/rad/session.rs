@@ -1674,7 +1674,14 @@ impl Scene {
                 (props::StaticProps::default(), Vec::new())
             };
             let (prop_tris, occluders) = if shadows {
-                static_props.occluders(opts.props.polys, opts.raytracing.is_none(), &rules, models, &mut prop_lines)
+                static_props.occluders(
+                    opts.props.polys,
+                    opts.raytracing.is_none(),
+                    &rules,
+                    models,
+                    &props::lamp_origins(&src.entities().unwrap_or_default()),
+                    &mut prop_lines,
+                )
             } else {
                 (Vec::new(), props::Occluders::default())
             };
