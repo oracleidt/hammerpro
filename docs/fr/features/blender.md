@@ -15,7 +15,7 @@ Le lien avec Blender est un aller-retour entre Hammer Pro et Blender. Son usage 
 ## L'ouvrir
 
 - **Outils > Intégrations > Envoyer vers Blender** (grisé tant que rien n'est sélectionné), et le bouton correspondant de la palette d'outils.
-- **Paramètres > Lien avec Blender** : le programme, le format de fichier, le lien direct et les mêmes actions en boutons.
+- **Paramètres > Lien avec Blender** : le programme, le format de fichier, l'échelle dans Blender, le lien direct et les mêmes actions en boutons.
 - **Outils > Intégrations > Mettre à jour depuis Blender** (grisé sans lien) : lit le fichier tout de suite. **Outils > Intégrations > Arrêter le lien direct avec Blender** et **Outils > Intégrations > Installer l'add-on Blender**.
 - La palette de commandes propose les quatre. Pas de raccourci par défaut.
 
@@ -44,6 +44,15 @@ Le choix est enregistré (`blender.format`, `gltf` par défaut). Les trois donne
 ### Unités et axes
 
 Les fichiers sont en mètres avec Y vers le haut, comme Blender l'attend, avec 1 mètre égal à 39,37 unités Source (la même unité que l'[import de modèles](model-import.md)). Blender en fait son propre Z vers le haut (glTF) ou garde les axes du fichier avec un objet pivoté (OBJ, FBX) : modifiez dans la vue comme d'habitude, l'export reconvertit. Ne changez pas l'échelle d'unité de la scène et n'appliquez ni ne réinitialisez les transformations des objets de displacement d'une façon qui déplace les sommets.
+
+**Échelle dans Blender** (Paramètres > Lien avec Blender, paramètre `blender.scale`) choisit la taille de la géométrie dans Blender :
+
+| Choix | Dans Blender | Quand l'utiliser |
+|---|---|---|
+| **Mètres** (par défaut, `meters`) | 1 mètre vaut 39,37 unités Source : un mur de 128 unités fait 3,25 m de haut, la map paraît donc 0,0254 fois ses nombres de Hammer Pro. | Tailles réelles, l'échelle qu'attendent les outils et add-ons de Blender. |
+| **Unités Source (1:1)** (`source_units`) | 1 unité Blender vaut 1 unité Source : une brush en x 512 de taille 128 est en x 512 avec une taille de 128 dans Blender. | Modéliser des props pour un endroit précis de la map : les coordonnées et les tailles restent celles de la map. |
+
+Chaque lien garde l'échelle de son envoi, et la mise à jour défait cette même échelle, la géométrie revient donc toujours au même endroit et à la même taille (changer le paramètre pendant un lien ne touche que l'envoi suivant). Le fichier `link.json` indique l'échelle à l'add-on : en unités Source il agrandit la distance de découpe des vues 3D pour qu'une map entière reste visible, et son panneau affiche l'échelle.
 
 ## Ce que fait la mise à jour aux displacements
 
@@ -100,12 +109,12 @@ La surveillance ne coûte rien tant que le fichier ne change pas : un petit fil 
 
 | Outil | Ce qu'il fait |
 |---|---|
-| `send_to_blender` | Comme **Envoyer vers Blender** : `format`, `launch`, `live_link`. Répond avec le fichier, ce qui est lié (`displacements`, `brushes` ou `prop`), et si Blender a démarré, était déjà ouvert ou est introuvable. |
+| `send_to_blender` | Comme **Envoyer vers Blender** : `format`, `launch`, `live_link`, `scale` (`meters` ou `source_units`). Répond avec le fichier, ce qui est lié (`displacements`, `brushes` ou `prop`), et si Blender a démarré, était déjà ouvert ou est introuvable. |
 | `blender_status` | Blender trouvé ou non, les paramètres, le dossier de travail, le lien actuel (fichier, format, genre, nombre d'éléments, mises à jour faites), le dernier message. |
 | `blender_pull` | **Mettre à jour depuis Blender** tout de suite (une étape d'annulation) ; répond avec ce qui a été mis à jour. |
-| `blender_setup` | `path` (vérifié : un programme ou dossier Blender), `format`, `live_link`, `detect`, `install_addon`, `stop_link`. |
+| `blender_setup` | `path` (vérifié : un programme ou dossier Blender), `format`, `live_link`, `scale`, `detect`, `install_addon`, `stop_link`. |
 
-Les paramètres `blender.format` et `blender.live_link` marchent aussi avec `set_setting` ; `blender.path` se change avec `blender_setup`, qui vérifie que le fichier est un programme Blender. Voir la [référence des outils MCP](../../MCP.md) (en anglais).
+Les paramètres `blender.format`, `blender.live_link` et `blender.scale` marchent aussi avec `set_setting` ; `blender.path` se change avec `blender_setup`, qui vérifie que le fichier est un programme Blender. Voir la [référence des outils MCP](../../MCP.md) (en anglais).
 
 Dans les exécutions automatiques (`--script`, `--screenshot`) Blender n'est jamais lancé et le dossier de travail est temporaire.
 
@@ -118,6 +127,7 @@ Tout est dans **Paramètres > Lien avec Blender** et dans la table `[blender]` d
 | `blender.path` | `""` | Le programme Blender (`blender.exe`, `blender-launcher.exe`, ou le dossier de Blender) ; vide veut dire que Hammer Pro cherche (voir « Lancer Blender »). **Parcourir...** le choisit, **Détecter** l'efface. |
 | `blender.format` | `"gltf"` | Format de fichier d'un envoi : `gltf` (un `.glb`), `obj` ou `fbx`. |
 | `blender.live_link` | `true` | Surveille le fichier exporté après un envoi et met la map à jour quand Blender l'écrit. |
+| `blender.scale` | `"meters"` | Échelle de la géométrie dans Blender : `meters` (1 m = 39,37 unités, la géométrie est 0,0254 fois plus petite) ou `source_units` (1:1). La mise à jour défait l'échelle de l'envoi du lien. |
 
 Fichiers utilisés : le dossier de travail est `HammerPro/blender` dans le dossier de données locales de votre compte (définissez la variable d'environnement `HAMMERPRO_BLENDER_DIR` pour le déplacer) ; il contient le fichier exporté, les textures, `link.json`, `startup.py` et `hammerpro_bridge.py`. Les anciens exports y sont remplacés à chaque envoi.
 

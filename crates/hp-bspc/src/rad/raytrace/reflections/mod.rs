@@ -5,8 +5,12 @@ mod sky;
 mod tests;
 mod vtf;
 
+use std::time::{Duration, Instant};
+
 use glam::Vec3A;
 use rayon::prelude::*;
+
+use render::{Limits, Outcome};
 
 use crate::props::ModelSource;
 
@@ -18,6 +22,43 @@ const MIN_SIZE: u32 = 4;
 const PAK_BUDGET: u64 = 96 << 20;
 const RAYS_FINAL: u32 = 1 << 17;
 const RAYS_NORMAL: u32 = 1 << 15;
+const CUBE_SOFT: Duration = Duration::from_secs(15);
+const CUBE_HARD: Duration = Duration::from_secs(90);
+const TOTAL_SOFT: Duration = Duration::from_secs(20 * 60);
+const TOTAL_HARD: Duration = Duration::from_secs(40 * 60);
+const PROGRESS_EVERY: Duration = Duration::from_secs(10);
+const DETAIL_LINES: usize = 12;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Budget {
+    pub cube_soft: Duration,
+    pub cube_hard: Duration,
+    pub total_soft: Duration,
+    pub total_hard: Duration,
+}
+
+impl Default for Budget {
+    fn default() -> Self {
+        Budget { cube_soft: CUBE_SOFT, cube_hard: CUBE_HARD, total_soft: TOTAL_SOFT, total_hard: TOTAL_HARD }
+    }
+}
+
+impl Budget {
+    pub(crate) fn limits(&self, size: u32, samples: u32, elapsed: Duration) -> Option<Limits> {
+        let left = self.total_hard.checked_sub(elapsed).filter(|d| !d.is_zero())?;
+        let grid = (samples.max(1) as f32).sqrt().ceil() as u64;
+        let rays = 6 * u64::from(size) * u64::from(size) * grid * grid;
+        let scale = (rays as f64 / (6.0 * f64::from(RAYS_FINAL))).max(1.0);
+        let soft = if elapsed >= self.total_soft { Duration::ZERO } else { self.cube_soft.mul_f64(scale) };
+        let hard = self.cube_hard.mul_f64(scale).min(left);
+        Some(Limits { soft: soft.min(hard), hard })
+    }
+}
+
+fn clock(d: Duration) -> String {
+    let s = d.as_secs();
+    if s >= 60 { format!("{} min {:02} s", s / 60, s % 60) } else { format!("{:.1} s", d.as_secs_f32()) }
+}
 
 pub(crate) fn pixels(size: i32) -> u32 {
     if size <= 0 { DEFAULT_SIZE } else { (1u32 << (size - 1).min(15) as u32).clamp(MIN_SIZE, MAX_SIZE) }
@@ -100,13 +141,25 @@ pub(crate) fn bake(
     fine: bool,
     log: &mut dyn FnMut(&str),
 ) -> Result<Vec<u8>, String> {
-    let t = std::time::Instant::now();
+    bake_within(bytes, models, seed, fine, Budget::default(), log)
+}
+
+pub(crate) fn bake_within(
+    bytes: Vec<u8>,
+    models: &dyn ModelSource,
+    seed: u32,
+    fine: bool,
+    budget: Budget,
+    log: &mut dyn FnMut(&str),
+) -> Result<Vec<u8>, String> {
+    let t = Instant::now();
     let src = hp_bsp::Bsp::from_vec(bytes).map_err(|e| format!("not a BSP file: {e}"))?;
     let cubes = src.cubemaps().unwrap_or_default();
     let Some(map) = map_name(&src) else {
         log("cubemaps: the map name is not known (no materials/maps folder in the pakfile), cubemaps not rendered");
         return Ok(src.into_vec());
     };
+    log(&format!("cubemaps: reading the lit map, its materials and static props for {} env_cubemap", cubes.len()));
     models.prepare();
     let with_pak = crate::rad::props::MapPak { pak: src.pakfile().ok().filter(|p| !p.is_empty()), inner: models };
     let scene = scene::build(&src, &with_pak)?;
@@ -125,22 +178,91 @@ pub(crate) fn bake(
             PAK_BUDGET >> 20
         ));
     }
-    let rendered: Vec<(String, Faces, u32)> = jobs
-        .iter()
-        .enumerate()
-        .map(|(i, j)| {
-            let faces = match j.origin {
-                Some(o) => scene.render(
-                    Vec3A::new(o[0] as f32, o[1] as f32, o[2] as f32),
-                    j.size,
-                    samples_for(j.size, fine),
-                    seed.wrapping_add(i as u32),
-                ),
-                None => scene.render_sky(j.size),
-            };
-            (j.name.clone(), faces, j.size)
-        })
-        .collect();
+    log(&format!(
+        "cubemaps: scene ready in {}: {} triangles, {} lights; rendering {} env_cubemap and the default cubemap ({})",
+        clock(t.elapsed()),
+        scene.tris.len(),
+        scene.lights.len(),
+        jobs.len() - 1,
+        passes_name(scene.passes)
+    ));
+    let started = Instant::now();
+    let mut last_note = Instant::now();
+    let mut rendered: Vec<(String, Faces, u32)> = Vec::with_capacity(jobs.len());
+    let mut partial = 0usize;
+    let mut skipped = 0usize;
+    let mut details = 0usize;
+    let mut spent_noted = false;
+    let total = jobs.len();
+    for (i, j) in jobs.iter().enumerate() {
+        let Some(o) = j.origin else {
+            rendered.push((j.name.clone(), scene.render_sky(j.size), j.size));
+            continue;
+        };
+        let samples = samples_for(j.size, fine);
+        let elapsed = started.elapsed();
+        let at = format!("env_cubemap {} of {} at ({} {} {}) ({} px)", i + 1, total - 1, o[0], o[1], o[2], j.size);
+        let Some(limits) = budget.limits(j.size, samples, elapsed) else {
+            skipped += 1;
+            if details < DETAIL_LINES {
+                details += 1;
+                log(&format!(
+                    "Warning: cubemaps: {at} skipped: the cubemap time budget ({}) is spent, it keeps its placeholder until buildcubemaps runs in game",
+                    clock(budget.total_hard)
+                ));
+            }
+            continue;
+        };
+        if !spent_noted && elapsed >= budget.total_soft {
+            spent_noted = true;
+            log(&format!(
+                "Warning: cubemaps: {} spent on {} of {} cubemaps, the remaining ones get a quick pass only",
+                clock(elapsed),
+                i,
+                total - 1
+            ));
+        }
+        let one = Instant::now();
+        let center = Vec3A::new(o[0] as f32, o[1] as f32, o[2] as f32);
+        let (faces, outcome) = scene.render(center, j.size, samples, seed.wrapping_add(i as u32), limits);
+        match outcome {
+            Outcome::Full => rendered.push((j.name.clone(), faces, j.size)),
+            Outcome::Partial { least, of } => {
+                partial += 1;
+                if details < DETAIL_LINES && !spent_noted {
+                    details += 1;
+                    log(&format!(
+                        "Warning: cubemaps: {at} stopped refining after {} with {least} of {of} samples per pixel (slow surroundings: many props, lights or translucent layers)",
+                        clock(one.elapsed())
+                    ));
+                }
+                rendered.push((j.name.clone(), faces, j.size));
+            }
+            Outcome::Skipped { faces_done } => {
+                skipped += 1;
+                if details < DETAIL_LINES {
+                    details += 1;
+                    log(&format!(
+                        "Warning: cubemaps: {at} skipped: its first pass did not finish in {} ({faces_done} of 6 faces done), it keeps its placeholder until buildcubemaps runs in game",
+                        clock(limits.hard)
+                    ));
+                }
+            }
+        }
+        if last_note.elapsed() >= PROGRESS_EVERY {
+            last_note = Instant::now();
+            log(&format!(
+                "cubemaps: {} of {} env_cubemap done ({}%), {}",
+                i + 1,
+                total - 1,
+                (i + 1) * 100 / (total - 1).max(1),
+                clock(started.elapsed())
+            ));
+        }
+    }
+    if details >= DETAIL_LINES && partial + skipped > details {
+        log(&format!("cubemaps: {} more cubemaps were cut short, not listed one by one", partial + skipped - details));
+    }
     let files: Vec<(String, Vec<u8>)> = rendered
         .par_iter()
         .flat_map_iter(|(name, faces, size)| {
@@ -159,28 +281,39 @@ pub(crate) fn bake(
     let mut edit = src.edit();
     edit.set_pakfile(pak).map_err(|e| e.to_string())?;
     let out = edit.to_vec().map_err(|e| e.to_string())?;
+    let rendered_cubes = rendered.len().saturating_sub(1);
     let mut sizes: Vec<u32> = jobs.iter().filter(|j| j.origin.is_some()).map(|j| j.size).collect();
     sizes.sort_unstable();
     sizes.dedup();
     log(&format!(
-        "cubemaps: {} and the default cubemap, {} {} textures ({} KB) written to materials/maps/{map}/ in the pakfile in {:.1} s, no buildcubemaps needed",
+        "cubemaps: {} and the default cubemap, {} {} textures ({} KB) written to materials/maps/{map}/ in the pakfile in {:.1} s, {}",
         if sizes.is_empty() {
             "no env_cubemap in the map, only the default cubemap rendered".to_owned()
         } else {
             format!(
                 "{} env_cubemap rendered ({} px)",
-                jobs.len() - 1,
+                rendered_cubes,
                 sizes.iter().map(u32::to_string).collect::<Vec<_>>().join(", ")
             )
         },
         count,
-        match scene.passes {
-            [true, true] => "LDR and HDR",
-            [false, true] => "HDR",
-            _ => "LDR",
-        },
+        passes_name(scene.passes),
         added / 1024,
-        t.elapsed().as_secs_f32()
+        t.elapsed().as_secs_f32(),
+        match (partial, skipped) {
+            (0, 0) => "no buildcubemaps needed".to_owned(),
+            (p, 0) => format!("{p} with fewer samples, no buildcubemaps needed"),
+            (0, k) => format!("{k} skipped (run buildcubemaps in game for them)"),
+            (p, k) => format!("{p} with fewer samples, {k} skipped (run buildcubemaps in game for them)"),
+        }
     ));
     Ok(out)
+}
+
+fn passes_name(passes: [bool; 2]) -> &'static str {
+    match passes {
+        [true, true] => "LDR and HDR",
+        [false, true] => "HDR",
+        _ => "LDR",
+    }
 }

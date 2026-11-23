@@ -163,6 +163,8 @@ Surtout sur **Paramètres > Vues** ; les clés `show_*` sont aussi dans le menu 
 | `bsp_flag_choices`, `rad_flag_choices` | `{}` | Options forcées dans les menus d'options : option = `{ on = true, value = "4" }`. Voir [Options de compilation](../compiler/compile-options.md). |
 | `save_before_compile` | `false` | Enregistre la map avant de compiler (la compilation utilise toujours un instantané et ne touche jamais au fichier). |
 | `load_pointfile_on_leak` | `true` | Charge le chemin de la fuite quand la map fuit. |
+| `finish_sound` | `true` | Joue une courte cloche à la fin d'une compilation (claire en cas de réussite, grave et douce en cas d'échec ou de fuite, rien en cas d'annulation). |
+| `finish_sound_volume` | `0.6` | Volume de ce son, de 0 à 1. |
 | `stop_on_leak` | `true` | S'arrête après la géométrie quand la map fuit. |
 | `compile_hidden` | `false` | Compile aussi les objets masqués dans l'éditeur. |
 | `compile_cordon_only` | `true` | Avec un cordon actif, ne compile que la zone du cordon (sous le nom `<map>_cordon`). |
@@ -172,7 +174,7 @@ Surtout sur **Paramètres > Vues** ; les clés `show_*` sont aussi dans le menu 
 | `progressive` | `false` | Jouer tout de suite : compilation Draft, lancement, puis éclairage terminé en arrière-plan et map remplacée. |
 | `progressive_preset` | `"Normal"` | Qualité de cet éclairage en arrière-plan (aucun réglage dans la fenêtre). |
 | `history` | `true` | Garde un historique des durées par map. |
-| `static_prop_lighting` | `true` | Autorise `-StaticPropLighting` quand la qualité le demande. |
+| `static_prop_lighting` | `true` | Autorise `-StaticPropLighting` avec les qualités Normal et Final. |
 | `static_prop_shadows` | `true` | Les props statiques projettent des ombres (désactivé : ajoute `-nostaticpropshadows`). |
 | `raytracing` | `on = false`, `quality = "Normal"`, `device = "Auto"`, `seed = 0`, `bump = true` | Ray tracing de l'étape d'éclairage (`[compile.raytracing]`) : `on`, `quality` (`Draft`, `Normal`, `Final`, `Optimal`), `device` (`Auto`, `Gpu`, `Cpu`), `seed`, `bump`, `config` (`Default`, `Optimal`, `Custom`), les effets `ao`, `ao_strength`, `ao_radius`, `shafts`, `shaft_intensity`, `shaft_length`, `shaft_softness`, `shaft_light_color`, `shaft_source` (`Sun`, `SunAndSpots`), `shaft_dust`, `glow`, `glow_intensity`, `auto_cubemaps`, `tonemap`, `color_correction`, `preview_gpu_share` (part de la carte graphique de l'aperçu en ray tracing, 0 : auto, sinon 0.1 à 1 ; jamais sur la compilation), et les paramètres `min_samples`, `max_samples`, `bounces`, `threshold`, `light_size`, `sun_angle`, `sky_samples`, `denoise`, `supersample`, `prop_samples`, `chunk` (absent : automatique, la valeur de la qualité). Voir [Ray tracing](../compiler/compile-options.md#ray-tracing). |
 | `expert` | `false` | Mode expert : exécute le profil choisi au lieu du préréglage. |

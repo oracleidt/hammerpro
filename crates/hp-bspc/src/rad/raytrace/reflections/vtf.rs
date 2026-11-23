@@ -7,6 +7,12 @@ pub(crate) const FORMAT_RGBA16161616F: u32 = 24;
 pub(crate) const FLAGS_LDR: u32 = 0x400c;
 pub(crate) const FLAGS_HDR: u32 = 0x600c;
 const GAMMA: f32 = 1.0 / 2.2;
+const HALF_MAX: f32 = 65_504.0;
+
+pub(crate) fn finite(c: Vec3A) -> Vec3A {
+    let f = |v: f32| if v.is_nan() { 0.0 } else { v.clamp(0.0, HALF_MAX) };
+    Vec3A::new(f(c.x), f(c.y), f(c.z))
+}
 
 pub(crate) fn mip_count(size: u32) -> u32 {
     32 - size.max(1).leading_zeros()
@@ -32,7 +38,7 @@ pub(crate) fn mips(face: &[Vec3A], size: u32) -> Vec<Vec<Vec3A>> {
 }
 
 pub(crate) fn f32_to_f16(v: f32) -> u16 {
-    let v = if v.is_finite() { v.clamp(0.0, 65_504.0) } else { 0.0 };
+    let v = if v.is_nan() { 0.0 } else { v.clamp(0.0, HALF_MAX) };
     let bits = v.to_bits();
     let exp = ((bits >> 23) & 0xff) as i32 - 127 + 15;
     let man = bits & 0x7f_ffff;
@@ -68,7 +74,7 @@ pub(crate) fn f16_to_f32(h: u16) -> f32 {
 }
 
 pub(crate) fn to_ldr(c: Vec3A) -> [u8; 4] {
-    let g = |v: f32| (if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 }.powf(GAMMA) * 255.0 + 0.5) as u8;
+    let g = |v: f32| (if v.is_nan() { 0.0 } else { v.clamp(0.0, 1.0) }.powf(GAMMA) * 255.0 + 0.5) as u8;
     [g(c.x), g(c.y), g(c.z), 255]
 }
 
@@ -97,10 +103,11 @@ pub(crate) fn level_bytes(side: u32, hdr: bool) -> usize {
 pub(crate) fn cubemap(faces: &[Vec<Vec3A>; 6], size: u32, hdr: bool) -> Vec<u8> {
     let size = size.max(1);
     let mip_n = mip_count(size);
+    let faces: Vec<Vec<Vec3A>> = faces.iter().map(|f| f.iter().map(|c| finite(*c)).collect()).collect();
     let chains: Vec<Vec<Vec<Vec3A>>> = faces.iter().map(|f| mips(f, size)).collect();
     let mut sum = Vec3A::ZERO;
     let mut n = 0usize;
-    for f in faces {
+    for f in &faces {
         for c in f {
             sum += c.clamp(Vec3A::ZERO, Vec3A::ONE);
             n += 1;

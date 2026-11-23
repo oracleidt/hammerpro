@@ -32,7 +32,7 @@ Each row has its label on the left, aligned with the others, and its options on 
 | **Dynamic range** | **LDR**, **HDR** or **LDR + HDR**. Final always computes both; Draft computes one (with LDR + HDR chosen, the one the game is set to: HDR when its `mat_hdr_level` is 2, else LDR). For Portal 2, CS:GO and the other HDR only games, LDR becomes HDR. | LDR |
 | Command lines | Under the steps, the exact command line of each step. Hover a line for the meaning of every flag Hammer Pro added; right click > **Copy the command line**. | |
 | **Compile only the cordoned area** | Shown when a cordon is active. Objects outside every box are left out, each box is sealed and the map is named `<map>_cordon`. | on |
-| **Static props: Light static props (per vertex)** | When the quality asks for it (Final), bakes the light of every static prop vertex (`-StaticPropLighting`). Off: never. | on |
+| **Static props: Light static props (per vertex)** | With the Normal and Final qualities, bakes the light of every static prop vertex (`-StaticPropLighting`), so props match the brushes around them. Off: never. | on |
 | **Static props: Static prop shadows** | Static props cast shadows in the lighting. Off: `-nostaticpropshadows`, much faster on maps with many props. | on |
 | **Ray tracing** | **Use ray tracing** bakes the lighting with Hammer Pro's path tracer instead of the radiosity, with the quality level next to it (**Draft**, **Normal**, **Final**, **Optimal**). Ticked, the **Ray tracing** options appear in the lighting options: the configuration (**Default**, **Optimal**, **Custom**), every parameter, the effects (ambient occlusion, light shafts, glow halos, automatic cubemaps, tonemap hints, color correction), **Reset to default** and the **Optimal** button (best balance for the map and this computer, automatic lightmap scale on). Hammer Pro's compiler only. When the compile finds no GPU, a warning above the log says `No GPU detected, compiling with Ray Tracing will take longer.` See [Ray tracing](compile-options.md#ray-tracing). | off, Normal |
 | **Before: Save the map first** | Also saves your work. The compile itself uses a copy and never needs a save. | off |
@@ -44,6 +44,7 @@ Each row has its label on the left, aligned with the others, and its options on 
 | **After: Copy to the maps folder** | Copies the BSP to `garrysmod/maps` (or the **Maps folder** of Advanced). | on |
 | **After: Launch the game** | Starts the game on the map. **Through Steam** opens it with a `steam://` link instead of the game executable. | on, off |
 | **After: Load the leak path on leak** | Loads `<map>.lin` in the views when the map leaks. | on |
+| **After: Sound when done** | Plays a short bell when a compile ends, also when Hammer Pro is in the background or minimized: a bright two note ding on success, a soft low tone on failure or leak, nothing when you cancel. **Volume** sets its loudness and **Test** plays it. The sound is made by Hammer Pro itself (no sound file) and plays over a sound preview without stopping it. Automated runs stay silent. MCP: `set_compile_options` with `finish_sound` and `finish_sound_volume`, or `set_setting` on `compile.finish_sound` and `compile.finish_sound_volume`. | on, 60 % |
 | **Game arguments** | Extra game arguments. `-game`, `-hijack` (reuses a running game) and `+map` are added unless you set them; `{map}` is replaced by the map name. | `-console -dev` |
 | **Threads** | **Automatic** (every core, or every core but one when a core is kept for the editor) or a number from 1 to 256 (`-threads`). | Automatic |
 | **Keep a core for the editor** | The automatic thread count is one less than the cores, so the editor stays smooth. Needed by **Compile while idle**. | on |
@@ -55,7 +56,7 @@ Under the game arguments, the launch options (**Start the game:** after the comp
 | Preset | Geometry | Visibility | Lighting | Packing |
 |---|---|---|---|---|
 | **Draft** | full, stops on leaks | Fast (`-fastvis`) | Draft (`-bounce 1 -fast`), one dynamic range | no (development addon) |
-| **Normal** | full | Normal (`-vis`) | Normal (no extra flag) | no (development addon) |
+| **Normal** | full | Normal (`-vis`) | Normal (`-StaticPropLighting`) | no (development addon) |
 | **Final** | full | Normal (`-vis`) | Final (`-final -StaticPropLighting`), always LDR + HDR | yes |
 | **Custom** | your choices of the step lists | | | as the policy says |
 

@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use hp_app::settings::BlenderFormat;
+use hp_app::settings::{BlenderFormat, BlenderScale};
 
 pub const ADDON_ID: &str = "hammerpro_bridge";
 
@@ -142,6 +142,31 @@ def frame_all():
 SEEN = {"revision": None}
 
 
+def link_scale(link):
+    if link and link.get("scale") == "source_units":
+        return "source_units"
+    return "meters"
+
+
+def scale_label(link):
+    if link_scale(link) == "source_units":
+        return "Scale: 1 unit = 1 Source unit (1:1)"
+    return "Scale: 1 m = 39.37 Source units"
+
+
+def fit_view(link):
+    if link_scale(link) != "source_units":
+        return
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type != "VIEW_3D":
+                continue
+            for space in area.spaces:
+                if space.type == "VIEW_3D":
+                    space.clip_start = max(space.clip_start, 0.1)
+                    space.clip_end = max(space.clip_end, 100000.0)
+
+
 def load_scene(path, fmt):
     enable_io()
     clear_scene()
@@ -149,6 +174,10 @@ def load_scene(path, fmt):
         import_file(path, fmt)
     except Exception as error:
         print("Hammer Pro Bridge: cannot import", path, error)
+    try:
+        fit_view(read_link())
+    except Exception as error:
+        print("Hammer Pro Bridge: cannot set the view clipping", error)
     bpy.app.timers.register(frame_all, first_interval=0.5)
 
 
@@ -216,6 +245,7 @@ class HAMMERPRO_PT_panel(bpy.types.Panel):
         link = read_link()
         if link:
             layout.label(text=os.path.basename(link["file"]), icon="LINKED")
+            layout.label(text=scale_label(link))
         else:
             layout.label(text="Not linked", icon="UNLINKED")
         layout.operator("hammerpro.update", icon="EXPORT")
@@ -326,12 +356,20 @@ pub fn revision() -> u128 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis())
 }
 
-pub fn link_json(file: &Path, format: BlenderFormat, export_on_save: bool, revision: u128) -> String {
+pub fn link_json(
+    file: &Path,
+    format: BlenderFormat,
+    export_on_save: bool,
+    revision: u128,
+    scale: BlenderScale,
+) -> String {
     serde_json::json!({
         "version": 1,
         "revision": revision.to_string(),
         "file": file.display().to_string(),
         "format": format.id(),
+        "scale": scale.id(),
+        "units_per_blender_unit": scale.units_per_blender_unit(),
         "export_on_save": export_on_save,
         "selected_only": false,
     })
@@ -434,13 +472,14 @@ pub fn write_working_files(
     source: &Path,
     format: BlenderFormat,
     export_on_save: bool,
+    scale: BlenderScale,
 ) -> Result<(PathBuf, PathBuf), String> {
     std::fs::create_dir_all(work).map_err(|e| format!("{}: {e}", work.display()))?;
     let link = work.join("link.json");
     let addon = work.join(format!("{ADDON_ID}.py"));
     let startup = work.join("startup.py");
     let write = |p: &Path, text: &str| std::fs::write(p, text).map_err(|e| format!("{}: {e}", p.display()));
-    write(&link, &link_json(source, format, export_on_save, revision()))?;
+    write(&link, &link_json(source, format, export_on_save, revision(), scale))?;
     write(&addon, &addon_source(&link))?;
     write(&startup, &startup_script(&addon, source, format, &link))?;
     Ok((startup, link))
@@ -473,8 +512,21 @@ mod tests {
         assert!(addon.contains("hammerpro.update") && addon.contains("Update in Hammer Pro"));
         assert!(addon.contains("save_post") && addon.contains("TOPBAR_MT_editor_menus"));
         let json: serde_json::Value =
-            serde_json::from_str(&link_json(Path::new("a.glb"), BlenderFormat::Gltf, true, 5)).unwrap();
+            serde_json::from_str(&link_json(Path::new("a.glb"), BlenderFormat::Gltf, true, 5, BlenderScale::Meters))
+                .unwrap();
         assert_eq!(json["format"], "gltf");
+        assert_eq!(json["scale"], "meters");
+        let one: serde_json::Value = serde_json::from_str(&link_json(
+            Path::new("a.glb"),
+            BlenderFormat::Gltf,
+            true,
+            5,
+            BlenderScale::SourceUnits,
+        ))
+        .unwrap();
+        assert_eq!(one["scale"], "source_units");
+        assert_eq!(one["units_per_blender_unit"], 1.0);
+        assert!(addon.contains("def fit_view") && addon.contains("source_units"));
         assert_eq!(json["export_on_save"], true);
     }
 
@@ -517,7 +569,8 @@ mod tests {
         assert!(!elsewhere.in_blender);
         assert!(elsewhere.files[0].starts_with(&work));
         let (startup, link_file) =
-            write_working_files(&work, &dir.join("part.glb"), BlenderFormat::Gltf, true).expect("work");
+            write_working_files(&work, &dir.join("part.glb"), BlenderFormat::Gltf, true, BlenderScale::Meters)
+                .expect("work");
         assert!(startup.is_file() && link_file.is_file());
         assert!(work.join("hammerpro_bridge.py").is_file());
         let _ = std::fs::remove_dir_all(&dir);

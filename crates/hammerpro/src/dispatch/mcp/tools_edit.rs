@@ -395,7 +395,9 @@ domain! { "editing";
         "Rebuild a prop_static, prop_dynamic or prop_physics as brushes (the reverse of Convert brushes to a static \
         prop): one brush per convex piece of its collision model (the exact brushes of a prop made with Hammer Pro) \
         or of its render mesh, faces textured from the model and nodraw where the model draws nothing. The brushes \
-        go into a func_detail or the world and are selected; the prop is removed unless keep_prop.",
+        go into a func_detail or the world and are selected; the prop is removed unless keep_prop. A model gives at \
+        most 20000 render triangles and 4096 brushes (half of the 8192 brushes a Source map holds); the answer has \
+        map_brushes and a warning when the map goes over 8192 brushes.",
         {
             "id": integer("Prop entity id (default: the selected prop).", 1, i64::from(u32::MAX)),
             "target": choice("Where the brushes go (default detail).", &["detail", "world"]),
@@ -1706,6 +1708,8 @@ fn prop_to_brushes(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         "approximate_brushes": made.approximate,
         "skipped_pieces": made.brushes.skipped,
         "prop_kept": keep,
+        "map_brushes": state.doc.scene().solids().len(),
+        "warning": hp_ui_mapping::propper::map_budget_warning(state),
     })))
 }
 

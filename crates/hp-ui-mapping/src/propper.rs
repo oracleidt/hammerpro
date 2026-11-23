@@ -413,7 +413,9 @@ pub fn read_prop_source(fs: &hp_fs::GameFs, entity: &Entity) -> Result<PropSourc
 fn error_text(e: &UnpropError) -> String {
     match e {
         UnpropError::TooManyTriangles(n) => tf!("propper.too_many_tris", n, unprop::MAX_RENDER_TRIANGLES),
-        UnpropError::TooManyPieces(n) => tf!("propper.too_many_pieces", n, unprop::MAX_PIECES),
+        UnpropError::TooManyPieces(n) => {
+            tf!("propper.too_many_pieces", n, unprop::MAX_PIECES, unprop::MAP_BRUSH_LIMIT)
+        }
         UnpropError::NoBrush => t!("propper.no_brush").to_owned(),
     }
 }
@@ -475,6 +477,11 @@ pub fn prop_to_brushes(state: &mut AppState, prop: Id, opts: &UnpropOptions) -> 
     Ok((made, ids))
 }
 
+pub fn map_budget_warning(state: &AppState) -> Option<String> {
+    let n = state.doc.scene().solids().len();
+    (n > unprop::MAP_BRUSH_LIMIT).then(|| tf!("propper.map_budget", n, unprop::MAP_BRUSH_LIMIT))
+}
+
 pub fn prop_source(state: &AppState, prop: Id) -> Result<PropSource, String> {
     let entity = match state.doc.scene().entity(prop) {
         Some(n) if hp_app::actions::is_model_prop(&n.entity) => n.entity.clone(),
@@ -520,6 +527,9 @@ impl UnpropDialog {
         match state.doc.replace_prop_with_brushes(prop, made.brushes.solids.clone(), opts.detail, opts.keep_prop) {
             Ok(_) => {
                 state.notify(Severity::Success, report_text(&made));
+                if let Some(warning) = map_budget_warning(state) {
+                    state.notify(Severity::Warning, warning);
+                }
                 self.source = None;
                 true
             }

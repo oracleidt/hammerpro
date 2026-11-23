@@ -15,7 +15,7 @@ The Blender link is a round trip between Hammer Pro and Blender. Its main use is
 ## Opening it
 
 - **Tools > Integrations > Send to Blender** (greyed out while nothing is selected), and the matching button of the tool palette.
-- **Settings > Blender link**: the program, the file format, the live link and the same actions as buttons.
+- **Settings > Blender link**: the program, the file format, the scale in Blender, the live link and the same actions as buttons.
 - **Tools > Integrations > Update from Blender** (greyed out without a link): reads the file now. **Tools > Integrations > Stop the Blender live link** and **Tools > Integrations > Install the Blender add-on**.
 - The command palette has all four. No default shortcut.
 
@@ -44,6 +44,15 @@ The choice is saved (`blender.format`, default `gltf`). All three give the same 
 ### Units and axes
 
 Files are in meters with Y up, as Blender expects, with 1 meter equal to 39.37 Source units (the same unit as [model import](model-import.md)). Blender turns this into its own Z up (glTF) or keeps the file axes with a rotated object (OBJ, FBX): edit in the viewport as usual, the export converts back. Do not change the scene unit scale and do not apply or reset the object transforms of the displacement objects in a way that moves the vertices.
+
+**Scale in Blender** (Settings > Blender link, setting `blender.scale`) picks how big the geometry is in Blender:
+
+| Choice | In Blender | When to use it |
+|---|---|---|
+| **Meters** (default, `meters`) | 1 meter is 39.37 Source units: a 128 unit wall is 3.25 m high, so the map looks 0.0254 times its Hammer Pro numbers. | Real world sizes, the scale Blender's tools and add-ons expect. |
+| **Source units (1:1)** (`source_units`) | 1 Blender unit is 1 Source unit: a brush at x 512 with a size of 128 is at x 512 with a size of 128 in Blender. | Modeling props for a precise spot of the map: the coordinates and sizes stay the ones of the map. |
+
+Each link remembers the scale it was sent with, and the update undoes that same scale, so the geometry always comes back at the same place and size (changing the setting during a link only affects the next send). The `link.json` file tells the add-on which scale is used: with Source units it raises the clipping distance of the 3D views so a whole map stays visible, and its panel shows the scale.
 
 ## What the update does to displacements
 
@@ -100,12 +109,12 @@ The watching costs nothing while the file does not change: a small background th
 
 | Tool | What it does |
 |---|---|
-| `send_to_blender` | Same as **Send to Blender**: `format`, `launch`, `live_link`. Answers with the file, what is linked (`displacements`, `brushes` or `prop`), and whether Blender started, was already open or was not found. |
-| `blender_status` | Blender found or not, the settings, the working folder, the current link (file, format, kind, how many items, updates done), the last message. |
+| `send_to_blender` | Same as **Send to Blender**: `format`, `launch`, `live_link`, `scale` (`meters` or `source_units`). Answers with the file, what is linked (`displacements`, `brushes` or `prop`), and whether Blender started, was already open or was not found. |
+| `blender_status` | Blender found or not, the settings, the working folder, the current link (file, format, scale, kind, how many items, updates done), the last message. |
 | `blender_pull` | **Update from Blender** now (one undo step); answers with what was updated. |
-| `blender_setup` | `path` (checked: a Blender program or folder), `format`, `live_link`, `detect`, `install_addon`, `stop_link`. |
+| `blender_setup` | `path` (checked: a Blender program or folder), `format`, `live_link`, `scale`, `detect`, `install_addon`, `stop_link`. |
 
-The settings `blender.format` and `blender.live_link` also work with `set_setting`; `blender.path` is changed with `blender_setup`, which checks that the file is a Blender program. See the [MCP tool reference](../../MCP.md).
+The settings `blender.format`, `blender.live_link` and `blender.scale` also work with `set_setting`; `blender.path` is changed with `blender_setup`, which checks that the file is a Blender program. See the [MCP tool reference](../../MCP.md).
 
 In automated runs (`--script`, `--screenshot`) Blender is never started and the working folder is a temporary one.
 
@@ -118,6 +127,7 @@ All in **Settings > Blender link** and in the `[blender]` table of `settings.tom
 | `blender.path` | `""` | The Blender program (`blender.exe`, `blender-launcher.exe`, or the Blender folder); empty means Hammer Pro searches (see "Starting Blender"). **Browse...** picks it, **Detect** clears it. |
 | `blender.format` | `"gltf"` | File format of a send: `gltf` (a `.glb`), `obj` or `fbx`. |
 | `blender.live_link` | `true` | Watch the exported file after a send and update the map when Blender writes it. |
+| `blender.scale` | `"meters"` | Scale of the geometry in Blender: `meters` (1 m = 39.37 units, the geometry is 0.0254 times smaller) or `source_units` (1:1). The update undoes the scale the link was sent with. |
 
 Files used: the working folder is `HammerPro/blender` in the local application data folder of your account (set the environment variable `HAMMERPRO_BLENDER_DIR` to move it); it holds the exported file, the textures, `link.json`, `startup.py` and `hammerpro_bridge.py`. Old exports there are replaced each time you send.
 

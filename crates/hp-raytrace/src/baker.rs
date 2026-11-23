@@ -100,7 +100,7 @@ impl Baker {
         let scene = std::sync::Arc::new(scene);
         let settings = Settings { params: settings.params.sanitized(), ..settings };
         let threads = settings.threads.unwrap_or_else(rayon::current_num_threads).max(1);
-        let state = crate::cpu::State::new(&scene);
+        let state = crate::cpu::State::new(&scene)?;
         let (backend, device) = crate::gpu::Gpu::open(&scene, &state, &settings, log)
             .map(|(g, info)| (Backend::Gpu(Box::new(g)), info))
             .unwrap_or_else(|why| {
@@ -158,7 +158,7 @@ impl Baker {
         }
         scene.validate()?;
         self.scene = std::sync::Arc::new(scene);
-        self.state = crate::cpu::State::new(&self.scene);
+        self.state = crate::cpu::State::new(&self.scene)?;
         if let Backend::Gpu(g) = &mut self.backend {
             g.upload_lights(&self.scene, &self.state)?;
         }

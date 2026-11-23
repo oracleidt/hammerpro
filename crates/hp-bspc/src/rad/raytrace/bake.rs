@@ -142,7 +142,7 @@ pub(crate) fn build(
     rt: &RayTracing,
     style_bounce: bool,
     passes: usize,
-) -> Built {
+) -> Result<Built, String> {
     let map = ctx.map;
     let params = rt.params();
     let mut scene = rts::Scene { passes: passes as u32, ..rts::Scene::default() };
@@ -309,8 +309,22 @@ pub(crate) fn build(
         params.supersample
     };
     let supersample = supersample_for(asked, total_luxels);
+    let margin = if params.cinematic { CINEMATIC_REACH_MARGIN } else { 1.0 };
+    let reach: Vec<f32> = scene.lights.iter().map(|l| early_reach(l, margin)).collect();
+    let near = (reach.as_slice(), scene.lights.as_slice());
     let per_face: Vec<FaceJob> =
-        faces.par_iter().map(|f| face_job(ctx, f, supersample, rt.bump, style_bounce)).collect();
+        faces.par_iter().map(|f| face_job(ctx, f, supersample, rt.bump, style_bounce, near)).collect();
+    let tested_before: f64 = per_face.iter().map(|j| j.luxels.len() as f64 * j.untrimmed_lights as f64).sum::<f64>();
+    let totals = SceneTotals {
+        lights: per_face.iter().map(|j| j.lights.len()).sum(),
+        luxels: per_face.iter().map(|j| j.luxels.len()).sum(),
+        points: per_face.iter().map(|j| j.points.len()).sum(),
+    };
+    totals.check(scene.lights.len(), faces.len())?;
+    reserve_for(&mut scene.light_lists, totals.lights, &totals, scene.lights.len(), faces.len())?;
+    reserve_for(&mut scene.luxels, totals.luxels, &totals, scene.lights.len(), faces.len())?;
+    reserve_for(&mut scene.points, totals.points, &totals, scene.lights.len(), faces.len())?;
+    reserve_for(&mut scene.surfaces, per_face.len(), &totals, scene.lights.len(), faces.len())?;
     let mut face_normals = Vec::with_capacity(faces.len());
     for job in per_face {
         let first_luxel = scene.luxels.len() as u32;
@@ -341,28 +355,100 @@ pub(crate) fn build(
     } else {
         1.0
     };
-    let light_tests = trim_light_lists(&mut scene, faces);
-    Built { scene, face_normals, exposure, light_tests }
+    let mut light_tests = trim_light_lists(&mut scene, faces);
+    light_tests.0 = tested_before / scene.luxels.len().max(1) as f64;
+    Ok(Built { scene, face_normals, exposure, light_tests })
+}
+
+pub(crate) const CINEMATIC_REACH_MARGIN: f32 = 64.0;
+
+pub(crate) fn early_reach(l: &rts::Light, margin: f32) -> f32 {
+    let mut brighter = *l;
+    for i in &mut brighter.intensity {
+        for v in i.iter_mut() {
+            *v *= margin;
+        }
+    }
+    visible_reach(&brighter)
+}
+
+pub(crate) struct SceneTotals {
+    pub lights: usize,
+    pub luxels: usize,
+    pub points: usize,
+}
+
+const POINT_BYTES: usize = std::mem::size_of::<rts::Point>();
+
+impl SceneTotals {
+    pub(crate) fn bytes(&self) -> u64 {
+        self.lights as u64 * 4 + self.luxels as u64 * 8 + self.points as u64 * POINT_BYTES as u64
+    }
+
+    pub(crate) fn describe(&self, lights: usize, faces: usize) -> String {
+        format!(
+            "{} light links ({lights} lights over {faces} faces), {} luxels, {} sample points, {:.2} GB in all",
+            self.lights,
+            self.luxels,
+            self.points,
+            self.bytes() as f64 / f64::from(1u32 << 30)
+        )
+    }
+
+    pub(crate) fn check(&self, lights: usize, faces: usize) -> Result<(), String> {
+        let limit = u32::MAX as usize;
+        if self.lights > limit || self.luxels > limit || self.points > limit {
+            return Err(format!(
+                "Error: the ray traced lighting is too large to build: {}. {TOO_BIG_ADVICE}",
+                self.describe(lights, faces)
+            ));
+        }
+        Ok(())
+    }
+}
+
+pub(crate) const TOO_BIG_ADVICE: &str = "Lower the number of lights or how far they reach (_zero_percent_distance, _fifty_percent_distance, or the light texture list), raise the lightmap scale of large faces, lower the ray tracing quality, or turn off ray tracing for this map.";
+
+pub(crate) fn reserve_for<T>(
+    v: &mut Vec<T>,
+    n: usize,
+    totals: &SceneTotals,
+    lights: usize,
+    faces: usize,
+) -> Result<(), String> {
+    v.try_reserve_exact(n).map_err(|_| {
+        format!(
+            "Error: not enough memory to build the ray traced lighting: {:.2} GB needed in one block for {}. {TOO_BIG_ADVICE}",
+            (n as u64 * std::mem::size_of::<T>() as u64) as f64 / f64::from(1u32 << 30),
+            totals.describe(lights, faces)
+        )
+    })
 }
 
 pub(crate) const LIGHT_CUTOFF: f32 = 0.05;
 
+pub(crate) const SURFACE_CUTOFF_SCALE: f32 = 1.0 / 64.0;
+
+pub(crate) const SURFACE_PATCH_SLACK: f32 = 128.0;
+
 pub(crate) fn visible_reach(l: &rts::Light) -> f32 {
-    if !matches!(l.kind, rts::LightKind::Point | rts::LightKind::Spot { .. }) {
-        return l.reach;
-    }
+    let (cutoff, slack) = match l.kind {
+        rts::LightKind::Point | rts::LightKind::Spot { .. } => (LIGHT_CUTOFF, l.size),
+        rts::LightKind::Surface => (LIGHT_CUTOFF * SURFACE_CUTOFF_SCALE, l.size + SURFACE_PATCH_SLACK),
+        _ => return l.reach,
+    };
     let peak = l.intensity.iter().map(|i| i[0].max(i[1]).max(i[2])).fold(0.0f32, f32::max);
     if !(peak.is_finite() && peak > 0.0) {
         return l.reach;
     }
     let to_light = -Vec3A::from_array(l.direction).normalize_or(Vec3A::NEG_Z);
-    let lit = |d: f32| peak * l.falloff(to_light, d) >= LIGHT_CUTOFF;
+    let lit = |d: f32| peak * l.falloff(to_light, d) >= cutoff;
     let limit = l.reach.min(1.0e6);
     if limit.is_nan() || limit <= 1.0 || lit(limit) {
         return l.reach;
     }
     if !lit(1.0) {
-        return (1.0 + l.size).min(l.reach);
+        return (1.0 + slack).min(l.reach);
     }
     let (mut lo, mut hi) = (1.0f32, limit);
     for _ in 0..48 {
@@ -373,7 +459,7 @@ pub(crate) fn visible_reach(l: &rts::Light) -> f32 {
             hi = mid;
         }
     }
-    (hi + l.size).min(l.reach)
+    (hi + slack).min(l.reach)
 }
 
 pub(crate) fn trim_light_lists(scene: &mut rts::Scene, faces: &[LitFace]) -> (f64, f64) {
@@ -398,19 +484,20 @@ pub(crate) fn trim_light_lists(scene: &mut rts::Scene, faces: &[LitFace]) -> (f6
                 .copied()
                 .filter(|&li| {
                     let l = &lights[li as usize];
-                    if !matches!(l.kind, rts::LightKind::Point | rts::LightKind::Spot { .. } | rts::LightKind::Surface)
-                    {
-                        return true;
-                    }
-                    let at = Vec3A::from_array(l.position);
-                    at.clamp(lo, hi).distance(at) <= l.reach
+                    light_reaches(l, l.reach, lo, hi)
                 })
                 .collect();
             let n = keep.len() as f64;
             (keep, lux * list.len() as f64, lux * n)
         })
         .collect();
-    let mut lists = Vec::with_capacity(old.len());
+    let lux = scene.luxels.len().max(1) as f64;
+    let total: usize = kept.iter().map(|k| k.0.len()).sum();
+    if total == old.len() {
+        let (before, after) = kept.iter().fold((0.0f64, 0.0f64), |(b, a), k| (b + k.1, a + k.2));
+        return (before / lux, after / lux);
+    }
+    let mut lists = Vec::with_capacity(total);
     let (mut before, mut after) = (0.0f64, 0.0f64);
     for (s, (keep, b, a)) in scene.surfaces.iter_mut().zip(kept) {
         s.lights = (lists.len() as u32, keep.len() as u32);
@@ -419,7 +506,6 @@ pub(crate) fn trim_light_lists(scene: &mut rts::Scene, faces: &[LitFace]) -> (f6
         after += a;
     }
     scene.light_lists = lists;
-    let lux = scene.luxels.len().max(1) as f64;
     (before / lux, after / lux)
 }
 
@@ -748,13 +834,16 @@ struct FaceJob {
     out_normals: usize,
     styles: Vec<u8>,
     lights: Vec<u32>,
+    untrimmed_lights: usize,
     luxels: Vec<(u32, u32)>,
     points: Vec<rts::Point>,
     in_skybox: bool,
     minlight: f32,
 }
 
-fn face_job(ctx: &Ctx<'_>, f: &LitFace, ss: usize, bump: bool, style_bounce: bool) -> FaceJob {
+type NearLights<'a> = (&'a [f32], &'a [rts::Light]);
+
+fn face_job(ctx: &Ctx<'_>, f: &LitFace, ss: usize, bump: bool, style_bounce: bool, near: NearLights<'_>) -> FaceJob {
     let samples = ctx.luxel_samples(f);
     let mut clusters: Vec<i32> = samples.samples.iter().flatten().map(|sp| sp.cluster).collect();
     clusters.extend(f.poly.iter().map(|v| ctx.map.vis_cluster_at(*v + f.normal)));
@@ -795,8 +884,13 @@ fn face_job(ctx: &Ctx<'_>, f: &LitFace, ss: usize, bump: bool, style_bounce: boo
             }
         }
     }
-    let lights: Vec<u32> =
+    let mut lights: Vec<u32> =
         cand.iter().filter(|(li, _)| styles.contains(&ctx.lights.list[*li].style)).map(|(li, _)| *li as u32).collect();
+    let untrimmed_lights = lights.len();
+    let (reach, list) = near;
+    let (lo, hi) = (f.bounds.0.as_vec3a() - 1.0, f.bounds.1.as_vec3a() + 1.0);
+    lights.retain(|&li| light_reaches(&list[li as usize], reach[li as usize], lo, hi));
+    lights.shrink_to_fit();
     let out_normals = if f.bump { 4 } else { 1 };
     let normals = if f.bump && bump { 4 } else { 1 };
     let mut luxels = Vec::with_capacity(f.luxels());
@@ -867,11 +961,20 @@ fn face_job(ctx: &Ctx<'_>, f: &LitFace, ss: usize, bump: bool, style_bounce: boo
         out_normals,
         styles,
         lights,
+        untrimmed_lights,
         luxels,
         points,
         in_skybox,
         minlight: f.minlight,
     }
+}
+
+fn light_reaches(l: &rts::Light, reach: f32, lo: Vec3A, hi: Vec3A) -> bool {
+    if !matches!(l.kind, rts::LightKind::Point | rts::LightKind::Spot { .. } | rts::LightKind::Surface) {
+        return true;
+    }
+    let at = Vec3A::from_array(l.position);
+    at.clamp(lo, hi).distance(at) <= reach
 }
 
 pub(crate) fn to_face_lights(

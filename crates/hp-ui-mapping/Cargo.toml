@@ -9,6 +9,7 @@ authors.workspace = true
 [dependencies]
 hp-sched.workspace = true
 hp-app = { path = "../hp-app" }
+hp-audio = { path = "../hp-audio" }
 getrandom = "0.3"
 hp-editor.workspace = true
 hp-render.workspace = true

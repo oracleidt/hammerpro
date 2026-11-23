@@ -113,7 +113,7 @@ These choices are saved (`unprop_shape`, `unprop_detail`, `unprop_keep_prop` in 
 
 Each brush face takes the material and texture alignment of the model triangles lying on it; faces the model does not draw (hidden faces, the nodraw and tool faces of the original brushes) get `tools/toolsnodraw`. The new brushes are selected, the prop is removed unless you keep it, all in one undo step. A toast tells how many brushes, textured faces and nodraw faces were made, how many brushes only approximate the model, and how many parts were too small or too flat to become a brush.
 
-Limits: at most 20000 render triangles to rebuild from, and at most 1024 brushes per model.
+Limits: at most 20000 render triangles to rebuild from, and at most 4096 brushes per model. A whole Source map compiles at most 8192 brushes (and 65536 brush sides), so one model may use half of that budget and no more: a model over the limit is refused with its real brush count, and the way out is to simplify the model, convert it in parts, or keep it as a prop. When a conversion takes the map over 8192 brushes, a warning says so.
 
 ## Tips
 

@@ -10,7 +10,11 @@ pub const NODRAW: &str = "tools/toolsnodraw";
 
 pub const MAX_RENDER_TRIANGLES: usize = 20_000;
 
-pub const MAX_PIECES: usize = 1024;
+pub const MAX_PIECES: usize = 4096;
+
+pub const MAP_BRUSH_LIMIT: usize = 8192;
+
+const _: () = assert!(MAX_PIECES < MAP_BRUSH_LIMIT);
 
 const DEFAULT_SCALE: f64 = 0.25;
 
@@ -216,7 +220,54 @@ fn clean_shift(shift: f64, size: u32) -> f64 {
     s + 0.0
 }
 
-fn face_matches(plane: &Plane, poly: &[DVec3], tris: &[PreparedTri<'_>], dist: f64, dot: f64) -> Vec<usize> {
+struct TriIndex {
+    by_min_x: Vec<(f64, usize)>,
+    bounds: Vec<(DVec3, DVec3)>,
+    widest_x: f64,
+}
+
+impl TriIndex {
+    fn new(tris: &[PreparedTri<'_>]) -> Self {
+        let bounds: Vec<(DVec3, DVec3)> = tris
+            .iter()
+            .map(|t| {
+                let [a, b, c] = t.tri.pos;
+                (a.min(b).min(c), a.max(b).max(c))
+            })
+            .collect();
+        let mut by_min_x: Vec<(f64, usize)> = bounds.iter().enumerate().map(|(i, b)| (b.0.x, i)).collect();
+        by_min_x.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        let widest_x = bounds.iter().map(|b| b.1.x - b.0.x).fold(0.0, f64::max);
+        Self { by_min_x, bounds, widest_x }
+    }
+
+    fn near(&self, poly: &[DVec3], pad: f64) -> Vec<usize> {
+        let Some(&first) = poly.first() else { return Vec::new() };
+        let (lo, hi) = poly.iter().fold((first, first), |(lo, hi), &p| (lo.min(p), hi.max(p)));
+        let (lo, hi) = (lo - DVec3::splat(pad), hi + DVec3::splat(pad));
+        let start = self.by_min_x.partition_point(|e| e.0 < lo.x - self.widest_x);
+        let mut out: Vec<usize> = self.by_min_x[start..]
+            .iter()
+            .take_while(|e| e.0 <= hi.x)
+            .map(|e| e.1)
+            .filter(|&i| {
+                let (a, b) = self.bounds[i];
+                a.cmple(hi).all() && b.cmpge(lo).all()
+            })
+            .collect();
+        out.sort_unstable();
+        out
+    }
+}
+
+fn face_matches(
+    plane: &Plane,
+    poly: &[DVec3],
+    tris: &[PreparedTri<'_>],
+    index: &TriIndex,
+    dist: f64,
+    dot: f64,
+) -> Vec<usize> {
     let n = plane.normal;
     let (e1, e2) = plane_basis(n);
     let to2 = |p: DVec3| DVec2::new(p.dot(e1), p.dot(e2));
@@ -230,7 +281,7 @@ fn face_matches(plane: &Plane, poly: &[DVec3], tris: &[PreparedTri<'_>], dist: f
                 inside_convex(&corners, center, 0.01)
             })
     };
-    tris.iter().enumerate().filter(|(_, t)| on_face(t)).map(|(i, _)| i).collect()
+    index.near(poly, dist + 0.5).into_iter().filter(|&i| on_face(&tris[i])).collect()
 }
 
 fn face_texture(
@@ -364,6 +415,7 @@ pub fn brushes_from_pieces(
         return Err(UnpropError::TooManyPieces(pieces.len()));
     }
     let prepared = prepare(tris);
+    let index = TriIndex::new(&prepared);
     let mut out = Unpropped::default();
     let mut hulls: Vec<ConvexHull> = Vec::with_capacity(pieces.len());
     for piece in pieces {
@@ -378,7 +430,7 @@ pub fn brushes_from_pieces(
     for hull in &hulls {
         let mut faces = Vec::with_capacity(hull.faces.len());
         for f in &hull.faces {
-            let m = face_matches(&f.plane, &hull.face_polygon(f), &prepared, ON_FACE, ON_FACE_DOT);
+            let m = face_matches(&f.plane, &hull.face_polygon(f), &prepared, &index, ON_FACE, ON_FACE_DOT);
             for &i in &m {
                 covered[i] = true;
             }
@@ -394,7 +446,7 @@ pub fn brushes_from_pieces(
         let mut sides = Vec::with_capacity(hull.faces.len());
         for (face, mut m) in hull.faces.iter().zip(matches) {
             if m.is_empty() && loose {
-                m = face_matches(&face.plane, &hull.face_polygon(face), &prepared, NEAR_FACE, NEAR_FACE_DOT);
+                m = face_matches(&face.plane, &hull.face_polygon(face), &prepared, &index, NEAR_FACE, NEAR_FACE_DOT);
             }
             let texture = face_texture(face.plane.normal, &m, &prepared, size);
             sides.push(face_side(hull, face, texture, &mut stats));
@@ -584,9 +636,9 @@ pub fn render_pieces(tris: &[ModelTri]) -> Result<RenderPieces, UnpropError> {
             }
         }
         out.pieces.push(points);
-        if out.pieces.len() > MAX_PIECES {
-            return Err(UnpropError::TooManyPieces(out.pieces.len()));
-        }
+    }
+    if out.pieces.len() > MAX_PIECES {
+        return Err(UnpropError::TooManyPieces(out.pieces.len()));
     }
     Ok(out)
 }
@@ -845,6 +897,55 @@ mod tests {
             render_pieces(&vec![tris[0].clone(); MAX_RENDER_TRIANGLES + 1]).unwrap_err(),
             UnpropError::TooManyTriangles(MAX_RENDER_TRIANGLES + 1)
         );
+    }
+
+    fn cube_tris(min: DVec3, size: f64) -> Vec<ModelTri> {
+        let c = |x: f64, y: f64, z: f64| min + DVec3::new(x, y, z) * size;
+        let quads = [
+            [c(0., 0., 0.), c(0., 1., 0.), c(1., 1., 0.), c(1., 0., 0.)],
+            [c(0., 0., 1.), c(1., 0., 1.), c(1., 1., 1.), c(0., 1., 1.)],
+            [c(0., 0., 0.), c(1., 0., 0.), c(1., 0., 1.), c(0., 0., 1.)],
+            [c(0., 1., 0.), c(0., 1., 1.), c(1., 1., 1.), c(1., 1., 0.)],
+            [c(0., 0., 0.), c(0., 0., 1.), c(0., 1., 1.), c(0., 1., 0.)],
+            [c(1., 0., 0.), c(1., 1., 0.), c(1., 1., 1.), c(1., 0., 1.)],
+        ];
+        let tri = |a: DVec3, b: DVec3, d: DVec3| ModelTri {
+            material: "dev/a".to_owned(),
+            pos: [a, b, d],
+            uv: [DVec2::ZERO, DVec2::X, DVec2::Y],
+        };
+        quads.iter().flat_map(|q| [tri(q[0], q[1], q[2]), tri(q[0], q[2], q[3])]).collect()
+    }
+
+    #[test]
+    fn models_over_a_thousand_brushes_convert() {
+        let mut tris = Vec::new();
+        for i in 0..1500 {
+            let min = DVec3::new(f64::from(i % 40) * 32.0, f64::from(i / 40) * 32.0, 0.0);
+            tris.extend(cube_tris(min, 16.0));
+        }
+        let split = render_pieces(&tris).expect("pieces");
+        assert_eq!(split.pieces.len(), 1500);
+        let out = brushes_from_pieces(&split.pieces, &tris, &|_| (256, 256)).expect("brushes");
+        assert_eq!(out.solids.len(), 1500);
+        assert_eq!(out.skipped, 0);
+        assert_eq!(out.textured_faces, 1500 * 6);
+    }
+
+    #[test]
+    fn too_many_pieces_reports_the_real_count() {
+        let n = MAX_PIECES + 37;
+        let tris: Vec<ModelTri> = (0..n)
+            .map(|i| {
+                let o = DVec3::new((i % 100) as f64 * 64.0, (i / 100) as f64 * 64.0, 0.0);
+                ModelTri {
+                    material: "dev/a".to_owned(),
+                    pos: [o, o + DVec3::new(32.0, 0.0, 0.0), o + DVec3::new(0.0, 32.0, 0.0)],
+                    uv: [DVec2::ZERO, DVec2::X, DVec2::Y],
+                }
+            })
+            .collect();
+        assert_eq!(render_pieces(&tris).unwrap_err(), UnpropError::TooManyPieces(n));
     }
 
     #[test]

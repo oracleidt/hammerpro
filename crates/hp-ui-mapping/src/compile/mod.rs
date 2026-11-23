@@ -979,6 +979,9 @@ impl CompileDialog {
                 self.pack_wait = None;
                 let (severity, text) = summary_text(&summary, &map);
                 state.notify(severity, text);
+                if !summary.cancelled {
+                    play_finish_sound(&state.settings.compile, summary.success && !summary.leaked);
+                }
                 self.finish(state, summary, same_map);
             }
             None => {}
@@ -1615,6 +1618,26 @@ fn select_leaking_entity(state: &mut AppState, line: Option<&LogLocation>) {
 
 pub(crate) fn history_file(map_key: &str) -> PathBuf {
     Settings::cache_dir().join("compile_history").join(format!("{map_key}.jsonl"))
+}
+
+pub fn finish_chime(
+    s: &hp_app::settings::CompileSettings,
+    success: bool,
+    test: bool,
+) -> Option<(hp_audio::Chime, f32)> {
+    let volume = if s.finish_sound_volume.is_finite() { s.finish_sound_volume.clamp(0.0, 1.0) } else { 0.0 };
+    if !s.finish_sound || volume <= 0.0 || (!test && (cfg!(test) || hp_compile::sandbox::is_sandboxed())) {
+        return None;
+    }
+    Some((if success { hp_audio::Chime::Success } else { hp_audio::Chime::Failure }, volume))
+}
+
+pub fn play_finish_sound(s: &hp_app::settings::CompileSettings, success: bool) -> bool {
+    finish_chime(s, success, false).is_some_and(|(kind, volume)| hp_audio::play_chime(kind, volume))
+}
+
+pub fn preview_finish_sound(s: &hp_app::settings::CompileSettings) -> bool {
+    finish_chime(s, true, true).is_some_and(|(kind, volume)| hp_audio::play_chime(kind, volume))
 }
 
 fn summary_text(s: &Summary, map: &str) -> (Severity, String) {

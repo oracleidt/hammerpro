@@ -76,7 +76,7 @@ fn normal_and_final_presets() {
     assert_eq!(kinds(&normal), vec![StepKind::Bsp, StepKind::Rad]);
     assert_eq!(args(&normal, StepKind::Bsp)[3..7], ["-vis", "-AllowDynamicPropsAsStatic", "-threads", "6"]);
     let rad = args(&normal, StepKind::Rad);
-    assert_eq!(&rad[..6], &["--rad", "-ldr", "-threads", "6", "-bounce", "4"]);
+    assert_eq!(&rad[..7], &["--rad", "-ldr", "-StaticPropLighting", "-threads", "6", "-bounce", "4"]);
     assert!(rad.contains(&r"C:\my file".to_owned()));
 
     let fin = CompilePlan::preset(Preset::Final, &tools(), &vmf(), &opts).unwrap();
@@ -353,7 +353,7 @@ fn static_prop_settings_per_preset() {
                     ..PlanOptions::default()
                 };
                 let plan = CompilePlan::preset(preset, &tools(), &vmf(), &opts).unwrap();
-                assert_eq!(has(&plan, "-StaticPropLighting"), lighting && preset == Preset::Final, "{preset:?}");
+                assert_eq!(has(&plan, "-StaticPropLighting"), lighting && preset != Preset::Draft, "{preset:?}");
                 assert_eq!(has(&plan, "-nostaticpropshadows"), !shadows, "{preset:?}");
                 assert_eq!(has(&plan, "-final"), preset == Preset::Final);
                 assert_eq!(has(&plan, "-fast"), preset == Preset::Draft);
@@ -375,9 +375,13 @@ fn static_prop_settings_per_preset() {
     let flags = fin(&forced);
     assert!(!flags.iter().any(|a| a.eq_ignore_ascii_case("-StaticPropLighting")), "{flags:?}");
     assert_eq!(flags.iter().filter(|a| a.eq_ignore_ascii_case("-nostaticpropshadows")).count(), 1, "{flags:?}");
-    let normal_lit = PlanOptions { rad_flags: forced.rad_flags.clone(), ..PlanOptions::default() };
-    let plan = CompilePlan::preset(Preset::Normal, &tools(), &vmf(), &normal_lit).unwrap();
-    assert_eq!(rad_flags_of(&plan), ["-StaticPropLighting"]);
+    let normal = CompilePlan::preset(Preset::Normal, &tools(), &vmf(), &PlanOptions::default()).unwrap();
+    assert_eq!(rad_flags_of(&normal), ["-StaticPropLighting"]);
+    let normal_off = CompilePlan::preset(Preset::Normal, &tools(), &vmf(), &off).unwrap();
+    assert!(!rad_flags_of(&normal_off).iter().any(|a| a.eq_ignore_ascii_case("-StaticPropLighting")));
+    let draft_lit = PlanOptions { rad_flags: forced.rad_flags.clone(), ..PlanOptions::default() };
+    let plan = CompilePlan::preset(Preset::Draft, &tools(), &vmf(), &draft_lit).unwrap();
+    assert!(rad_flags_of(&plan).iter().any(|a| a == "-StaticPropLighting"));
     let old: PlanOptions = serde_json::from_str(r#"{"threads":2}"#).unwrap();
     assert!(old.static_prop_lighting && old.static_prop_shadows && old.rad_flags.is_empty());
 }

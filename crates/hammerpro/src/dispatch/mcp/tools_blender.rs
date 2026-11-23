@@ -1,7 +1,7 @@
 use std::sync::atomic::AtomicBool;
 
 use hp_app::AppState;
-use hp_app::settings::BlenderFormat;
+use hp_app::settings::{BlenderFormat, BlenderScale};
 use hp_mcp::protocol::ToolResult;
 use hp_ui_entities::model_import::batch::{
     FileResult, Formats, GridOptions, Status, clamp_threads, collect_files, names_for, run, scan,
@@ -27,7 +27,11 @@ domain! { "blender";
         prop with a model is exported as its render mesh and comes back as a recompiled model. The files \
         go in the Hammer Pro working folder and Blender is started with a generated script that imports \
         them and loads the Hammer Pro Bridge add-on (an Update in Hammer Pro button, and an export on \
-        save). The format defaults to the setting blender.format (gltf, obj or fbx). With the live link \
+        save). The format defaults to the setting blender.format (gltf, obj or fbx). scale defaults to the \
+        setting blender.scale: meters (1 Blender meter is 39.37 Source units, so the geometry looks 0.0254 times \
+        smaller in Blender) or source_units (1:1, one Blender unit is one Source unit, so coordinates and sizes \
+        read the same as in Hammer Pro); the link remembers the scale it was sent with and the update undoes \
+        exactly that scale, so the geometry comes back at the same place and size. With the live link \
         on, each time Blender writes the same file Hammer Pro applies it. When Blender is not found the \
         file is still exported and the answer says so (set the program with blender_setup). Read the \
         state with blender_status and pull by hand with blender_pull.",
@@ -35,11 +39,12 @@ domain! { "blender";
             "format": choice("File format; default the blender.format setting.", &["gltf", "obj", "fbx"]),
             "launch": boolean("Start Blender (default true). False only writes the files."),
             "live_link": boolean("Watch the file for changes from Blender (default the blender.live_link setting)."),
+            "scale": choice("Scale of the exported geometry; default the blender.scale setting.", &["meters", "source_units"]),
         }, [];
     blender_status: Read, "Blender bridge status",
         "The state of the Blender bridge: whether Blender was found and where, the settings blender.path, \
-        blender.format and blender.live_link, the working folder, the current link (file, format, what it is \
-        linked to, pulls done), whether an update is running, and the last message.",
+        blender.format, blender.live_link and blender.scale, the working folder, the current link (file, format, \
+        scale, what it is linked to, pulls done), whether an update is running, and the last message.",
         {}, [];
     blender_pull: Edit, "Update from Blender",
         "Read the file of the Blender link now, without waiting for Blender to save it. Displacements: \
@@ -53,13 +58,14 @@ domain! { "blender";
         {}, [];
     blender_setup: Editor, "Set up the Blender bridge",
         "Change the Blender bridge settings and maintain it: path (the Blender program, checked: it must be a \
-        file named blender*, or a Blender folder), format, live_link, detect (search Blender again and report \
+        file named blender*, or a Blender folder), format, live_link, scale, detect (search Blender again and report \
         it), install_addon (write the Hammer Pro Bridge add-on into Blender's add-on folders, or into the \
         working folder when Blender has none) and stop_link (end the live link). Returns blender_status.",
         {
             "path": string("Path to the Blender program (blender.exe) or to its folder; empty text clears it."),
             "format": choice("Default export format.", &["gltf", "obj", "fbx"]),
             "live_link": boolean("Default for the live link."),
+            "scale": choice("Default export scale: meters (0.0254, the default) or source_units (1:1).", &["meters", "source_units"]),
             "detect": boolean("Search for Blender and report what is found."),
             "install_addon": boolean("Install the Hammer Pro Bridge add-on."),
             "stop_link": boolean("End the current live link."),
@@ -100,6 +106,10 @@ domain! { "blender";
         }, ["paths"];
 }
 
+fn scale_arg(a: &Args<'_>) -> R<Option<BlenderScale>> {
+    Ok(a.opt_enum("scale", &["meters", "source_units"])?.and_then(|s| BlenderScale::from_id(&s)))
+}
+
 fn format_arg(a: &Args<'_>) -> R<Option<BlenderFormat>> {
     Ok(a.opt_enum("format", &["gltf", "glb", "obj", "fbx"])?.and_then(|f| BlenderFormat::from_id(&f)))
 }
@@ -109,6 +119,7 @@ fn send_to_blender(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         format: format_arg(a)?,
         launch: a.opt_bool("launch")?.unwrap_or(true),
         live: a.opt_bool("live_link")?,
+        scale: scale_arg(a)?,
     };
     let r = blender::send(state, &opts)?;
     let found = r.blender.is_some();
@@ -119,6 +130,8 @@ fn send_to_blender(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         "triangles": r.triangles,
         "materials": r.materials,
         "live_link": r.live,
+        "scale": r.scale.id(),
+        "units_per_blender_unit": r.scale.units_per_blender_unit(),
         "blender_started": r.launched,
         "blender_already_open": r.reused,
         "blender": r.blender.map(|p| p.display().to_string()),
@@ -190,6 +203,10 @@ fn blender_setup(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     if let Some(live) = a.opt_bool("live_link")? {
         state.settings.blender.live_link = live;
         changed.push("live_link");
+    }
+    if let Some(scale) = scale_arg(a)? {
+        state.settings.blender.scale = scale;
+        changed.push("scale");
     }
     if !changed.is_empty() {
         state.settings_dirty = true;

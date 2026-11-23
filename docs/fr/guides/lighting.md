@@ -51,16 +51,16 @@ Dans **Fichier > Compiler > Compiler et lancer...** (`Ctrl+F9`), la ligne **Plag
 | **HDR** | Haute plage dynamique seule. |
 | **LDR + HDR** | Les deux (deux passes), nécessaire pour une publication. |
 
-**Final** calcule toujours les deux, **Brouillon** une seule. Le **Préréglage** fixe la qualité : Brouillon utilise `-bounce 1 -fast`, Final utilise `-final -StaticPropLighting`. Pour juger rapidement le vrai éclairage, compilez en **Normal** ; pour la publication, en **Final**.
+**Final** calcule toujours les deux, **Brouillon** une seule. Le **Préréglage** fixe la qualité : Brouillon utilise `-bounce 1 -fast`, Normal utilise `-StaticPropLighting`, Final utilise `-final -StaticPropLighting`. Pour juger rapidement le vrai éclairage, compilez en **Normal** ; pour la publication, en **Final**.
 
 ## Étape 6 : éclairer les props statiques
 
 Dans la section **Props statiques** de la fenêtre de compilation :
 
-- **Éclairer les props statiques (par sommet)** : quand la qualité le demande (Final), l'éclairage précalcule la lumière de chaque sommet des props statiques (`-StaticPropLighting`) : ombres et lumière rebondie sur les props. Lent sur les grandes maps. Décoché : le jeu éclaire lui-même les props.
+- **Éclairer les props statiques (par sommet)** : avec les qualités Normal et Final, l'éclairage précalcule la lumière de chaque sommet des props statiques (`-StaticPropLighting`) : ombres et lumière rebondie sur les props, aussi lumineux que les brushes de même matériau. Décoché : le jeu éclaire chaque prop depuis un seul point, souvent plus sombre que les murs voisins.
 - **Ombres des props statiques** : les props projettent des ombres dans l'éclairage. Décoché : aucune ombre de prop, et leurs modèles ne sont même pas chargés (`-nostaticpropshadows`), bien plus rapide sur les maps avec beaucoup de props.
 
-Vous pouvez aussi forcer `-StaticPropLighting` avec une compilation Normal via le menu des options d'éclairage. Chaque option est décrite dans [Options de compilation](../compiler/compile-options.md).
+Vous pouvez aussi forcer `-StaticPropLighting` avec une compilation Brouillon via le menu des options d'éclairage. Chaque option est décrite dans [Options de compilation](../compiler/compile-options.md).
 
 **Grands props avec une marche de lumière nette.** Le jeu éclaire un prop statique par sommet et mélange les couleurs sur chaque triangle, donc un grand prop avec peu de sommets montre une marche nette là où un bord d'ombre ou la limite du soleil tombe entre deux sommets éloignés. Depuis la 2.2.9, le compilateur mesure les ombres de chaque sommet d'un grand triangle en plusieurs points des triangles qui l'entourent (jusqu'à 6, 12 avec `-final` ; `-staticpropsamplescale`, aussi écrit `-StaticPropSamplingScale`, change ce nombre), donc les sommets proches d'un bord d'ombre reçoivent une lumière partielle et la marche devient un dégradé. Les petits props gardent un échantillon par sommet. L'aperçu précalculé montre les mêmes couleurs de sommets (elles viennent de la même étape d'éclairage). Pour un bord lisse sur un très grand prop, subdivisez son modèle là où tombe l'ombre (plus de sommets, des marches plus petites) ; GMod n'a pas de props avec lightmap. Un prop avec **Disable Vertex Lighting** est éclairé par le jeu à son origine.
 
@@ -104,7 +104,7 @@ Détails et différences voulues :
 
 **L'occlusion ambiante ne se voit pas dans l'aperçu précalculé.** C'est seulement une option de compilation : compilez la map et regardez dans la vue joueur ou en jeu.
 
-**Les props sont noirs ou plats.** Compilez en **Final** (ou forcez `-StaticPropLighting`) pour que les sommets des props reçoivent un éclairage précalculé, et gardez **Ombres des props statiques** activé.
+**Les props sont noirs, plats ou plus sombres que les murs.** Compilez en **Normal** ou **Final** avec **Éclairer les props statiques (par sommet)** coché (ou forcez `-StaticPropLighting`) pour que les sommets des props reçoivent un éclairage précalculé, et gardez **Ombres des props statiques** activé.
 
 ## Pages liées
 

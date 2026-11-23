@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::StepKind;
 use crate::log::Severity;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -97,6 +98,8 @@ pub enum Notice {
     PackWaiting,
     PackListUnavailable,
     FileOpFailed { path: PathBuf, error: String },
+    StepOutOfMemory { step: StepKind, bytes: u64 },
+    CrashedDuring { step: StepKind, lines: Vec<String> },
 }
 
 impl Notice {
@@ -130,7 +133,9 @@ impl Notice {
             | Notice::ExitCode { .. }
             | Notice::Terminated { .. }
             | Notice::StoppedOnLeak
-            | Notice::FileOpFailed { .. } => Severity::Error,
+            | Notice::FileOpFailed { .. }
+            | Notice::StepOutOfMemory { .. }
+            | Notice::CrashedDuring { .. } => Severity::Error,
         }
     }
 }
@@ -195,6 +200,19 @@ impl fmt::Display for Notice {
             Notice::PackWaiting => f.write_str("Waiting for the list of files to pack."),
             Notice::PackListUnavailable => f.write_str("The list of files to pack could not be prepared."),
             Notice::FileOpFailed { path, error } => write!(f, "Could not change {}: {error}", path.display()),
+            Notice::StepOutOfMemory { step, bytes } => write!(
+                f,
+                "The {} step ran out of memory: it asked for {} in one block. One part of the map is probably far bigger than the rest (a huge or broken face, a very fine lightmap scale, a corrupted displacement): run Check for problems, or send the compile log to the Hammer Pro developers.",
+                step.english(),
+                format_bytes(*bytes)
+            ),
+            Notice::CrashedDuring { step, lines } => {
+                write!(f, "The {} step stopped. Last lines of its log:", step.english())?;
+                for l in lines {
+                    write!(f, "\n  {l}")?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -206,9 +224,18 @@ pub fn format_bytes(bytes: u64) -> String {
         format!("{bytes} B")
     } else if b < KB * KB {
         format!("{:.1} KB", b / KB)
-    } else {
+    } else if b < KB * KB * KB {
         format!("{:.1} MB", b / (KB * KB))
+    } else {
+        format!("{:.2} GB", b / (KB * KB * KB))
     }
+}
+
+pub fn failed_allocation(line: &str) -> Option<u64> {
+    let rest = line.split("memory allocation of ").nth(1)?;
+    let (n, tail) = rest.split_once(' ')?;
+    tail.starts_with("bytes failed").then_some(())?;
+    n.parse().ok()
 }
 
 #[cfg(test)]
@@ -244,5 +271,19 @@ mod tests {
         );
         assert_eq!(format_bytes(12), "12 B");
         assert_eq!(format_bytes(3 * 1024 * 1024), "3.0 MB");
+        assert_eq!(format_bytes(5_001_064_080), "4.66 GB");
+    }
+
+    #[test]
+    fn failed_allocations_are_read_from_the_log() {
+        assert_eq!(failed_allocation("memory allocation of 5001064080 bytes failed"), Some(5_001_064_080));
+        assert_eq!(failed_allocation("x: memory allocation of 12 bytes failed (out)"), Some(12));
+        assert_eq!(failed_allocation("memory allocation of many bytes failed"), None);
+        assert_eq!(failed_allocation("Visibility 15%"), None);
+        let n = Notice::StepOutOfMemory { step: StepKind::Rad, bytes: 5_001_064_080 };
+        assert!(n.to_string().starts_with("The lighting step ran out of memory: it asked for 4.66 GB"), "{n}");
+        let n = Notice::CrashedDuring { step: StepKind::Bsp, lines: vec!["a".into(), "b".into()] };
+        assert_eq!(n.to_string(), "The BSP step stopped. Last lines of its log:\n  a\n  b");
+        assert_eq!(n.severity(), Severity::Error);
     }
 }

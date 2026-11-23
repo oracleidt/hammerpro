@@ -721,7 +721,8 @@ mod tests {
                 let rad = rad_of(&s);
                 let has = |f: &str| rad.iter().any(|a| a == f);
                 let fin = preset == CompilePresetSetting::Final;
-                assert_eq!(has("-StaticPropLighting"), lighting && fin, "{preset:?} {lighting} {shadows}");
+                let baked = preset != CompilePresetSetting::Draft;
+                assert_eq!(has("-StaticPropLighting"), lighting && baked, "{preset:?} {lighting} {shadows}");
                 assert_eq!(has("-nostaticpropshadows"), !shadows, "{preset:?} {lighting} {shadows}");
                 assert_eq!(has("-final"), fin);
             }

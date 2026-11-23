@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use crate::i18n::TrTable;
 
 pub const PREBUILT_PLATFORM: bool = cfg!(windows);
@@ -77,6 +79,7 @@ pub struct UpdateRuntime {
     pub cancel_requested: bool,
     pub done_bytes: u64,
     pub total_bytes: u64,
+    pub meter: RateMeter,
     pub manual: bool,
     pub api_overridden: bool,
 }
@@ -94,10 +97,89 @@ impl UpdateRuntime {
         matches!(self.status, UpdateStatus::Available | UpdateStatus::Failed)
             && self.latest.as_ref().is_some_and(|l| l.asset_name.is_some())
     }
+
+    pub fn speed(&self) -> Option<f64> {
+        self.meter.rate()
+    }
+
+    pub fn seconds_left(&self) -> Option<f64> {
+        let rate = self.meter.rate()?;
+        (self.total_bytes > 0).then(|| self.total_bytes.saturating_sub(self.done_bytes) as f64 / rate)
+    }
+}
+
+const RATE_STEP: Duration = Duration::from_millis(250);
+const RATE_WARMUP: Duration = Duration::from_secs(1);
+const RATE_SMOOTHING_SECONDS: f64 = 3.0;
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RateMeter {
+    started: Option<Instant>,
+    last: Option<(Instant, u64)>,
+    rate: f64,
+    measured: bool,
+}
+
+impl RateMeter {
+    pub fn reset(&mut self) {
+        *self = Self::default();
+    }
+
+    pub fn sample(&mut self, now: Instant, bytes: u64) {
+        let Some((at, before)) = self.last else {
+            self.started = Some(now);
+            self.last = Some((now, bytes));
+            return;
+        };
+        let dt = now.saturating_duration_since(at);
+        if dt < RATE_STEP {
+            return;
+        }
+        let seconds = dt.as_secs_f64();
+        let instant = bytes.saturating_sub(before) as f64 / seconds;
+        if self.measured {
+            let weight = 1.0 - (-seconds / RATE_SMOOTHING_SECONDS).exp();
+            self.rate += (instant - self.rate) * weight;
+        } else {
+            self.rate = instant;
+            self.measured = true;
+        }
+        self.last = Some((now, bytes));
+        if self.started.is_some_and(|s| now.saturating_duration_since(s) >= RATE_WARMUP) && self.rate > 0.0 {
+            self.started = None;
+        }
+    }
+
+    pub fn rate(&self) -> Option<f64> {
+        (self.measured && self.started.is_none() && self.rate > 0.0).then_some(self.rate)
+    }
 }
 
 pub fn megabytes(bytes: u64) -> String {
-    format!("{:.1}", bytes as f64 / (1024.0 * 1024.0))
+    decimal_megabytes(bytes as f64)
+}
+
+fn decimal_megabytes(bytes: f64) -> String {
+    let value = bytes / 1_000_000.0;
+    let text = format!("{value:.1}");
+    match crate::i18n::lang() {
+        crate::i18n::Lang::En => text,
+        _ => text.replace('.', ","),
+    }
+}
+
+pub fn speed_text(bytes_per_second: f64) -> String {
+    decimal_megabytes(bytes_per_second)
+}
+
+pub fn time_left_text(seconds: f64) -> String {
+    let total = seconds.max(1.0).round() as u64;
+    if total < 60 {
+        crate::tf!("update.seconds", total)
+    } else {
+        let minutes = total / 60;
+        crate::tf!("update.minutes", minutes, format!("{:02}", total % 60))
+    }
 }
 
 pub const TR: TrTable = &[
@@ -125,6 +207,11 @@ pub const TR: TrTable = &[
         "Téléchargement de la mise à jour : {0} Mo sur {1} Mo",
     ),
     ("update.downloading_unknown", "Downloading the update: {0} MB", "Téléchargement de la mise à jour : {0} Mo"),
+    ("update.speed", "{0} MB/s, about {1} left", "{0} Mo/s, environ {1} restantes"),
+    ("update.speed_only", "{0} MB/s", "{0} Mo/s"),
+    ("update.measuring", "Measuring the download speed...", "Mesure de la vitesse de téléchargement..."),
+    ("update.seconds", "{0} s", "{0} s"),
+    ("update.minutes", "{0} min {1} s", "{0} min {1} s"),
     (
         "update.ready",
         "The update is downloaded. Hammer Pro closes, installs it and starts again.",
@@ -242,3 +329,45 @@ pub const TR: TrTable = &[
         "L'adresse des mises à jour est remplacée par la variable d'environnement HP_UPDATE_API_URL (mode test).",
     ),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rate_meter_waits_then_smooths() {
+        let t0 = Instant::now();
+        let at = |ms: u64| t0 + Duration::from_millis(ms);
+        let mut m = RateMeter::default();
+        m.sample(at(0), 0);
+        m.sample(at(500), 1_000_000);
+        assert_eq!(m.rate(), None);
+        m.sample(at(1000), 2_000_000);
+        let first = m.rate().expect("rate after one second");
+        assert!((first - 2_000_000.0).abs() < 1.0, "{first}");
+        m.sample(at(1100), 2_000_000);
+        assert!((m.rate().unwrap() - first).abs() < 1.0, "samples closer than the step are ignored");
+        m.sample(at(2000), 2_000_000);
+        let slowed = m.rate().unwrap();
+        assert!(slowed < first && slowed > first * 0.5, "a stall lowers the rate smoothly: {slowed}");
+        m.reset();
+        assert_eq!(m.rate(), None);
+    }
+
+    #[test]
+    fn time_left_and_sizes_read_like_github() {
+        crate::i18n::register(TR);
+        crate::i18n::with_lang(crate::i18n::Lang::En, || {
+            assert_eq!(megabytes(43_456_789), "43.5");
+            let mut rt = UpdateRuntime { done_bytes: 3_000_000, total_bytes: 43_000_000, ..Default::default() };
+            let t0 = Instant::now();
+            rt.meter.sample(t0, 0);
+            rt.meter.sample(t0 + Duration::from_secs(1), 2_000_000);
+            assert_eq!(rt.seconds_left().map(|s| s.round()), Some(20.0));
+            assert_eq!(time_left_text(20.0), "20 s");
+            assert_eq!(time_left_text(125.4), "2 min 05 s");
+            assert_eq!(speed_text(2_000_000.0), "2.0");
+        });
+        crate::i18n::with_lang(crate::i18n::Lang::Fr, || assert_eq!(megabytes(43_456_789), "43,5"));
+    }
+}

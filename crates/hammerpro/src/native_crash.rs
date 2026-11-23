@@ -37,6 +37,7 @@ static FROZEN_FOR_MS: AtomicU64 = AtomicU64::new(0);
 static CONTEXT: Mutex<String> = Mutex::new(String::new());
 static ACTIVITY: Mutex<String> = Mutex::new(String::new());
 static LAST_FREEZE: Mutex<String> = Mutex::new(String::new());
+static COMPILE_STEP: OnceLock<&'static str> = OnceLock::new();
 
 thread_local! {
     static IS_MAIN: Cell<bool> = const { Cell::new(false) };
@@ -104,6 +105,16 @@ fn failed(size: usize, again: impl Fn() -> *mut u8) -> *mut u8 {
         }
     }
     let frames = current_stack();
+    if DIR.get().is_none() {
+        if let Some(step) = COMPILE_STEP.get()
+            && !IN_REPORT.swap(true, Ordering::AcqRel)
+        {
+            for line in compile_out_of_memory_lines(step, size, &symbolize(&frames)) {
+                crate::bspc_cli::say_now(&line);
+            }
+        }
+        return std::ptr::null_mut();
+    }
     fatal(
         &format!("memory allocation of {size} bytes failed (the system is out of memory)"),
         Native { frames, ..Native::default() },
@@ -168,6 +179,31 @@ fn read(slot: &Mutex<String>) -> String {
 
 pub fn set_context(text: &str) {
     replace(&CONTEXT, text);
+}
+
+pub fn mark_compile_step(step: &'static str) {
+    let _ = COMPILE_STEP.set(step);
+}
+
+pub fn compile_out_of_memory_lines(step: &str, size: usize, frames: &[String]) -> Vec<String> {
+    let gb = size as f64 / f64::from(1u32 << 30);
+    let mut out = vec![format!(
+        "Error: out of memory: the {step} step asked for {gb:.2} GB in one block ({size} bytes) and Windows could not give it."
+    )];
+    let ours: Vec<&str> = frames
+        .iter()
+        .map(String::as_str)
+        .filter(|f| f.starts_with("hp_") && !f.contains("native_crash"))
+        .take(6)
+        .collect();
+    if !ours.is_empty() {
+        out.push(format!("Error: out of memory in: {}", ours.join(" < ")));
+    }
+    out.push(
+        "Error: one part of the map is probably far bigger than the rest (a huge or broken face, a very fine lightmap scale, a corrupted displacement) or the computer is short of memory. Send this compile log to the Hammer Pro developers so the step can be fixed."
+            .to_owned(),
+    );
+    out
 }
 
 pub fn set_activity(text: &str) {
@@ -1129,6 +1165,22 @@ mod tests {
         assert!(!q.is_null());
         unsafe { GuardedAlloc.dealloc(q, Layout::from_size_align(128, 8).unwrap()) };
         assert!(!emergency_wanted());
+    }
+
+    #[test]
+    fn a_compile_step_out_of_memory_names_the_step_size_and_place() {
+        let frames = vec![
+            "alloc::raw_vec::finish_grow+0x10".to_owned(),
+            "hp_raytrace::gpu::tables+0x20".to_owned(),
+            "hp_bspc::rad::raytrace::bake_lightmaps+0x30".to_owned(),
+        ];
+        let lines = compile_out_of_memory_lines("lighting", 5_001_064_080, &frames);
+        assert!(lines[0].contains("the lighting step asked for 4.66 GB in one block (5001064080 bytes)"), "{lines:?}");
+        assert_eq!(
+            lines[1],
+            "Error: out of memory in: hp_raytrace::gpu::tables+0x20 < hp_bspc::rad::raytrace::bake_lightmaps+0x30"
+        );
+        assert_eq!(compile_out_of_memory_lines("BSP and visibility", 64, &[]).len(), 2);
     }
 
     #[test]

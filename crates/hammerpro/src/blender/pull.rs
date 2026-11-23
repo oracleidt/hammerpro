@@ -48,6 +48,7 @@ pub fn job_of(state: &AppState) -> Result<PullJob, String> {
         ..ConvertOptions::default()
     };
     convert.import.center = false;
+    convert.import.scale = link.scale.units_per_blender_unit() / hp_meshio::UNITS_PER_METER;
     if let BlenderTarget::Prop { props, .. } = &link.target {
         let scene = state.doc.scene();
         let any_physics = props
@@ -438,6 +439,7 @@ mod tests {
             target: BlenderTarget::Brushes { solids: vec![first] },
             baseline: None,
             candidate: None,
+            scale: hp_app::settings::BlenderScale::Meters,
             pulls: 0,
             live: true,
         });

@@ -8,6 +8,10 @@ pub fn stop() {
     imp::stop();
 }
 
+pub fn play_overlay(sound: &Sound, volume: f32) -> bool {
+    imp::play_overlay(sound, volume)
+}
+
 pub fn is_playing() -> bool {
     imp::is_playing()
 }
@@ -30,6 +34,7 @@ mod imp {
 
     enum Cmd {
         Play { rate: u32, channels: u16, samples: Vec<f32>, looped: bool, volume: f32 },
+        Overlay { rate: u32, channels: u16, samples: Vec<f32>, volume: f32 },
         Stop,
     }
 
@@ -81,6 +86,31 @@ mod imp {
         ok
     }
 
+    pub(super) fn play_overlay(sound: &Sound, volume: f32) -> bool {
+        if sound.channels == 0 || sound.rate == 0 || sound.samples.is_empty() {
+            return false;
+        }
+        let volume = if volume.is_finite() { volume.clamp(0.0, 1.0) } else { 1.0 };
+        send(Cmd::Overlay { rate: sound.rate, channels: sound.channels, samples: sound.samples.clone(), volume })
+    }
+
+    fn open_output(output: &mut Option<rodio::MixerDeviceSink>) -> bool {
+        if output.is_some() {
+            return true;
+        }
+        match rodio::DeviceSinkBuilder::open_default_sink() {
+            Ok(mut stream) => {
+                stream.log_on_drop(false);
+                *output = Some(stream);
+                true
+            }
+            Err(e) => {
+                log::warn!("no audio output for the sound editor: {e}");
+                false
+            }
+        }
+    }
+
     pub(super) fn stop() {
         if SENDER.get().is_some() {
             send(Cmd::Stop);
@@ -120,14 +150,17 @@ mod imp {
     fn run(rx: Receiver<Cmd>) {
         let mut output: Option<rodio::MixerDeviceSink> = None;
         let mut sink: Option<rodio::Player> = None;
+        let mut overlays: Vec<rodio::Player> = Vec::new();
         let mut idle_since: Option<Instant> = None;
         loop {
-            let received = match wait_for(sink.is_some(), output.is_some(), idle_since) {
+            let busy = sink.is_some() || !overlays.is_empty();
+            let received = match wait_for(busy, output.is_some(), idle_since) {
                 None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
                 Some(wait) => rx.recv_timeout(wait),
             };
             if matches!(received, Err(RecvTimeoutError::Timeout))
                 && sink.is_none()
+                && overlays.is_empty()
                 && idle_since.is_some_and(|t| t.elapsed() >= RELEASE_DEVICE_AFTER)
             {
                 output = None;
@@ -139,18 +172,9 @@ mod imp {
                     if let Some(s) = sink.take() {
                         s.stop();
                     }
-                    if output.is_none() {
-                        match rodio::DeviceSinkBuilder::open_default_sink() {
-                            Ok(mut stream) => {
-                                stream.log_on_drop(false);
-                                output = Some(stream);
-                            }
-                            Err(e) => {
-                                log::warn!("no audio output for the sound editor: {e}");
-                                PLAYING.store(false, Ordering::Relaxed);
-                                continue;
-                            }
-                        }
+                    if !open_output(&mut output) {
+                        PLAYING.store(false, Ordering::Relaxed);
+                        continue;
                     }
                     let Some(stream) = &output else { continue };
                     let (Some(ch), Some(rate)) = (NonZero::new(channels), NonZero::new(rate)) else {
@@ -167,6 +191,17 @@ mod imp {
                     }
                     sink = Some(s);
                 }
+                Ok(Cmd::Overlay { rate, channels, samples, volume }) => {
+                    if let (true, Some(ch), Some(rate)) =
+                        (open_output(&mut output), NonZero::new(channels), NonZero::new(rate))
+                        && let Some(stream) = &output
+                    {
+                        let s = rodio::Player::connect_new(stream.mixer());
+                        s.set_volume(volume);
+                        s.append(rodio::buffer::SamplesBuffer::new(ch, rate, samples));
+                        overlays.push(s);
+                    }
+                }
                 Ok(Cmd::Stop) => {
                     if let Some(s) = sink.take() {
                         s.stop();
@@ -179,7 +214,8 @@ mod imp {
                 sink = None;
                 PLAYING.store(false, Ordering::Relaxed);
             }
-            if sink.is_some() {
+            overlays.retain(|o| !o.empty());
+            if sink.is_some() || !overlays.is_empty() {
                 idle_since = None;
             } else if idle_since.is_none() {
                 idle_since = Some(Instant::now());
@@ -197,6 +233,10 @@ mod imp {
     }
 
     pub(super) fn stop() {}
+
+    pub(super) fn play_overlay(_sound: &Sound, _volume: f32) -> bool {
+        false
+    }
 
     pub(super) fn is_playing() -> bool {
         false

@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use hp_app::runtime::{BlenderLink, BlenderNote, FileStamp, file_stamp};
-use hp_app::settings::{BlenderFormat, BlenderSettings};
+use hp_app::settings::{BlenderFormat, BlenderScale, BlenderSettings};
 use hp_app::{AppState, t, tf};
 use hp_meshio::export::ExportFormat;
 
@@ -33,6 +33,7 @@ pub struct SendOptions {
     pub format: Option<BlenderFormat>,
     pub launch: bool,
     pub live: Option<bool>,
+    pub scale: Option<BlenderScale>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -43,6 +44,7 @@ pub struct SendReport {
     pub triangles: usize,
     pub materials: usize,
     pub live: bool,
+    pub scale: BlenderScale,
     pub launched: bool,
     pub reused: bool,
     pub blender: Option<PathBuf>,
@@ -104,10 +106,16 @@ pub fn send(state: &mut AppState, opts: &SendOptions) -> Result<SendReport, Stri
     let source = source::selection_source(state)?;
     let format = opts.format.unwrap_or(state.settings.blender.format);
     let live = opts.live.unwrap_or(state.settings.blender.live_link);
+    let scale = opts.scale.unwrap_or(state.settings.blender.scale);
     let work = work_dir(state);
     std::fs::create_dir_all(&work).map_err(|e| format!("{}: {e}", work.display()))?;
     clean_work_dir(&work);
-    let files = hp_meshio::export::export(&source.model, export_format(format), &source.stem);
+    let files = hp_meshio::export::export_scaled(
+        &source.model,
+        export_format(format),
+        &source.stem,
+        scale.units_per_blender_unit(),
+    );
     let mut main = work.clone();
     for f in files.iter().skip(1) {
         write_atomic(&work, &f.name, &f.data)?;
@@ -115,7 +123,7 @@ pub fn send(state: &mut AppState, opts: &SendOptions) -> Result<SendReport, Stri
     if let Some(first) = files.first() {
         main = write_atomic(&work, &first.name, &first.data)?;
     }
-    let (startup, link_file) = addon::write_working_files(&work, &main, format, true)?;
+    let (startup, link_file) = addon::write_working_files(&work, &main, format, true, scale)?;
     let kind = source.target.id();
     let triangles = source.model.triangles.len();
     let materials = source.model.materials.len();
@@ -127,6 +135,7 @@ pub fn send(state: &mut AppState, opts: &SendOptions) -> Result<SendReport, Stri
         candidate: None,
         pulls: 0,
         live,
+        scale,
     });
     let exe = resolve_exe(state);
     let mut launched = false;
@@ -158,7 +167,19 @@ pub fn send(state: &mut AppState, opts: &SendOptions) -> Result<SendReport, Stri
         (None, false) => tf!("blender.exported", main.display()),
     };
     state.runtime.blender.note = Some(BlenderNote { ok: problem.is_none(), text });
-    Ok(SendReport { file: main, format, kind, triangles, materials, live, launched, reused, blender: exe, problem })
+    Ok(SendReport {
+        file: main,
+        format,
+        kind,
+        triangles,
+        materials,
+        live,
+        scale,
+        launched,
+        reused,
+        blender: exe,
+        problem,
+    })
 }
 
 pub fn relaunch(state: &mut AppState) -> Result<(), String> {
@@ -245,6 +266,8 @@ pub fn status_json(state: &AppState) -> serde_json::Value {
         "configured_path": s.path,
         "format": s.format.id(),
         "live_link_setting": s.live_link,
+        "scale": s.scale.id(),
+        "units_per_blender_unit": s.scale.units_per_blender_unit(),
         "working_folder": work_dir(state).display().to_string(),
         "link": rt.link.as_ref().map(|l| serde_json::json!({
             "file": l.file.display().to_string(),
@@ -256,6 +279,8 @@ pub fn status_json(state: &AppState) -> serde_json::Value {
                 hp_app::runtime::BlenderTarget::Displacements { faces } => faces.len(),
             },
             "live": l.live,
+            "scale": l.scale.id(),
+            "units_per_blender_unit": l.scale.units_per_blender_unit(),
             "pulls": l.pulls,
             "file_exists": l.file.is_file(),
         })),
@@ -280,6 +305,7 @@ mod tests {
             candidate: None,
             pulls: 0,
             live: true,
+            scale: BlenderScale::Meters,
         }
     }
 
@@ -309,9 +335,12 @@ mod tests {
         let ids: Vec<hp_editor::ObjRef> =
             state.doc.scene().solids().keys().take(1).map(|id| hp_editor::ObjRef::Solid(*id)).collect();
         state.doc.select(&ids, hp_editor::SelectOp::Replace);
-        let report =
-            send(&mut state, &SendOptions { format: Some(BlenderFormat::Obj), launch: false, live: Some(true) })
-                .expect("send");
+        let report = send(
+            &mut state,
+            &SendOptions { format: Some(BlenderFormat::Obj), launch: false, live: Some(true), scale: None },
+        )
+        .expect("send");
+        assert_eq!(report.scale, BlenderScale::Meters);
         assert_eq!(report.kind, "brushes");
         assert!(report.file.is_file() && report.file.extension().is_some_and(|e| e == "obj"));
         assert!(report.triangles > 0 && !report.launched);
@@ -320,6 +349,9 @@ mod tests {
         assert!(work.join("startup.py").is_file());
         let json = status_json(&state);
         assert_eq!(json["link"]["target"], "brushes");
+        assert_eq!(json["link"]["scale"], "meters");
+        let link_text = std::fs::read_to_string(work.join("link.json")).expect("link.json");
+        assert!(link_text.contains("\"scale\":\"meters\""), "{link_text}");
         assert!(stop(&mut state));
         assert!(!stop(&mut state));
         state.doc.select(&[], hp_editor::SelectOp::Replace);

@@ -118,8 +118,13 @@ pub const TR: TrTable = &[
     ),
     (
         "propper.too_many_pieces",
-        "The model would make {0} brushes (at most {1}): it is too detailed to become brushes.",
-        "Le modèle donnerait {0} brushes (au plus {1}) : il est trop détaillé pour devenir des brushes.",
+        "The model would make {0} brushes, more than the {1} one model may become (a whole Source map holds at most {2}): simplify the model, convert it in parts, or keep it as a prop.",
+        "Le modèle donnerait {0} brushes, plus que les {1} qu'un modèle peut devenir (une carte Source entière en contient au plus {2}) : simplifiez le modèle, convertissez-le en plusieurs parties, ou gardez-le en prop.",
+    ),
+    (
+        "propper.map_budget",
+        "The map now has {0} brushes, more than the {1} a Source map can compile: remove or simplify brushes before compiling.",
+        "La carte a maintenant {0} brushes, plus que les {1} qu'une carte Source peut compiler : supprimez ou simplifiez des brushes avant de compiler.",
     ),
     (
         "propper.no_brush",

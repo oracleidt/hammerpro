@@ -104,6 +104,8 @@ fn start_inner(plan: CompilePlan, workdir: &Path, waker: Option<Waker>) -> Compi
         leaked: false,
         step_leak_text: false,
         step_stats: Vec::new(),
+        step_tail: std::collections::VecDeque::new(),
+        step_failed_alloc: None,
     };
     let running_flag = Arc::clone(&running);
     let spawned = std::thread::Builder::new().name("hp-compile".to_owned()).spawn(move || {
@@ -162,7 +164,11 @@ struct Worker {
     leaked: bool,
     step_leak_text: bool,
     step_stats: Vec<String>,
+    step_tail: std::collections::VecDeque<String>,
+    step_failed_alloc: Option<u64>,
 }
+
+const CRASH_TAIL_LINES: usize = 8;
 
 impl Worker {
     fn emit(&self, event: CompileEvent) {
@@ -572,6 +578,8 @@ impl Worker {
     fn run_process(&mut self, index: usize, step: &Step) -> Outcome {
         self.step_leak_text = false;
         self.step_stats.clear();
+        self.step_tail.clear();
+        self.step_failed_alloc = None;
         let mut cmd = Command::new(&step.exe);
         cmd.args(&step.args)
             .current_dir(step.workdir.as_deref().unwrap_or(&self.workdir))
@@ -664,6 +672,7 @@ impl Worker {
         }
         let program =
             step.exe.file_name().map_or_else(|| step.exe.to_string_lossy(), |n| n.to_string_lossy()).into_owned();
+        let crashed = outcome.exit_code.is_none_or(|c| crash_kind(c).is_some());
         let notice = match outcome.exit_code {
             Some(code) => match crash_kind(code) {
                 Some(kind) => Notice::Crashed { program, code, kind },
@@ -672,6 +681,29 @@ impl Worker {
             None => Notice::Terminated { program },
         };
         self.notice(index, notice);
+        if let Some(bytes) = self.step_failed_alloc {
+            self.notice(index, Notice::StepOutOfMemory { step: step.kind, bytes });
+        }
+        if (crashed || self.step_failed_alloc.is_some()) && !self.step_tail.is_empty() {
+            self.notice(
+                index,
+                Notice::CrashedDuring { step: step.kind, lines: self.step_tail.iter().cloned().collect() },
+            );
+        }
+    }
+
+    fn remember_line(&mut self, line: &str) {
+        if let Some(bytes) = crate::notice::failed_allocation(line) {
+            self.step_failed_alloc = Some(bytes);
+        }
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        if self.step_tail.len() >= CRASH_TAIL_LINES {
+            self.step_tail.pop_front();
+        }
+        self.step_tail.push_back(trimmed.chars().take(400).collect());
     }
 
     fn handle_reader_msg(&mut self, index: usize, kind: StepKind, msg: ReaderMsg, open: &mut usize) {
@@ -681,6 +713,7 @@ impl Worker {
                 self.emit(CompileEvent::Progress { step: index, fraction, phase });
             }
             ReaderMsg::Piece(Piece::Line(line)) => {
+                self.remember_line(&line);
                 let (severity, location) = parse_log_line(&line);
                 if kind == StepKind::Bsp && is_leak_line(&line) {
                     self.step_leak_text = true;
@@ -869,6 +902,48 @@ mod tests {
             })
             .collect();
         assert_eq!(started, vec![0, 2]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_crash_names_the_step_its_last_lines_and_the_failed_allocation() {
+        let dir = scratch("runner_oom");
+        let mut plan = CompilePlan::new(dir.join("m.vmf"));
+        let mut step = shell_step(
+            "echo Building lightmaps && echo. && echo memory allocation of 5001064080 bytes failed && exit /b -1073740791",
+        );
+        step.kind = StepKind::Rad;
+        plan.steps.push(step);
+        let events = collect(start(plan, &dir));
+        assert_eq!(finished(&events), (false, false, false));
+        let n = notices(&events);
+        assert!(
+            n.iter().any(|(_, n)| matches!(n, Notice::Crashed { kind: crate::notice::CrashKind::Aborted, .. })),
+            "{n:?}"
+        );
+        assert!(
+            n.iter()
+                .any(|(s, n)| *s == 0
+                    && matches!(n, Notice::StepOutOfMemory { step: StepKind::Rad, bytes: 5_001_064_080 })),
+            "{n:?}"
+        );
+        let tail = n.iter().find_map(|(_, n)| match n {
+            Notice::CrashedDuring { step: StepKind::Rad, lines } => Some(lines.clone()),
+            _ => None,
+        });
+        assert_eq!(
+            tail,
+            Some(vec!["Building lightmaps".to_owned(), "memory allocation of 5001064080 bytes failed".to_owned()])
+        );
+    }
+
+    #[test]
+    fn a_plain_failure_adds_no_crash_tail() {
+        let dir = scratch("runner_plain_fail");
+        let mut plan = CompilePlan::new(dir.join("m.vmf"));
+        plan.steps.push(shell_step("echo some line && exit 2"));
+        let n = notices(&collect(start(plan, &dir)));
+        assert!(!n.iter().any(|(_, n)| matches!(n, Notice::CrashedDuring { .. } | Notice::StepOutOfMemory { .. })));
     }
 
     #[test]

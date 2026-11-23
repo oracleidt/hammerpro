@@ -73,6 +73,17 @@ pub(crate) fn notice_text(n: &Notice) -> String {
         Notice::PackWaiting => t!("compile.notice.pack_waiting").to_owned(),
         Notice::PackListUnavailable => t!("compile.notice.pack_list_unavailable").to_owned(),
         Notice::FileOpFailed { path, error } => tf!("compile.notice.file_op_failed", path.display(), error),
+        Notice::StepOutOfMemory { step, bytes } => {
+            tf!("compile.notice.step_out_of_memory", super::step_name(*step), hp_compile::format_bytes(*bytes))
+        }
+        Notice::CrashedDuring { step, lines } => {
+            let mut text = tf!("compile.notice.crashed_during", super::step_name(*step));
+            for l in lines {
+                text.push_str("\n  ");
+                text.push_str(l);
+            }
+            text
+        }
     }
 }
 
@@ -147,6 +158,8 @@ mod tests {
             Notice::QueryFailed { error: "e".into() },
             Notice::Crashed { program: "hammerpro.exe".into(), code: -1_073_741_819, kind: CrashKind::AccessViolation },
             Notice::ExitCode { program: "hammerpro.exe".into(), code: 1 },
+            Notice::StepOutOfMemory { step: hp_compile::StepKind::Rad, bytes: 5_001_064_080 },
+            Notice::CrashedDuring { step: hp_compile::StepKind::Bsp, lines: vec!["a".into()] },
             Notice::Terminated { program: "hammerpro.exe".into() },
             Notice::NoPreviousBsp { bsp: p.clone() },
             Notice::StoppedOnLeak,

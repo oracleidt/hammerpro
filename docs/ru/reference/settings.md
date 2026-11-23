@@ -172,6 +172,8 @@
 | `bsp_flag_choices`, `rad_flag_choices` | `{}` | Флаги принудительно включаются и выключаются в меню параметров: flag = `{ on = true, value = "4" }`. См. [Параметры компиляции](../compiler/compile-options.md). |
 | `save_before_compile` | `false` | Сохраните карту перед компиляцией (при компиляции всегда используется снимок и никогда не затрагивается файл карты). |
 | `load_pointfile_on_leak` | `true` | Загрузите путь утечки при утечке карты. |
+| `finish_sound` | `true` | Короткий звон в конце компиляции (яркий при успехе, мягкий низкий при ошибке или утечке, ничего при отмене). |
+| `finish_sound_volume` | `0.6` | Громкость этого звука, от 0 до 1. |
 | `stop_on_leak` | `true` | Остановитесь после геометрии, когда карта потечет. |
 | `compile_hidden` | `false` | Компилируйте также объекты, скрытые в редакторе. |
 | `compile_cordon_only` | `true` | При активном кордоне скомпилируйте только оцепленную территорию (как `<map>_cordon`). |
@@ -181,7 +183,7 @@
 | `progressive` | `false` | Играйте сейчас: скомпилируйте «Драфт», запустите, затем доделайте освещение в фоновом режиме и поменяйте карту местами. |
 | `progressive_preset` | `"Normal"` | Качество фонового освещения (нет управления в окне). |
 | `history` | `true` | Сохраняйте историю времени для каждой карты. |
-| `static_prop_lighting` | `true` | Разрешите `-StaticPropLighting`, когда этого требует качество. |
+| `static_prop_lighting` | `true` | Разрешите `-StaticPropLighting` в качествах Normal и Final. |
 | `static_prop_shadows` | `true` | Статические пропы отбрасывают тени (отключены добавления `-nostaticpropshadows`). |
 | `raytracing` | `on = false`, `quality = "Normal"`, `device = "Auto"`, `seed = 0`, `bump = true` | Трассировка лучей этапа освещения (`[compile.raytracing]`): `on`, `quality` (`Draft`, `Normal`, `Final`, `Optimal`), `device` (`Auto`, `Gpu`, `Cpu`), `seed`, `bump` `config` (`Default`, `Optimal`, `Custom`), эффекты `ao`, `ao_strength`, `ao_radius`, `shafts`, `shaft_intensity`, `shaft_length`, `shaft_softness`, `shaft_light_color`, `shaft_source` (`Sun`, `SunAndSpots`), `shaft_dust`, `glow`, `glow_intensity`, `auto_cubemaps`, `tonemap`, `color_correction`, `preview_gpu_share` (доля видеокарты предпросмотра трассировки лучей, 0: авто, иначе от 0.1 до 1; никогда не попадает в компиляцию) и параметры `min_samples`, `max_samples`, `bounces`, `threshold`, `light_size`, `sun_angle`, `sky_samples`, `denoise`, `supersample`, `prop_samples`, `chunk` (отсутствует: автоматически, значение уровня качества). См. [Трассировка лучей](../compiler/compile-options.md#трассировка-лучей). |
 | `expert` | `false` | Экспертный режим: запустить выбранный профиль вместо предустановленного. |

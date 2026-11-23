@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use glam::DVec3;
 use hp_app::AppState;
 use hp_app::runtime::BlenderTarget;
-use hp_app::settings::BlenderFormat;
+use hp_app::settings::{BlenderFormat, BlenderScale};
 use hp_editor::{FaceRef, ObjRef, SelectOp};
 
 use super::{SendOptions, find, pull, send};
@@ -41,6 +41,12 @@ for obj in bpy.data.objects:
     mesh.vertices[best].co = matrix.inverted() @ target
     mesh.update()
     moved += 1
+corners = [o.matrix_world @ v.co for o in bpy.data.objects if o.type == "MESH" for v in o.data.vertices]
+if corners:
+    print("E2E bounds %.4f %.4f %.4f %.4f %.4f %.4f" % (
+        min(c.x for c in corners), min(c.y for c in corners), min(c.z for c in corners),
+        max(c.x for c in corners), max(c.y for c in corners), max(c.z for c in corners),
+    ))
 print("E2E moved", moved, "objects", [o.name for o in bpy.data.objects])
 bpy.ops.hammerpro.update()
 print("E2E exported", link["file"])
@@ -103,11 +109,21 @@ fn positions(state: &AppState, f: FaceRef) -> Vec<DVec3> {
     state.doc.scene().solid(f.solid).and_then(|n| n.disp_mesh(f.side)).map(|m| m.positions.clone()).unwrap_or_default()
 }
 
+fn blender_bounds(log: &str) -> Option<(DVec3, DVec3)> {
+    let line = log.lines().find(|l| l.starts_with("E2E bounds "))?;
+    let v: Vec<f64> = line["E2E bounds ".len()..].split_whitespace().filter_map(|t| t.parse().ok()).collect();
+    (v.len() == 6).then(|| (DVec3::new(v[0], v[1], v[2]), DVec3::new(v[3], v[4], v[5])))
+}
+
 fn round_trip_displacements(format: BlenderFormat) {
+    round_trip_displacements_at(format, BlenderScale::Meters);
+}
+
+fn round_trip_displacements_at(format: BlenderFormat, scale: BlenderScale) {
     if find::resolve("").is_none() {
         return;
     }
-    let work = scratch(format.id());
+    let work = scratch(&format!("{}_{}", format.id(), scale.id()));
     let (mut state, faces) = displacement_state(&work);
     let before: Vec<Vec<DVec3>> = faces.iter().map(|f| positions(&state, *f)).collect();
     let alphas_before = state
@@ -116,15 +132,18 @@ fn round_trip_displacements(format: BlenderFormat) {
         .solid(faces[0].solid)
         .and_then(|n| n.solid.sides[faces[0].side].disp.as_ref().map(|d| d.alphas.clone()));
     let report =
-        send(&mut state, &SendOptions { format: Some(format), launch: false, live: Some(true) }).expect("send");
+        send(&mut state, &SendOptions { format: Some(format), launch: false, live: Some(true), scale: Some(scale) })
+            .expect("send");
     assert_eq!(report.kind, "displacements", "{format:?}");
+    assert_eq!(report.scale, scale);
     let BlenderTarget::Displacements { faces: sent } =
         state.runtime.blender.link.as_ref().expect("link").target.clone()
     else {
         panic!("displacements")
     };
     assert_eq!(sent.len(), 2);
-    let log = blender_headless(&work.join("work"), 0.2, false).unwrap_or_else(|e| panic!("blender: {e}"));
+    let raise = 0.2 * hp_meshio::UNITS_PER_METER / scale.units_per_blender_unit();
+    let log = blender_headless(&work.join("work"), raise, false).unwrap_or_else(|e| panic!("blender: {e}"));
     assert!(log.contains("E2E moved 2"), "{log}");
     let job = pull::job_of(&state).expect("job");
     let outcome = pull::compute(job).expect("compute");
@@ -175,6 +194,78 @@ fn displacements_round_trip_through_real_blender_as_fbx() {
 }
 
 #[test]
+fn displacements_round_trip_at_source_scale_as_glb() {
+    round_trip_displacements_at(BlenderFormat::Gltf, BlenderScale::SourceUnits);
+}
+
+#[test]
+fn displacements_round_trip_at_source_scale_as_obj() {
+    round_trip_displacements_at(BlenderFormat::Obj, BlenderScale::SourceUnits);
+}
+
+#[test]
+fn displacements_round_trip_at_source_scale_as_fbx() {
+    round_trip_displacements_at(BlenderFormat::Fbx, BlenderScale::SourceUnits);
+}
+
+fn solid_bounds(state: &AppState, ids: &[u32]) -> (DVec3, DVec3) {
+    let mut lo = DVec3::splat(f64::MAX);
+    let mut hi = DVec3::splat(f64::MIN);
+    for id in ids {
+        let Some(b) = state.doc.scene().solid_bounds(*id) else { continue };
+        lo = lo.min(b.min);
+        hi = hi.max(b.max);
+    }
+    (lo, hi)
+}
+
+fn brushes_round_trip_keep_place_and_size(format: BlenderFormat, scale: BlenderScale) {
+    if find::resolve("").is_none() {
+        return;
+    }
+    let work = scratch(&format!("brushes_{}_{}", format.id(), scale.id()));
+    let mut state = hp_app::testing::test_state();
+    state.runtime.blender.work_dir = Some(work.join("work"));
+    let id =
+        *state.doc.scene().solids().iter().find(|(_, n)| n.solid.sides.len() == 6).map(|(id, _)| id).expect("a box");
+    let (lo, hi) = solid_bounds(&state, &[id]);
+    state.doc.select(&[ObjRef::Solid(id)], SelectOp::Replace);
+    send(&mut state, &SendOptions { format: Some(format), launch: false, live: Some(true), scale: Some(scale) })
+        .expect("send");
+    let log = blender_headless(&work.join("work"), 0.0, true).unwrap_or_else(|e| panic!("blender: {e}"));
+    let (blo, bhi) = blender_bounds(&log).unwrap_or_else(|| panic!("no bounds: {log}"));
+    let k = 1.0 / scale.units_per_blender_unit();
+    let size = (hi - lo) * k;
+    let bsize = bhi - blo;
+    assert!((size - bsize).abs().max_element() < 1e-2, "{format:?} {scale:?}: size in Blender {bsize} != {size}");
+    if format == BlenderFormat::Gltf {
+        assert!(
+            (blo - lo * k).abs().max_element() < 1e-2,
+            "{format:?} {scale:?}: place in Blender {blo} != {}",
+            lo * k
+        );
+    }
+    let outcome = pull::compute(pull::job_of(&state).expect("job")).expect("compute");
+    let report = pull::apply(&mut state, outcome).expect("apply");
+    assert_eq!(report.kind, "brushes", "{}", report.text);
+    let (nlo, nhi) = solid_bounds(&state, &report.solids);
+    assert!(
+        (nlo - lo).abs().max_element() < 0.02 && (nhi - hi).abs().max_element() < 0.02,
+        "{format:?} {scale:?}: back at {nlo} {nhi}, sent {lo} {hi}"
+    );
+    let _ = std::fs::remove_dir_all(&work);
+}
+
+#[test]
+fn brushes_come_back_in_place_at_both_scales() {
+    for format in [BlenderFormat::Gltf, BlenderFormat::Obj, BlenderFormat::Fbx] {
+        for scale in BlenderScale::ALL {
+            brushes_round_trip_keep_place_and_size(format, scale);
+        }
+    }
+}
+
+#[test]
 fn brushes_round_trip_through_real_blender() {
     if find::resolve("").is_none() {
         return;
@@ -185,8 +276,11 @@ fn brushes_round_trip_through_real_blender() {
     let id =
         *state.doc.scene().solids().iter().find(|(_, n)| n.solid.sides.len() == 6).map(|(id, _)| id).expect("a box");
     state.doc.select(&[ObjRef::Solid(id)], SelectOp::Replace);
-    let report = send(&mut state, &SendOptions { format: Some(BlenderFormat::Gltf), launch: false, live: Some(true) })
-        .expect("send");
+    let report = send(
+        &mut state,
+        &SendOptions { format: Some(BlenderFormat::Gltf), launch: false, live: Some(true), scale: None },
+    )
+    .expect("send");
     assert_eq!(report.kind, "brushes");
     let log = blender_headless(&work.join("work"), 0.0, true).unwrap_or_else(|e| panic!("blender: {e}"));
     assert!(log.contains("E2E exported"), "{log}");
@@ -211,7 +305,7 @@ fn a_prop_exported_by_blender_compiles_into_a_model() {
     let id =
         *state.doc.scene().solids().iter().find(|(_, n)| n.solid.sides.len() == 6).map(|(id, _)| id).expect("a box");
     state.doc.select(&[ObjRef::Solid(id)], SelectOp::Replace);
-    send(&mut state, &SendOptions { format: Some(BlenderFormat::Gltf), launch: false, live: Some(true) })
+    send(&mut state, &SendOptions { format: Some(BlenderFormat::Gltf), launch: false, live: Some(true), scale: None })
         .expect("send");
     let log = blender_headless(&wd, 0.0, true).unwrap_or_else(|e| panic!("blender: {e}"));
     assert!(log.contains("E2E exported"), "{log}");
@@ -246,7 +340,7 @@ fn a_real_blender_window_opens_with_the_scene_and_is_closed_again() {
     let id =
         *state.doc.scene().solids().iter().find(|(_, n)| n.solid.sides.len() == 6).map(|(id, _)| id).expect("a box");
     state.doc.select(&[ObjRef::Solid(id)], SelectOp::Replace);
-    send(&mut state, &SendOptions { format: Some(BlenderFormat::Gltf), launch: false, live: Some(true) })
+    send(&mut state, &SendOptions { format: Some(BlenderFormat::Gltf), launch: false, live: Some(true), scale: None })
         .expect("send");
     let wd = work.join("work");
     let mut child = super::launch(&exe, &wd.join("startup.py"), &wd.join("link.json")).expect("launch");

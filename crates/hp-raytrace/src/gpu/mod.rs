@@ -136,10 +136,26 @@ fn pad16(n: usize) -> u64 {
     ((n.max(16) + 15) & !15) as u64
 }
 
-fn tables(scene: &Scene, state: &State) -> Tables {
+fn tables(scene: &Scene, state: &State) -> Result<Tables, String> {
     let packed = &state.packed;
     let mut table: Vec<[f32; 4]> = Vec::new();
+    let alpha_words: usize = scene.alpha_textures.iter().map(|a| a.alpha.len()).sum::<usize>().div_ceil(4);
+    let word_count = scene.light_lists.len()
+        + packed.bounce_lights.len()
+        + packed.bounce_cdf.len()
+        + scene.alpha_textures.len() * 4
+        + alpha_words
+        + scene.luxels.len()
+        + 1;
     let mut words: Vec<u32> = Vec::new();
+    words.try_reserve_exact(word_count).map_err(|_| {
+        format!(
+            "not enough memory for the ray traced light tables: {:.2} GB needed in one block ({} light links, {} luxels): lower the number of lights or how far they reach, or raise the lightmap scale of large faces",
+            (word_count as u64 * 4) as f64 / f64::from(1u32 << 30),
+            scene.light_lists.len(),
+            scene.luxels.len()
+        )
+    })?;
     let mut base = Params { mat_off: 0, ..Params::default() };
     for m in &scene.materials {
         let kind = match m.kind {
@@ -213,7 +229,7 @@ fn tables(scene: &Scene, state: &State) -> Tables {
     words.push(0);
     base.sky_light = packed.sky_light.unwrap_or(NONE);
     base.passes = packed.passes as u32;
-    Tables { table, words, base }
+    Ok(Tables { table, words, base })
 }
 
 fn storage(device: &wgpu::Device, label: &str, size: u64, extra: wgpu::BufferUsages) -> wgpu::Buffer {
@@ -491,7 +507,7 @@ impl Gpu {
                 normal: [a.normal[0], a.normal[1], a.normal[2], 0.0],
             })
             .collect();
-        let t = tables(scene, state);
+        let t = tables(scene, state)?;
         let cache_len = p.cache.len().max(1) * 16;
         let total = (nodes.len() * 32
             + tris.len() * 48
@@ -511,7 +527,7 @@ impl Gpu {
         self.attrs = self.buffer("attrs", bytes_of(&attrs))?;
         self.table = self.buffer("table", bytes_of(&t.table))?;
         self.words = self.buffer("words", bytes_of(&t.words))?;
-        self.words_cpu = t.words.clone();
+        self.words_cpu = t.words;
         self.cache = storage(&self.device, "cache", pad16(cache_len), wgpu::BufferUsages::empty());
         if cache_len as u64 > self.max_binding {
             return Err("the light cache is larger than what the graphics card binds at once".to_owned());
@@ -1006,7 +1022,7 @@ struct Trial {
     batches: u32,
 }
 
-const TRIAL_UNITS: u64 = 8192;
+pub(crate) const TRIAL_UNITS: u64 = 8192;
 const TRIAL_SKIP: u32 = 1;
 const TRIAL_BATCHES: u32 = 6;
 

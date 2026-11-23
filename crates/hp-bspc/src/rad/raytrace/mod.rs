@@ -288,8 +288,8 @@ pub(crate) fn bake_lightmaps(
     let sizes: Vec<(i32, i32)> = super::texlights::texdata(src).into_iter().map(|(_, w, h)| (w, h)).collect();
     let alpha = materials.iter().filter(|m| m.alpha.is_some()).count();
     ctx.work.begin(Stage::Direct, 10_000);
-    let built =
-        bake::build(ctx, faces, prop_tris, occluders, &materials, &sizes, rt, !opts.no_style_bounce, ctx.passes);
+    let mut built =
+        bake::build(ctx, faces, prop_tris, occluders, &materials, &sizes, rt, !opts.no_style_bounce, ctx.passes)?;
     let luxels = built.scene.luxels.len();
     let points = built.scene.points.len();
     log(&format!(
@@ -327,7 +327,10 @@ pub(crate) fn bake_lightmaps(
         duty: 1.0,
     };
     ctx.work.set(SETUP_SHARE / 2);
-    let mut baker = hp_raytrace::Baker::new(built.scene.clone(), settings, log)?;
+    let scene = std::mem::take(&mut built.scene);
+    built.scene.surfaces = scene.surfaces.clone();
+    built.scene.luxels = scene.luxels.clone();
+    let mut baker = hp_raytrace::Baker::new(scene, settings, log)?;
     ctx.work.set(SETUP_SHARE);
     if baker.device().no_gpu {
         log(rt.no_gpu_message());

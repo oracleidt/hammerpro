@@ -1,3 +1,4 @@
+pub mod chime;
 mod decode;
 pub mod dsp;
 mod encode;
@@ -5,10 +6,11 @@ pub mod mixer;
 mod play;
 mod process;
 
+pub use chime::{Chime, play_chime};
 pub use decode::decode;
 pub use encode::encode_wav;
 pub use mixer::{LoopVoice, VoiceParams};
-pub use play::{is_playing, play, position, stop};
+pub use play::{is_playing, play, play_overlay, position, stop};
 pub use process::{Edit, apply, normalize_gain_db, peaks};
 
 pub const MAX_CHANNELS: u16 = 2;

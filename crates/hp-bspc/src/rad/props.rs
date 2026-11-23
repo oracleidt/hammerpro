@@ -714,7 +714,7 @@ fn vertex_bytes(v: Vec3A) -> [u8; 4] {
     let scale = 2f32.powi(i32::from(c[3] as i8)) / 255.0;
     let ch = |m: u8| -> f32 {
         let linear = f32::from(m) * scale;
-        let i = ((linear * 1024.0) as i32).clamp(0, 4095);
+        let i = ((linear * 1024.0).round_ties_even() as i32).clamp(0, 4095);
         (((i as f64) / 1024.0).powf(1.0 / 2.2) * 0.5).min(1.0) as f32
     };
     let mut rgb = [ch(c[0]), ch(c[1]), ch(c[2])];
@@ -1440,6 +1440,15 @@ mod tests {
         assert_eq!(vertex_bytes(Vec3A::ZERO), [0, 0, 0, 255]);
         let b = vertex_bytes(Vec3A::new(255.0, 0.0, 0.0));
         assert_eq!((b[0], b[2]), (0, 128));
+    }
+
+    #[test]
+    fn dim_vertex_light_rounds_like_vrad() {
+        let byte = |i: f64| ((i / 1024.0).powf(1.0 / 2.2) * 0.5 * 255.0).round() as u8;
+        let dim = vertex_bytes(Vec3A::splat(2.7 / 1024.0 * 255.0));
+        assert_eq!(dim[1], byte(3.0));
+        let lower = vertex_bytes(Vec3A::splat(2.3 / 1024.0 * 255.0));
+        assert_eq!(lower[1], byte(2.0));
     }
 
     #[test]

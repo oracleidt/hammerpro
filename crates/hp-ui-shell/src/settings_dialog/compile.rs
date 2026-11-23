@@ -318,8 +318,8 @@ pub(crate) const TR: TrTable = &[
     ("shell.compile.prop_lighting", "Light static props (per vertex)", "Éclairer les props statiques (par sommet)"),
     (
         "shell.compile.prop_lighting_tip",
-        "When the quality asks for it (Final), the lighting bakes the light of every static prop vertex (-StaticPropLighting): slow on big maps. Off: never, the game lights the props itself.",
-        "Quand la qualité le demande (Final), l'éclairage précalcule la lumière de chaque sommet des props statiques (-StaticPropLighting) : lent sur les grandes maps. Décoché : jamais, le jeu éclaire lui-même les props.",
+        "With the Normal and Final qualities, the lighting bakes the light of every static prop vertex (-StaticPropLighting), so props match the brushes around them. Off: never, the game lights each prop from one point, often darker than the walls next to it.",
+        "Avec les qualités Normal et Final, l'éclairage précalcule la lumière de chaque sommet des props statiques (-StaticPropLighting), pour que les props aient la même luminosité que les brushes autour. Décoché : jamais, le jeu éclaire chaque prop depuis un seul point, souvent plus sombre que les murs voisins.",
     ),
     ("shell.compile.prop_shadows", "Static prop shadows", "Ombres des props statiques"),
     (

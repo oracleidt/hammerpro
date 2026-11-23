@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use crate::runtime::FileStamp;
-use crate::settings::BlenderFormat;
+use crate::settings::{BlenderFormat, BlenderScale};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct DispSent {
@@ -38,6 +38,7 @@ pub struct BlenderLink {
     pub candidate: Option<(FileStamp, Instant)>,
     pub pulls: u32,
     pub live: bool,
+    pub scale: BlenderScale,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

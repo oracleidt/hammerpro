@@ -300,6 +300,18 @@ pub(crate) fn say(line: &str) {
     }
 }
 
+pub(crate) fn say_now(line: &str) {
+    use std::io::Write as _;
+    let _ = writeln!(std::io::stdout(), "{line}");
+    let _ = std::io::stdout().flush();
+    if let Ok(mut log) = LOG_FILE.try_lock()
+        && let Some(f) = log.as_mut()
+    {
+        let _ = write!(f, "{line}\r\n");
+        let _ = f.flush();
+    }
+}
+
 pub(crate) fn open_log(map: &Path) {
     let path = map.with_extension("log");
     match std::fs::OpenOptions::new().create(true).append(true).open(&path) {

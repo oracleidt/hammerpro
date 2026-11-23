@@ -42,8 +42,8 @@ domain! { "compile and play";
             "vis_mode": choice("Visibility: fast (coarse) or normal (full).", &["fast", "normal"]),
             "rad_mode": choice("Lighting quality.", &["draft", "normal", "final"]),
             "lighting": choice("Dynamic ranges lit.", &["ldr", "hdr", "both"]),
-            "static_prop_lighting": boolean("Bake the vertex lighting of the static props when the quality asks for it \
-                (Final); false: never (-StaticPropLighting is left out, even from rad_options)."),
+            "static_prop_lighting": boolean("Bake the vertex lighting of the static props with the Normal and Final \
+                qualities; false: never (-StaticPropLighting is left out, even from rad_options)."),
             "static_prop_shadows": boolean("Static props cast shadows in the lighting; false: none at all \
                 (-nostaticpropshadows, much faster on maps with many props)."),
             "build_cubemaps": choice("Build cubemaps on compile: at the end of the compile every env_cubemap (placed, and the \
@@ -159,7 +159,7 @@ domain! { "compile and play";
             "vis_mode": choice("Visibility: fast (coarse) or normal (full).", &["fast", "normal"]),
             "rad_mode": choice("Lighting quality.", &["draft", "normal", "final"]),
             "lighting": choice("Dynamic ranges lit.", &["ldr", "hdr", "both"]),
-            "static_prop_lighting": boolean("Light static props per vertex when the quality asks for it (Final); \
+            "static_prop_lighting": boolean("Light static props per vertex with the Normal and Final qualities; \
                 false: never (-StaticPropLighting is left out, even from rad_options)."),
             "static_prop_shadows": boolean("Static props cast shadows in the lighting; false: none at all \
                 (-nostaticpropshadows, much faster on maps with many props). The lighting preview follows it."),
@@ -195,6 +195,8 @@ domain! { "compile and play";
             "separate_window": boolean("The Compile and run window is a window of its own (it can leave Hammer Pro, \
                 go to another screen); false: inside the main window."),
             "load_pointfile_on_leak": boolean("Load the leak pointfile when a compile leaks."),
+            "finish_sound": boolean("Play a short bell when a compile ends (bright on success, soft and low on failure or leak, none when cancelled)."),
+            "finish_sound_volume": number("Volume of the end of compile sound, 0 to 1 (default 0.6).", 0.0, 1.0),
             "background_precompile": boolean("Compile in the background while the editor is idle."),
             "progressive": boolean("Play now: Draft compile and launch, better lighting finished in the background."),
             "progressive_preset": choice("Quality of the background lighting of progressive play.", &["normal", "final"]),
@@ -637,6 +639,8 @@ fn compile_options_json(state: &AppState) -> Value {
         "low_priority": s.low_priority,
         "stop_on_leak": s.stop_on_leak,
         "load_pointfile_on_leak": s.load_pointfile_on_leak,
+        "finish_sound": s.finish_sound,
+        "finish_sound_volume": s.finish_sound_volume,
         "save_before_compile": s.save_before_compile,
         "separate_window": s.separate_window,
         "pack_custom_content": s.pack_custom_content,
@@ -814,6 +818,7 @@ fn set_compile_options(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         ("save_before_compile", &mut s.save_before_compile),
         ("separate_window", &mut s.separate_window),
         ("load_pointfile_on_leak", &mut s.load_pointfile_on_leak),
+        ("finish_sound", &mut s.finish_sound),
         ("background_precompile", &mut s.background_precompile),
         ("progressive", &mut s.progressive),
         ("history", &mut s.history),
@@ -827,6 +832,9 @@ fn set_compile_options(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     }
     if let Some(p) = a.opt_enum("progressive_preset", &["normal", "final"])? {
         s.progressive_preset = preset_of(&p);
+    }
+    if let Some(v) = a.opt_f64("finish_sound_volume", 0.0, 1.0)? {
+        s.finish_sound_volume = v as f32;
     }
     if let Some(p) = a.opt_enum("pack_policy", &["release_only", "always"])? {
         s.pack_policy = if p == "always" { PackPolicy::Always } else { PackPolicy::ReleaseOnly };

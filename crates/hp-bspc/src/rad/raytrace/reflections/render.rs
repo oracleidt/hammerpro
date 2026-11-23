@@ -1,3 +1,7 @@
+use std::cell::RefCell;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
+
 use glam::Vec3A;
 use hp_raytrace::LightKind;
 use rayon::prelude::*;
@@ -9,8 +13,60 @@ const FAR: f32 = 131_072.0;
 const MAX_LAYERS: usize = 24;
 const MAX_DEPTH: u32 = 3;
 const WATER_F0: f32 = 0.02;
+pub(crate) const SHADE_BUDGET: u32 = 16;
+const BRIGHTEST: f32 = 65_504.0 * 255.0;
 
 pub(crate) type Rgb2 = [Vec3A; 2];
+type Pick = (Rgb2, Vec3A, f32, f32, bool);
+
+thread_local! {
+    static PICKS: RefCell<Vec<Pick>> = const { RefCell::new(Vec::new()) };
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Limits {
+    pub soft: Duration,
+    pub hard: Duration,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Outcome {
+    Full,
+    Partial { least: u32, of: u32 },
+    Skipped { faces_done: usize },
+}
+
+pub(crate) fn clean(c: Vec3A) -> Vec3A {
+    let f = |v: f32| if v.is_nan() { 0.0 } else { v.clamp(0.0, BRIGHTEST) };
+    Vec3A::new(f(c.x), f(c.y), f(c.z))
+}
+
+fn gcd(a: usize, b: usize) -> usize {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+pub(crate) fn strata_order(n: usize) -> Vec<usize> {
+    let n = n.max(1);
+    let mut stride = ((n as f32 * 0.618).round() as usize).max(1);
+    while gcd(stride, n) != 1 {
+        stride += 1;
+    }
+    (0..n).map(|k| (k * stride) % n).collect()
+}
+
+pub(crate) fn pass_ranges(n: usize) -> Vec<std::ops::Range<usize>> {
+    let n = n.max(1);
+    let first = (n / 8).clamp(1, 4);
+    let chunk = (n - first).div_ceil(4).max(1);
+    let mut out = Vec::with_capacity(5);
+    out.push(0..first);
+    let mut at = first;
+    while at < n {
+        out.push(at..(at + chunk).min(n));
+        at += chunk;
+    }
+    out
+}
 
 pub(crate) fn face_dir(face: usize, s: f32, t: f32) -> Vec3A {
     match face {
@@ -53,19 +109,37 @@ pub(crate) fn sky_lookup(d: Vec3A) -> (usize, f32, f32) {
     (face, (s + 1.0) * 0.5, (1.0 - t) * 0.5)
 }
 
-pub(crate) struct Rng(u32);
+pub(crate) struct Rng {
+    state: u32,
+    shades: u32,
+}
 
 impl Rng {
     pub fn new(a: u32, b: u32, c: u32) -> Rng {
-        let mut r = Rng(a.wrapping_mul(0x9E37_79B9) ^ b.wrapping_mul(0x85EB_CA6B) ^ c.wrapping_mul(0xC2B2_AE35));
+        let mut r = Rng {
+            state: a.wrapping_mul(0x9E37_79B9) ^ b.wrapping_mul(0x85EB_CA6B) ^ c.wrapping_mul(0xC2B2_AE35),
+            shades: SHADE_BUDGET,
+        };
         r.next();
         r
     }
 
     pub fn next(&mut self) -> f32 {
-        self.0 = self.0.wrapping_mul(747_796_405).wrapping_add(2_891_336_453);
-        let w = ((self.0 >> ((self.0 >> 28) + 4)) ^ self.0).wrapping_mul(277_803_737);
+        self.state = self.state.wrapping_mul(747_796_405).wrapping_add(2_891_336_453);
+        let w = ((self.state >> ((self.state >> 28) + 4)) ^ self.state).wrapping_mul(277_803_737);
         ((w >> 22) ^ w) as f32 * (1.0 / 4_294_967_296.0)
+    }
+
+    pub fn refill(&mut self) {
+        self.shades = SHADE_BUDGET;
+    }
+
+    pub fn spend(&mut self) -> bool {
+        if self.shades == 0 {
+            return false;
+        }
+        self.shades -= 1;
+        true
     }
 }
 
@@ -212,31 +286,34 @@ impl Scene {
             }
         };
         let weight = |c: &Rgb2| luminance(c[0]).max(luminance(c[1])).max(0.0);
-        let mut total = 0.0f32;
-        for l in &self.lights {
-            if let Some((c, _, _)) = contribution(l) {
-                total += weight(&c);
+        let chosen = PICKS.with_borrow_mut(|picks| {
+            picks.clear();
+            let mut total = 0.0f32;
+            for l in &self.lights {
+                if let Some((c, to, dist)) = contribution(l) {
+                    let w = weight(&c);
+                    total += w;
+                    if w > 0.0 {
+                        picks.push((c, to, dist, w, l.kind == LightKind::Sun));
+                    }
+                }
             }
-        }
-        if total <= 0.0 || !total.is_finite() {
-            return [Vec3A::ZERO; 2];
-        }
-        let target = rng.next() * total;
-        let mut run = 0.0f32;
-        let mut chosen = None;
-        for l in &self.lights {
-            let Some((c, to, dist)) = contribution(l) else { continue };
-            let w = weight(&c);
-            if w <= 0.0 {
-                continue;
+            if total <= 0.0 || !total.is_finite() {
+                return None;
             }
-            run += w;
-            chosen = Some((c, to, dist, w, l.kind == LightKind::Sun));
-            if run >= target {
-                break;
+            let target = rng.next() * total;
+            let mut run = 0.0f32;
+            let mut chosen = None;
+            for p in picks.iter() {
+                run += p.3;
+                chosen = Some((*p, total));
+                if run >= target {
+                    break;
+                }
             }
-        }
-        let Some((c, to, dist, w, sun)) = chosen else { return [Vec3A::ZERO; 2] };
+            chosen
+        });
+        let Some(((c, to, dist, w, sun), total)) = chosen else { return [Vec3A::ZERO; 2] };
         let from = p + n * EPS;
         let lit = if sun { self.sun_reaches(from, to) } else { !self.occluded(from, to, (dist - 1.0).max(0.0)) };
         if !lit {
@@ -247,6 +324,9 @@ impl Scene {
     }
 
     fn irradiance(&self, p: Vec3A, n: Vec3A, depth: u32, rng: &mut Rng) -> Rgb2 {
+        if !rng.spend() {
+            return [self.ambient[0] * 0.5, self.ambient[1] * 0.5];
+        }
         let mut e = self.direct(p, n, rng);
         if depth < MAX_DEPTH {
             let d = cosine(n, rng.next(), rng.next());
@@ -380,42 +460,73 @@ impl Scene {
         acc
     }
 
-    pub(crate) fn render(&self, origin: Vec3A, size: u32, samples: u32, seed: u32) -> [[Vec<Vec3A>; 6]; 2] {
+    pub(crate) fn render(
+        &self,
+        origin: Vec3A,
+        size: u32,
+        samples: u32,
+        seed: u32,
+        limits: Limits,
+    ) -> ([[Vec<Vec3A>; 6]; 2], Outcome) {
+        let start = Instant::now();
         let size = size.max(1) as usize;
         let grid = (samples.max(1) as f32).sqrt().ceil() as usize;
-        let rows: Vec<(usize, usize)> = (0..6).flat_map(|f| (0..size).map(move |y| (f, y))).collect();
-        let done: Vec<Vec<Rgb2>> = rows
-            .par_iter()
-            .map(|&(face, y)| {
-                (0..size)
-                    .map(|x| {
-                        let mut rng = Rng::new(seed, (face * size + y) as u32, x as u32);
-                        let mut sum = [Vec3A::ZERO; 2];
-                        for k in 0..grid * grid {
-                            let jx = ((k % grid) as f32 + rng.next()) / grid as f32;
-                            let jy = ((k / grid) as f32 + rng.next()) / grid as f32;
-                            let s = 2.0 * (x as f32 + jx) / size as f32 - 1.0;
-                            let t = 2.0 * (y as f32 + jy) / size as f32 - 1.0;
-                            let d = face_dir(face, s, t).normalize();
-                            let c = self.trace(origin, d, 0, &mut rng, false);
-                            sum[0] += c[0].max(Vec3A::ZERO);
-                            sum[1] += c[1].max(Vec3A::ZERO);
+        let n = grid * grid;
+        let order = strata_order(n);
+        let passes = pass_ranges(n);
+        let mut acc: Vec<(Rgb2, u32)> = vec![([Vec3A::ZERO; 2], 0); 6 * size * size];
+        for (pi, range) in passes.iter().enumerate() {
+            let limit = if pi == 0 { limits.hard } else { limits.soft.min(limits.hard) };
+            if pi > 0 && start.elapsed() >= limit {
+                break;
+            }
+            let cut = AtomicBool::new(false);
+            let strata = &order[range.clone()];
+            let pass_seed = seed ^ (pi as u32).wrapping_mul(0x632B_E5AB);
+            acc.par_chunks_mut(size).enumerate().for_each(|(row, cells)| {
+                let (face, y) = (row / size, row % size);
+                for (x, cell) in cells.iter_mut().enumerate() {
+                    let mut rng = Rng::new(pass_seed, row as u32, x as u32);
+                    for &k in strata {
+                        if cut.load(Ordering::Relaxed) {
+                            return;
                         }
-                        let n = (grid * grid) as f32 * 255.0;
-                        [sum[0] / n, sum[1] / n]
-                    })
-                    .collect()
-            })
-            .collect();
-        let mut out: [[Vec<Vec3A>; 6]; 2] = Default::default();
-        for (i, row) in done.into_iter().enumerate() {
-            let face = rows[i].0;
-            for c in row {
-                out[0][face].push(c[0]);
-                out[1][face].push(c[1]);
+                        if start.elapsed() >= limit {
+                            cut.store(true, Ordering::Relaxed);
+                            return;
+                        }
+                        rng.refill();
+                        let jx = ((k % grid) as f32 + rng.next()) / grid as f32;
+                        let jy = ((k / grid) as f32 + rng.next()) / grid as f32;
+                        let s = 2.0 * (x as f32 + jx) / size as f32 - 1.0;
+                        let t = 2.0 * (y as f32 + jy) / size as f32 - 1.0;
+                        let d = face_dir(face, s, t).normalize();
+                        let c = self.trace(origin, d, 0, &mut rng, false);
+                        cell.0[0] += clean(c[0]);
+                        cell.0[1] += clean(c[1]);
+                        cell.1 += 1;
+                    }
+                }
+            });
+            if cut.into_inner() {
+                break;
             }
         }
-        out
+        let face_px = size * size;
+        let least = acc.iter().map(|c| c.1).min().unwrap_or(0);
+        let mut out: [[Vec<Vec3A>; 6]; 2] = Default::default();
+        if least == 0 {
+            let faces_done = acc.chunks(face_px).filter(|f| f.iter().all(|c| c.1 > 0)).count();
+            return (out, Outcome::Skipped { faces_done });
+        }
+        for (i, (sum, count)) in acc.into_iter().enumerate() {
+            let face = i / face_px;
+            let k = count as f32 * 255.0;
+            out[0][face].push(sum[0] / k);
+            out[1][face].push(sum[1] / k);
+        }
+        let outcome = if least as usize >= n { Outcome::Full } else { Outcome::Partial { least, of: n as u32 } };
+        (out, outcome)
     }
 }
 

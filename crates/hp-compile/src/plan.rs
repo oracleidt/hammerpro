@@ -20,6 +20,20 @@ pub enum StepKind {
     Custom,
 }
 
+impl StepKind {
+    pub fn english(self) -> &'static str {
+        match self {
+            StepKind::Bsp => "BSP",
+            StepKind::Vis => "visibility",
+            StepKind::Rad => "lighting",
+            StepKind::Pack => "packing",
+            StepKind::CopyToMaps => "copy",
+            StepKind::LaunchGame => "game launch",
+            StepKind::Custom => "custom",
+        }
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct DeferredFiles(Arc<Mutex<Option<DeferredReceiver>>>);
 

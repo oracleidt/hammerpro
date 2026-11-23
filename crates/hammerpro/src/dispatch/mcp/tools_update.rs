@@ -10,7 +10,8 @@ domain! { "updates";
     get_update_status: Read, "Update status",
         "The state of the auto update: installed version, status (idle, checking, up_to_date, available, \
         downloading, ready, failed), the newest release found (version, tag, title, release notes, page, \
-        archive name, size and published SHA-256 checksum), the download progress, the last error, and the \
+        archive name, size and published SHA-256 checksum), the download progress (done_bytes, total_bytes, \
+        fraction, and once measured the smoothed bytes_per_second and seconds_left), the last error, and the \
         preferences update.check_on_startup (check in the background at startup), update.show_dialog (show the update \
         window at all) and update.skipped_version (the version the user chose not to be asked about). The \
         preferences are changed with set_setting on the update.* keys.",
@@ -51,6 +52,8 @@ fn info_json(state: &AppState) -> serde_json::Value {
             "done_bytes": rt.done_bytes,
             "total_bytes": rt.total_bytes,
             "fraction": rt.progress(),
+            "bytes_per_second": rt.speed().map(|v| v.round()),
+            "seconds_left": rt.seconds_left().map(|v| v.round()),
         })),
         "error": rt.failure.as_ref().map(|f| tf!(f.key, f.detail)),
         "dialog_open": rt.dialog_open,

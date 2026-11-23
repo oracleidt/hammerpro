@@ -36,7 +36,7 @@ mod visibility;
 mod vtf;
 mod workflow;
 
-pub use blender::{BlenderFormat, BlenderSettings};
+pub use blender::{BlenderFormat, BlenderScale, BlenderSettings};
 pub use brush::{
     BlockDrawSettings, BrushSettings, DetailSplitSetting, ExtrudeAxisSetting, ExtrudeDirectionSetting,
     FuncDetailSettings, RoadPreset,

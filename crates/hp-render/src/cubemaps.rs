@@ -19,6 +19,8 @@ pub(crate) const PROBE_VIEW: u32 = 0xffff_fc00;
 const SETTLE: Duration = Duration::from_millis(750);
 const FRAME_SHARE: f32 = 0.15;
 const MOTION_QUIET: Duration = Duration::from_millis(400);
+const READBACK_WAIT: Duration = Duration::from_secs(20);
+const READBACK_GRACE: Duration = Duration::from_secs(2);
 const PROBE_CULL_RADIUS: f32 = 16_384.0;
 const PROBE_MODEL_DISTANCE: f32 = 4_096.0;
 const MAX_SLOTS: usize = 1100;
@@ -1108,12 +1110,15 @@ impl Renderer {
         slice.map_async(wgpu::MapMode::Read, move |r| {
             let _ = tx.send(r);
         });
-        self.device
-            .poll(wgpu::PollType::Wait { submission_index: None, timeout: None })
-            .map_err(|e| RenderError::Readback(e.to_string()))?;
-        rx.recv()
-            .map_err(|e| RenderError::Readback(e.to_string()))?
-            .map_err(|e| RenderError::Readback(e.to_string()))?;
+        let late =
+            || RenderError::Readback(format!("cubemap {} was not read back in {} s", id.0, READBACK_WAIT.as_secs()));
+        self.device.poll(wgpu::PollType::Wait { submission_index: None, timeout: Some(READBACK_WAIT) }).map_err(
+            |e| match e {
+                wgpu::PollError::Timeout => late(),
+                e => RenderError::Readback(e.to_string()),
+            },
+        )?;
+        rx.recv_timeout(READBACK_GRACE).map_err(|_| late())?.map_err(|e| RenderError::Readback(e.to_string()))?;
         let data = slice.get_mapped_range().map_err(|e| RenderError::Readback(e.to_string()))?;
         let f = |b: &[u8]| f16_to_f32(u16::from_le_bytes([b[0], b[1]])) * slot.scale;
         let faces: [Vec<[f32; 4]>; 6] = std::array::from_fn(|face| {

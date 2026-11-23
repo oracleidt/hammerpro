@@ -32,7 +32,7 @@ Chaque ligne a son libellé à gauche, aligné avec les autres, et ses options �
 | **Plage dynamique** | **LDR**, **HDR** ou **LDR + HDR**. Final calcule toujours les deux ; Brouillon une seule (avec LDR + HDR choisi, celle réglée dans le jeu : HDR si son `mat_hdr_level` vaut 2, sinon LDR). Pour Portal 2, CS:GO et les autres jeux uniquement HDR, LDR devient HDR. | LDR |
 | Lignes de commande | Sous les étapes, la ligne de commande exacte de chaque étape. Survolez une ligne pour le sens de chaque paramètre ajouté par Hammer Pro ; clic droit > **Copier la ligne de commande**. | |
 | **Compiler uniquement la zone du cordon** | Affiché quand un cordon est actif. Les objets hors de toutes les boîtes sont exclus, chaque boîte est scellée et la map s'appelle `<map>_cordon`. | activée |
-| **Props statiques : Éclairer les props statiques (par sommet)** | Quand la qualité le demande (Final), précalcule la lumière de chaque sommet des props statiques (`-StaticPropLighting`). Décoché : jamais. | activée |
+| **Props statiques : Éclairer les props statiques (par sommet)** | Avec les qualités Normal et Final, précalcule la lumière de chaque sommet des props statiques (`-StaticPropLighting`), pour que les props aient la luminosité des brushes autour. Décoché : jamais. | activée |
 | **Props statiques : Ombres des props statiques** | Les props statiques projettent des ombres dans l'éclairage. Décoché : `-nostaticpropshadows`, bien plus rapide sur les maps avec beaucoup de props. | activée |
 | **Ray tracing** | **Utiliser le ray tracing** calcule l'éclairage avec le path tracer de Hammer Pro au lieu de la radiosité, avec le niveau de qualité à côté (**Brouillon**, **Normal**, **Final**, **Optimal**). Coché, les options **Ray tracing** apparaissent dans les options d'éclairage : la configuration (**Par défaut**, **Optimale**, **Personnalisée**), chaque paramètre, les effets (occlusion ambiante, rayons de lumière, halos lumineux, cubemaps automatiques, réglages de tonemap, correction colorimétrique), **Rétablir par défaut** et le bouton **Optimal** (meilleur équilibre pour la map et cet ordinateur, échelle de lightmap automatique activée). Compilateur de Hammer Pro seulement. Quand la compilation ne trouve pas de GPU, un avertissement au dessus du journal dit `Aucun GPU détecté, la compilation avec Ray Tracing prendra plus de temps.` Voir [Ray tracing](compile-options.md#ray-tracing). | désactivé, Normal |
 | **Avant : Enregistrer d'abord la map** | Enregistre aussi votre travail. La compilation utilise une copie et n'a jamais besoin d'enregistrer. | désactivée |
@@ -44,6 +44,7 @@ Chaque ligne a son libellé à gauche, aligné avec les autres, et ses options �
 | **Après : Copier dans le dossier maps** | Copie le BSP dans `garrysmod/maps` (ou le **Dossier des maps** de la section Avancé). | activée |
 | **Après : Lancer le jeu** | Lance le jeu sur la map. **Via Steam** l'ouvre avec un lien `steam://` au lieu de l'exécutable du jeu. | activée, désactivée |
 | **Après : Charger le chemin de fuite en cas de fuite** | Charge `<map>.lin` dans les vues quand la map fuit. | activée |
+| **Après : Son à la fin** | Joue une courte cloche à la fin d'une compilation, aussi quand Hammer Pro est en arrière plan ou réduit : un ding clair de deux notes en cas de réussite, un son grave et doux en cas d'échec ou de fuite, rien quand vous annulez. **Volume** règle son niveau et **Tester** le joue. Le son est fabriqué par Hammer Pro lui-même (aucun fichier son) et se joue par-dessus une écoute de son sans l'arrêter. Les exécutions automatisées restent silencieuses. MCP : `set_compile_options` avec `finish_sound` et `finish_sound_volume`, ou `set_setting` sur `compile.finish_sound` et `compile.finish_sound_volume`. | activé, 60 % |
 | **Arguments du jeu** | Arguments supplémentaires du jeu. `-game`, `-hijack` (réutilise un jeu déjà lancé) et `+map` sont ajoutés sauf si vous les indiquez ; `{map}` est remplacé par le nom de la map. | `-console -dev` |
 | **Threads** | **Automatique** (tous les cœurs, ou tous sauf un quand un cœur est gardé pour l'éditeur) ou un nombre de 1 à 256 (`-threads`). | Automatique |
 | **Garder un cœur pour l'éditeur** | Le nombre automatique de threads est d'un de moins que les cœurs, l'éditeur reste fluide. Nécessaire pour **Compiler pendant les pauses**. | activée |
@@ -55,7 +56,7 @@ Sous les arguments du jeu, les options de lancement (**Démarrer le jeu :** apr�
 | Préréglage | Géométrie | Visibilité | Éclairage | Empaquetage |
 |---|---|---|---|---|
 | **Brouillon** | complète, arrêt sur fuite | Rapide (`-fastvis`) | Brouillon (`-bounce 1 -fast`), une seule plage dynamique | non (addon de développement) |
-| **Normal** | complète | Normal (`-vis`) | Normal (aucun paramètre en plus) | non (addon de développement) |
+| **Normal** | complète | Normal (`-vis`) | Normal (`-StaticPropLighting`) | non (addon de développement) |
 | **Final** | complète | Normal (`-vis`) | Final (`-final -StaticPropLighting`), toujours LDR + HDR | oui |
 | **Personnalisé** | vos choix dans les listes d'étapes | | | selon la règle |
 

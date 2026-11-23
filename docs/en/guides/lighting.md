@@ -51,16 +51,16 @@ In **File > Compile > Compile and run...** (`Ctrl+F9`), the **Dynamic range** ro
 | **HDR** | High dynamic range only. |
 | **LDR + HDR** | Both (two passes), needed for a release. |
 
-**Final** always computes both, **Draft** computes one. The **Preset** sets the quality: Draft uses `-bounce 1 -fast`, Final uses `-final -StaticPropLighting`. For a quick look at the real lighting, compile with **Normal**; for the release, **Final**.
+**Final** always computes both, **Draft** computes one. The **Preset** sets the quality: Draft uses `-bounce 1 -fast`, Normal uses `-StaticPropLighting`, Final uses `-final -StaticPropLighting`. For a quick look at the real lighting, compile with **Normal**; for the release, **Final**.
 
 ## Step 6: light the static props
 
 In the **Static props** section of the compile window:
 
-- **Light static props (per vertex)**: when the quality asks for it (Final), the lighting bakes the light of every static prop vertex (`-StaticPropLighting`): shadows and bounced light on the props. Slow on big maps. Off: the game lights the props itself.
+- **Light static props (per vertex)**: with the Normal and Final qualities, the lighting bakes the light of every static prop vertex (`-StaticPropLighting`): shadows and bounced light on the props, as bright as the brushes with the same material. Off: the game lights each prop from one point, often darker than the walls next to it.
 - **Static prop shadows**: props cast shadows in the lighting. Off: no prop shadow at all, and their models are not even loaded (`-nostaticpropshadows`), much faster on maps with many props.
 
-You can also force `-StaticPropLighting` with a Normal compile through the lighting options menu. Each flag is described in [Compile options](../compiler/compile-options.md).
+You can also force `-StaticPropLighting` with a Draft compile through the lighting options menu. Each flag is described in [Compile options](../compiler/compile-options.md).
 
 **Big props with a hard light step.** The game lights a static prop per vertex and blends the colors across each triangle, so a large prop with few vertices shows a hard step where a shadow edge or the sun terminator falls between two far apart vertices. Since 2.2.9 the compiler samples the shadows of each vertex of a large triangle at several points of the triangles around it (up to 6, 12 with `-final`; `-staticpropsamplescale`, also spelled `-StaticPropSamplingScale`, scales the count), so the vertices near a shadow edge get a partial light and the step becomes a gradient. Small props keep one sample per vertex. The baked preview shows the same vertex colors (they come from the same lighting step). For a smooth edge on a very large prop, subdivide its model where the shadow falls (more vertices, more steps); GMod has no lightmapped props. A prop with **Disable Vertex Lighting** is lit by the game at its origin instead.
 
@@ -103,7 +103,7 @@ Details and deliberate differences:
 
 **Ambient occlusion does not show in the Baked preview.** It is a compile option only: compile the map and look in the player view or in game.
 
-**Props are black or flat.** Compile with **Final** (or force `-StaticPropLighting`) so prop vertices get baked lighting, and keep **Static prop shadows** on.
+**Props are black, flat or darker than the walls.** Compile with **Normal** or **Final** with **Light static props (per vertex)** on (or force `-StaticPropLighting`) so prop vertices get baked lighting, and keep **Static prop shadows** on.
 
 ## Related pages
 

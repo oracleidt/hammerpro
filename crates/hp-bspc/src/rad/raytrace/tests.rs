@@ -754,3 +754,76 @@ fn faint_light_tails_are_cut_where_they_stop_showing() {
     };
     assert!((super::bake::visible_reach(&spot) - r).abs() < 1.0, "spots keep the reach of their axis");
 }
+
+#[test]
+fn early_reach_matches_the_final_cut_and_the_cinematic_margin_reaches_further() {
+    let light = hp_raytrace::Light {
+        kind: hp_raytrace::LightKind::Point,
+        intensity: [[100.0; 3]; 2],
+        quadratic: 1.0,
+        cap: 1.0e22,
+        fade: (0.0, -1.0),
+        reach: 1.0e6,
+        size: 4.0,
+        ..Default::default()
+    };
+    assert_eq!(super::bake::early_reach(&light, 1.0), super::bake::visible_reach(&light));
+    let wide = super::bake::early_reach(&light, super::bake::CINEMATIC_REACH_MARGIN);
+    let exact = super::bake::visible_reach(&light);
+    assert!(wide > exact * 7.0 && wide < exact * 9.0, "{wide} {exact}");
+    let short = hp_raytrace::Light { reach: 30.0, ..light };
+    assert_eq!(super::bake::early_reach(&short, super::bake::CINEMATIC_REACH_MARGIN), 30.0);
+}
+
+#[test]
+fn a_ray_traced_scene_too_large_to_build_fails_with_a_clear_message() {
+    let totals = super::bake::SceneTotals { lights: u32::MAX as usize + 1, luxels: 10, points: 10 };
+    let e = totals.check(4000, 300_000).unwrap_err();
+    assert!(e.contains("too large") && e.contains("4000 lights over 300000 faces"), "{e}");
+    assert!(e.contains("_zero_percent_distance"), "{e}");
+    let small = super::bake::SceneTotals { lights: 1250, luxels: 100, points: 400 };
+    assert!(small.check(10, 10).is_ok());
+    let mut v: Vec<u32> = Vec::new();
+    let e = super::bake::reserve_for(&mut v, usize::MAX / 8, &small, 10, 10).unwrap_err();
+    assert!(e.contains("not enough memory") && e.contains("GB needed in one block"), "{e}");
+    assert!(super::bake::reserve_for(&mut v, 1000, &small, 10, 10).is_ok());
+    assert!(v.capacity() >= 1000);
+}
+
+#[test]
+fn many_faint_lights_bake_with_the_light_lists_already_cut() {
+    let mut ents = String::new();
+    let mut id = 500;
+    for x in [24, 120, 216, 312, 408, 488] {
+        for y in [24, 128, 232] {
+            ents += &light_entity(id, &format!("{x} {y} 200"), "").replace("255 255 255 200", "255 255 255 0.02");
+            id += 1;
+        }
+    }
+    let bsp = compile_vmf(&room("DEV/DEV_MEASUREGENERIC01B", &ents));
+    let mut lines = Vec::new();
+    light_bsp(&bsp, &rt(DevicePreference::Cpu), &mut |l| lines.push(l.to_owned())).expect("light");
+    let line = lines.iter().find(|l| l.contains("lights tested per luxel")).expect("light test line");
+    let nums: Vec<f64> =
+        line.split(|c: char| !(c.is_ascii_digit() || c == '.')).filter_map(|w| w.parse().ok()).collect();
+    assert!(nums.len() >= 2, "{line}");
+    assert!(nums[0] > 0.0 && nums[0] <= nums[1], "{line}");
+    assert!(nums[0] < 18.0, "the faintest lights never reach every face: {line}");
+}
+
+#[test]
+fn surface_lights_stop_where_even_many_of_them_cannot_show() {
+    let light = hp_raytrace::Light {
+        kind: hp_raytrace::LightKind::Surface,
+        direction: [0.0, 0.0, -1.0],
+        intensity: [[40.0; 3]; 2],
+        reach: 1.0e6,
+        ..Default::default()
+    };
+    let r = super::bake::visible_reach(&light);
+    let edge = (40.0 / (super::bake::LIGHT_CUTOFF * super::bake::SURFACE_CUTOFF_SCALE)).sqrt();
+    assert!((r - edge - super::bake::SURFACE_PATCH_SLACK).abs() < 1.0, "{r} {edge}");
+    assert!(40.0 * light.falloff(Vec3A::Z, r) < super::bake::LIGHT_CUTOFF * super::bake::SURFACE_CUTOFF_SCALE);
+    let short = hp_raytrace::Light { reach: 100.0, ..light };
+    assert_eq!(super::bake::visible_reach(&short), 100.0);
+}

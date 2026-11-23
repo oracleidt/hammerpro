@@ -346,3 +346,160 @@ fn painted_sky_faces_line_up_with_the_skybox_layout() {
     let p = super::sky::paint_of(&ents);
     assert_eq!((p.top, p.hdr_scale), (Vec3A::new(0.1, 0.2, 0.3), 0.5));
 }
+
+fn empty_scene() -> super::scene::Scene {
+    super::scene::Scene {
+        bvh: hp_raytrace::bvh::Bvh::default(),
+        tris: Vec::new(),
+        normals: Vec::new(),
+        prop_normals: Vec::new(),
+        materials: Vec::new(),
+        textures: Vec::new(),
+        faces: Vec::new(),
+        lighting: [Vec::new(), Vec::new()],
+        passes: [true, true],
+        lights: Vec::new(),
+        ambient: [Vec3A::ZERO; 2],
+        spheres: Vec::new(),
+        sky: [None, None],
+        camera: None,
+        lines: Vec::new(),
+    }
+}
+
+#[test]
+fn bright_and_broken_values_stay_finite_in_the_textures() {
+    use super::render::clean;
+    let c = clean(Vec3A::new(f32::NAN, f32::INFINITY, -3.0));
+    assert!(c.is_finite() && c.x == 0.0 && c.y > 1.0e6 && c.z == 0.0, "{c}");
+    assert_eq!(vtf::f32_to_f16(f32::INFINITY), 0x7bff, "an infinite sun stays the brightest half float");
+    assert_eq!(vtf::f32_to_f16(f32::NAN), 0);
+    assert_eq!(vtf::f32_to_f16(f32::NEG_INFINITY), 0);
+    assert_eq!(vtf::to_ldr(Vec3A::new(f32::INFINITY, f32::NAN, 0.5))[..2], [255, 0]);
+    let mut faces = colored_faces(4);
+    faces[0][0] = Vec3A::new(f32::INFINITY, f32::NAN, 1.0);
+    let data = vtf::cubemap(&faces, 4, true);
+    let level = hp_vtf::raw_level(&data, 0, 0, 0).expect("level");
+    let first = |i: usize| vtf::f16_to_f32(u16::from_le_bytes([level.data[2 * i], level.data[2 * i + 1]]));
+    assert!(first(0) > 60_000.0 && first(1) == 0.0, "{} {}", first(0), first(1));
+    let info = hp_vtf::read_info(&data).expect("vtf");
+    assert!(info.reflectivity.iter().all(|v| v.is_finite()), "{:?}", info.reflectivity);
+}
+
+#[test]
+fn sample_order_and_passes_cover_every_stratum_once() {
+    for n in 1..=300usize {
+        let order = super::render::strata_order(n);
+        let mut seen = order.clone();
+        seen.sort_unstable();
+        assert_eq!(seen, (0..n).collect::<Vec<_>>(), "permutation of {n}");
+        let passes = super::render::pass_ranges(n);
+        assert!(!passes[0].is_empty() && passes[0].len() <= 4 && passes.len() <= 6, "{n}: {passes:?}");
+        let mut at = 0;
+        for r in &passes {
+            assert_eq!(r.start, at, "{n}: {passes:?}");
+            assert!(r.end > r.start);
+            at = r.end;
+        }
+        assert_eq!(at, n);
+    }
+}
+
+#[test]
+fn shading_budget_runs_out_and_refills() {
+    let mut rng = super::render::Rng::new(1, 2, 3);
+    for _ in 0..super::render::SHADE_BUDGET {
+        assert!(rng.spend());
+    }
+    assert!(!rng.spend(), "a path stops shading once its budget is spent");
+    assert!(!rng.spend());
+    rng.refill();
+    assert!(rng.spend());
+}
+
+#[test]
+fn rendering_stops_at_its_time_limits() {
+    use super::render::{Limits, Outcome};
+    use std::time::Duration;
+    let scene = empty_scene();
+    let none = Limits { soft: Duration::MAX, hard: Duration::MAX };
+    let (faces, outcome) = scene.render(Vec3A::ZERO, 8, 36, 0, none);
+    assert_eq!(outcome, Outcome::Full);
+    assert!(faces.iter().all(|p| p.iter().all(|f| f.len() == 64)));
+    let quick = Limits { soft: Duration::ZERO, hard: Duration::MAX };
+    let (faces, outcome) = scene.render(Vec3A::ZERO, 8, 36, 0, quick);
+    assert_eq!(outcome, Outcome::Partial { least: 4, of: 36 }, "only the first pass runs");
+    assert!(faces.iter().all(|p| p.iter().all(|f| f.len() == 64 && f.iter().all(|c| c.is_finite()))));
+    let cut = Limits { soft: Duration::ZERO, hard: Duration::ZERO };
+    let (faces, outcome) = scene.render(Vec3A::ZERO, 8, 36, 0, cut);
+    assert_eq!(outcome, Outcome::Skipped { faces_done: 0 });
+    assert!(faces.iter().all(|p| p.iter().all(Vec::is_empty)));
+    let (_, outcome) = scene.render(Vec3A::ZERO, 4, 1, 0, quick);
+    assert_eq!(outcome, Outcome::Full, "a single sample is done in the first pass");
+}
+
+#[test]
+fn cubemap_time_budget_scales_and_runs_out() {
+    use std::time::Duration;
+    let b = super::Budget::default();
+    let at = |size: u32, samples: u32, min: u64| b.limits(size, samples, Duration::from_secs(min * 60));
+    let small = at(32, 32, 0).expect("limits");
+    assert_eq!((small.soft, small.hard), (b.cube_soft, b.cube_hard));
+    let big = at(1024, 4, 0).expect("limits");
+    assert!(big.soft > small.soft * 10 && big.hard <= b.total_hard, "{big:?}");
+    let late = at(32, 32, 25).expect("limits");
+    assert_eq!(late.soft, Duration::ZERO, "after the soft budget only the first pass runs");
+    assert_eq!(late.hard, b.cube_hard);
+    let edge = b.limits(32, 32, b.total_hard - Duration::from_secs(5)).expect("limits");
+    assert_eq!(edge.hard, Duration::from_secs(5), "never past the total budget");
+    assert!(at(32, 32, 40).is_none() && at(32, 32, 90).is_none(), "nothing left: skipped");
+}
+
+#[test]
+fn spent_budget_skips_cubemaps_by_name_and_keeps_placeholders() {
+    use std::time::Duration;
+    let cube = "entity\n{\n\t\"id\" \"8000\"\n\t\"classname\" \"env_cubemap\"\n\t\"origin\" \"128 128 96\"\n\t\"cubemapsize\" \"4\"\n}\n";
+    let light = crate::rad::tests::light_entity(500, "64 128 200", "");
+    let text = crate::rad::tests::room("DEV/SHINY", &format!("{light}{cube}"));
+    let map = hp_vmf::parse(&text).expect("vmf");
+    let opts = crate::CompileOptions { map_name: Some("gm_budget".to_owned()), ..Default::default() };
+    let compiled = crate::compile(&map, &Files, &crate::props::NoModels, &opts, &mut |_| {}).expect("compile");
+    let rad = RadOptions { bounces: 2, quality: RadQuality::Draft, threads: Some(2), ..RadOptions::default() };
+    let lit = crate::rad::light_bsp_with(&compiled.bsp, &rad, &Files, &mut |_| {}).expect("light");
+    let spent = super::Budget {
+        cube_soft: Duration::ZERO,
+        cube_hard: Duration::ZERO,
+        total_soft: Duration::ZERO,
+        total_hard: Duration::ZERO,
+    };
+    let mut lines = Vec::new();
+    let out =
+        super::bake_within(lit.clone(), &Files, 0, false, spent, &mut |l| lines.push(l.to_owned())).expect("bake");
+    assert!(
+        lines.iter().any(|l| l.contains("env_cubemap 1 of 1 at (128 128 96) (8 px) skipped")),
+        "the skipped cubemap is named: {lines:?}"
+    );
+    assert!(lines.iter().any(|l| l.contains("scene ready")), "{lines:?}");
+    assert!(lines.last().is_some_and(|l| l.contains("1 skipped")), "{lines:?}");
+    assert!(crate::validate::validate(&out).is_empty());
+    let bsp = hp_bsp::Bsp::from_vec(out).expect("bsp");
+    let pak = bsp.pakfile().expect("pak");
+    let placeholder =
+        pak.read_name("materials/maps/gm_budget/c128_128_96.vtf").ok().flatten().expect("placeholder").into_owned();
+    assert!(face_mean(&placeholder, 5).max_element() < 1.0, "the placeholder stays");
+    assert!(pak.read_name("materials/maps/gm_budget/cubemapdefault.vtf").ok().flatten().is_some());
+    let quick = super::Budget { cube_soft: Duration::ZERO, ..super::Budget::default() };
+    let mut lines = Vec::new();
+    let out = super::bake_within(lit, &Files, 0, false, quick, &mut |l| lines.push(l.to_owned())).expect("bake");
+    assert!(lines.iter().any(|l| l.contains("stopped refining")), "{lines:?}");
+    let bsp = hp_bsp::Bsp::from_vec(out).expect("bsp");
+    let data = bsp
+        .pakfile()
+        .expect("pak")
+        .read_name("materials/maps/gm_budget/c128_128_96.vtf")
+        .ok()
+        .flatten()
+        .expect("cubemap")
+        .into_owned();
+    assert!(face_mean(&data, 5).max_element() > 4.0, "the quick pass still shows the lit floor");
+}

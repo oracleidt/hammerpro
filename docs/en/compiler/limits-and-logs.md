@@ -65,7 +65,8 @@ The **Log** tab of the [Compile and run window](compile-window.md) shows every l
 - **Problems list**: "Problems: N errors, M warnings", each with **Go to**.
 - **Explanations**: known messages get a plain explanation and a button: **Help** (the Valve Developer Community page), **Go to**, **Leak path** (loads the pointfile) or **Check** (opens Check for problems).
 - **Pipeline notices**: lines written by Hammer Pro itself, such as "Compile stopped after the geometry: the map leaks", "Packed N files into the BSP", "Same input as an earlier compile: result reused", "... does not exist yet: a full compile runs instead of the partial one", "Could not replace ...: if the map is loaded in the game, change map or disconnect first".
-- A crash of a step is named ("The program ran out of memory", "stack overflow"...), with its exit code.
+- A crash of a step is named ("The program ran out of memory", "stack overflow"...), with its exit code, followed by "The lighting step stopped. Last lines of its log:" and the last 8 lines that step printed, so the crash shows where it happened.
+- When a step cannot get memory, the log says which step, how much it asked for in one block and where in the compiler ("Error: out of memory: the lighting step asked for 4.66 GB in one block"), and the notice "The lighting step ran out of memory" explains what to change. The ray traced lighting checks its biggest buffers before it allocates them: a map too large for the memory fails with the totals (light links, luxels, sample points) and advice instead of crashing. Lights only enter the ray tracing lists of the faces they can visibly light, so maps with many lights over large open areas use far less memory.
 
 The compiler prints VBSP's wording on purpose, so the same rules work on logs of Valve's tools too.
 

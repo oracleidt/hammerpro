@@ -609,6 +609,32 @@ impl CompileDialog {
             });
             ui.checkbox(&mut s.load_pointfile_on_leak, t!("compile.load_pointfile"))
                 .on_hover_text(t!("compile.load_pointfile_tip"));
+            ui.checkbox(&mut s.finish_sound, t!("compile.finish_sound")).on_hover_text(t!("compile.finish_sound_tip"));
+            wrap_group(ui, "finish_sound", |ui| {
+                ui.spacing_mut().slider_width = 80.0;
+                let mut percent = (s.finish_sound_volume.clamp(0.0, 1.0) * 100.0).round();
+                let slider = ui
+                    .add_enabled(
+                        s.finish_sound,
+                        egui::Slider::new(&mut percent, 0.0..=100.0)
+                            .suffix(" %")
+                            .text(t!("compile.finish_sound_volume")),
+                    )
+                    .on_hover_text(t!("compile.finish_sound_tip"));
+                if slider.changed() {
+                    s.finish_sound_volume = percent / 100.0;
+                }
+                if slider.drag_stopped() {
+                    super::preview_finish_sound(s);
+                }
+                if ui
+                    .add_enabled(s.finish_sound, egui::Button::new(t!("compile.finish_sound_test")))
+                    .on_hover_text(t!("compile.finish_sound_test_tip"))
+                    .clicked()
+                {
+                    super::preview_finish_sound(s);
+                }
+            });
         });
 
         form.row(ui, t!("compile.game_args"), |ui| {

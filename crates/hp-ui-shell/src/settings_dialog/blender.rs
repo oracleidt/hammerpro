@@ -1,7 +1,7 @@
 use egui::RichText;
 use hp_app::extend::{SettingsPage, page_order};
 use hp_app::i18n::TrTable;
-use hp_app::settings::BlenderFormat;
+use hp_app::settings::{BlenderFormat, BlenderScale};
 use hp_app::{AppState, t, tf, theme};
 
 use crate::common::heading;
@@ -17,6 +17,13 @@ fn format_label(f: BlenderFormat) -> &'static str {
         BlenderFormat::Gltf => "glTF (GLB)",
         BlenderFormat::Obj => "OBJ",
         BlenderFormat::Fbx => "FBX",
+    }
+}
+
+fn scale_label(s: BlenderScale) -> &'static str {
+    match s {
+        BlenderScale::Meters => t!("shell.blender.scale_meters"),
+        BlenderScale::SourceUnits => t!("shell.blender.scale_source"),
     }
 }
 
@@ -80,6 +87,15 @@ impl SettingsPage for BlenderPage {
                 changed |= ui.radio_value(&mut state.settings.blender.format, f, format_label(f)).changed();
             }
         });
+        hp_app::widgets::choice_row(ui, |ui| {
+            ui.label(t!("shell.blender.scale")).on_hover_text(t!("shell.blender.scale_tip"));
+            for s in BlenderScale::ALL {
+                changed |= ui
+                    .radio_value(&mut state.settings.blender.scale, s, scale_label(s))
+                    .on_hover_text(t!("shell.blender.scale_tip"))
+                    .changed();
+            }
+        });
         changed |= ui
             .checkbox(&mut state.settings.blender.live_link, t!("shell.blender.live_link"))
             .on_hover_text(t!("shell.blender.live_link_tip"))
@@ -112,6 +128,9 @@ impl SettingsPage for BlenderPage {
         if let Some(link) = &state.runtime.blender.link {
             ui.add_space(4.0);
             ui.label(tf!("shell.blender.linked", link.file.display(), link.pulls));
+            if link.scale != state.settings.blender.scale {
+                ui.label(RichText::new(tf!("shell.blender.linked_scale", scale_label(link.scale))).small().weak());
+            }
         }
         if state.runtime.blender.pull_in_progress {
             ui.horizontal(|ui| {
@@ -146,6 +165,19 @@ pub(super) const TR: TrTable = &[
     ),
     ("shell.blender.format", "File format", "Format de fichier"),
     ("shell.blender.live_link", "Live link", "Lien direct"),
+    ("shell.blender.scale", "Scale in Blender", "Échelle dans Blender"),
+    ("shell.blender.scale_meters", "Meters (1 m = 39.37 units)", "Mètres (1 m = 39,37 unités)"),
+    ("shell.blender.scale_source", "Source units (1:1)", "Unités Source (1:1)"),
+    (
+        "shell.blender.scale_tip",
+        "Meters: the geometry arrives in Blender in real world size (1 Source unit = 0.0254 m). Source units: one Blender unit is one Source unit, so coordinates and sizes read the same as in Hammer Pro, handy to model props for a precise spot of the map. Either way the update brings the geometry back at the same place and size.",
+        "Mètres : la géométrie arrive dans Blender à sa taille réelle (1 unité Source = 0,0254 m). Unités Source : une unité Blender vaut une unité Source, les coordonnées et les tailles se lisent comme dans Hammer Pro, pratique pour modéliser des props pour un endroit précis de la map. Dans les deux cas la mise à jour ramène la géométrie au même endroit et à la même taille.",
+    ),
+    (
+        "shell.blender.linked_scale",
+        "The current link keeps the scale it was sent with: {0}. Send again to use the new one.",
+        "Le lien en cours garde l'échelle de son envoi : {0}. Envoyez de nouveau pour utiliser la nouvelle.",
+    ),
     (
         "shell.blender.live_link_tip",
         "Hammer Pro watches the exported file and updates the map each time Blender saves or presses Update in Hammer Pro.",

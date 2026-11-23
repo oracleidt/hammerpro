@@ -48,12 +48,24 @@ pub(crate) struct State {
     pub rays: u64,
 }
 
+pub fn filled<T: Clone>(n: usize, value: T, what: &str) -> Result<Vec<T>, String> {
+    let mut v = Vec::new();
+    v.try_reserve_exact(n).map_err(|_| {
+        format!(
+            "not enough memory for the ray traced {what}: {:.2} GB needed in one block ({n} entries): raise the lightmap scale of large faces, lower the ray tracing quality, or close other programs",
+            (n as u64 * std::mem::size_of::<T>() as u64) as f64 / f64::from(1u32 << 30)
+        )
+    })?;
+    v.resize(n, value);
+    Ok(v)
+}
+
 impl State {
-    pub fn new(scene: &Scene) -> State {
+    pub fn new(scene: &Scene) -> Result<State, String> {
         let packed = Packed::new(scene);
         let n = scene.luxels.len();
-        let mut lux_offset = vec![0u32; n];
-        let mut lux_width = vec![0u8; n];
+        let mut lux_offset = filled(n, 0u32, "luxel offsets")?;
+        let mut lux_width = filled(n, 0u8, "luxel widths")?;
         let mut at = 0u32;
         for s in packed.surfaces.iter() {
             let width = (packed.passes * s.slots as usize * s.normals as usize) as u32;
@@ -66,21 +78,21 @@ impl State {
                 }
             }
         }
-        State {
+        Ok(State {
             finished: false,
             packed,
             lux_offset,
             lux_width,
-            direct: vec![Vec3A::ZERO; at as usize],
-            indirect: vec![Vec3A::ZERO; at as usize],
-            dstat: vec![Stat::default(); n],
-            istat: vec![Stat::default(); n],
+            direct: filled(at as usize, Vec3A::ZERO, "direct light")?,
+            indirect: filled(at as usize, Vec3A::ZERO, "bounced light")?,
+            dstat: filled(n, Stat::default(), "direct light statistics")?,
+            istat: filled(n, Stat::default(), "bounced light statistics")?,
             cache_ready: false,
             cache_fresh: false,
             target: 1,
             clamp: 0.0,
             rays: 0,
-        }
+        })
     }
 }
 
@@ -269,7 +281,13 @@ fn max_count(b: &Baker) -> u32 {
     }
 }
 
-const MIN_GPU_BATCH: usize = 16_384;
+const MIN_GPU_BATCH: usize = 8_192;
+const FIRST_GPU_BATCH: usize = 8_192;
+
+pub(crate) fn gpu_batch(target: f64, spu: f64, cap: usize) -> usize {
+    let want = if spu > 0.0 && spu.is_finite() { (target / spu) as usize } else { FIRST_GPU_BATCH };
+    want.clamp(MIN_GPU_BATCH, cap.max(MIN_GPU_BATCH))
+}
 
 fn item_cap(b: &Baker) -> usize {
     match &b.backend {
@@ -286,10 +304,7 @@ fn budget(b: &Baker, kind: Kind) -> usize {
     }
     if let Backend::Gpu(g) = &b.backend {
         let cap = g.max_items() * max_count(b) as usize;
-        let spu = g.seconds_per_unit(kind);
-        let target = g.submit_seconds();
-        let want = if spu > 0.0 { (target / spu) as usize } else { 1 << 15 };
-        return want.clamp(MIN_GPU_BATCH, cap.max(MIN_GPU_BATCH));
+        return gpu_batch(g.submit_seconds(), g.seconds_per_unit(kind), cap);
     }
     let target = if b.on_gpu() { 1usize << 21 } else { 1usize << 16 };
     let lights = (b.scene.light_lists.len() / b.scene.surfaces.len().max(1)).max(1);
@@ -782,6 +797,31 @@ mod tests {
 
     fn work(luxels: u32, count: u32) -> Vec<Work> {
         (0..luxels).map(|l| Work { luxel: l, surface: 0, start: 3, count: count + l % 3 }).collect()
+    }
+
+    #[test]
+    fn gpu_batches_follow_the_measured_time_per_sample() {
+        assert_eq!(gpu_batch(0.1, 0.0, 1 << 20), FIRST_GPU_BATCH, "first batch before any timing");
+        assert_eq!(gpu_batch(0.1, f64::NAN, 1 << 20), FIRST_GPU_BATCH);
+        assert_eq!(gpu_batch(0.1, 1.0e-6, 1 << 20), 100_000);
+        assert_eq!(gpu_batch(0.1, 1.0e-6, 50_000), 50_000, "capped by the card");
+        let heavy = 1.0e-4;
+        assert!(
+            gpu_batch(0.25, heavy, 1 << 20) as f64 * heavy <= 0.9,
+            "a heavy batch stays far below the 2 s driver watchdog"
+        );
+        assert_eq!(gpu_batch(0.1, 1.0, 1 << 20), MIN_GPU_BATCH);
+        assert!(
+            MIN_GPU_BATCH as u64 >= crate::gpu::TRIAL_UNITS,
+            "the smallest batch still calibrates the ray query choice"
+        );
+    }
+
+    #[test]
+    fn a_buffer_too_large_for_memory_is_an_error_not_a_crash() {
+        let e = filled(usize::MAX / 64, Vec3A::ZERO, "direct light").unwrap_err();
+        assert!(e.contains("not enough memory for the ray traced direct light") && e.contains("GB"), "{e}");
+        assert_eq!(filled(3, 7u32, "x").unwrap(), vec![7, 7, 7]);
     }
 
     #[test]

@@ -634,3 +634,19 @@ fn lighting_progress_in_the_bar() {
     let s = run.steps.iter().find(|s| s.index == 1).expect("step");
     assert_eq!((s.fraction, s.phase.as_deref()), (0.41, Some(line)));
 }
+
+#[test]
+fn the_finish_sound_follows_its_settings_and_stays_quiet_in_tests() {
+    let mut s = hp_app::settings::CompileSettings::default();
+    assert!(s.finish_sound && (s.finish_sound_volume - 0.6).abs() < 1e-6);
+    assert_eq!(super::finish_chime(&s, true, true), Some((hp_audio::Chime::Success, 0.6)));
+    assert_eq!(super::finish_chime(&s, false, true), Some((hp_audio::Chime::Failure, 0.6)));
+    assert_eq!(super::finish_chime(&s, true, false), None, "never plays from a test run");
+    s.finish_sound_volume = 7.0;
+    assert_eq!(super::finish_chime(&s, true, true).map(|c| c.1), Some(1.0));
+    s.finish_sound_volume = 0.0;
+    assert_eq!(super::finish_chime(&s, true, true), None);
+    s.finish_sound_volume = 0.5;
+    s.finish_sound = false;
+    assert_eq!(super::finish_chime(&s, true, true), None);
+}

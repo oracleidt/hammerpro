@@ -52,13 +52,18 @@ pub struct ExportFile {
 }
 
 pub fn exchange(source: &Model) -> Model {
+    exchange_scaled(source, UNITS_PER_METER)
+}
+
+pub fn exchange_scaled(source: &Model, units_per_file_unit: f64) -> Model {
+    let divisor = if units_per_file_unit.is_finite() && units_per_file_unit > 0.0 { units_per_file_unit } else { 1.0 };
     let axes = |v: DVec3| DVec3::new(v.x, v.z, -v.y);
     let mut out = source.clone();
     out.up = UpAxis::Y;
     out.meters_per_unit = 1.0;
     for t in &mut out.triangles {
         for k in 0..3 {
-            t.pos[k] = axes(t.pos[k]) / UNITS_PER_METER;
+            t.pos[k] = axes(t.pos[k]) / divisor;
             t.normal[k] = axes(t.normal[k]);
         }
     }
@@ -66,7 +71,11 @@ pub fn exchange(source: &Model) -> Model {
 }
 
 pub fn export(source: &Model, format: ExportFormat, stem: &str) -> Vec<ExportFile> {
-    let model = exchange(source);
+    export_scaled(source, format, stem, UNITS_PER_METER)
+}
+
+pub fn export_scaled(source: &Model, format: ExportFormat, stem: &str, units_per_file_unit: f64) -> Vec<ExportFile> {
+    let model = exchange_scaled(source, units_per_file_unit);
     let stem = file_stem(stem);
     match format {
         ExportFormat::Gltf => vec![ExportFile { name: format!("{stem}.glb"), data: glb(&model) }],
@@ -806,5 +815,30 @@ mod tests {
         assert_eq!(m.up, UpAxis::Y);
         let p = m.triangles[1].pos[2];
         assert!((p - DVec3::new(0.0, 48.0, -32.0) / UNITS_PER_METER).length() < 1e-9, "{p}");
+        let one = exchange_scaled(&sample(), 1.0);
+        assert!((one.triangles[1].pos[2] - DVec3::new(0.0, 48.0, -32.0)).length() < 1e-9);
+        for format in [ExportFormat::Gltf, ExportFormat::Obj, ExportFormat::Fbx] {
+            let files = export_scaled(&sample(), format, "s", 1.0);
+            let dir = std::env::temp_dir().join(format!("hp_export_scaled_{}_{:?}", std::process::id(), format));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            for f in &files {
+                std::fs::write(dir.join(&f.name), &f.data).unwrap();
+            }
+            let back = crate::read(&dir.join(&files[0].name)).unwrap().to_source(&crate::ImportOptions {
+                scale: 1.0 / UNITS_PER_METER,
+                center: false,
+                ..Default::default()
+            });
+            let want = sample().triangles[1].pos[2];
+            let got = back
+                .triangles
+                .iter()
+                .flat_map(|t| t.pos)
+                .min_by(|a, b| (*a - want).length().total_cmp(&(*b - want).length()))
+                .unwrap();
+            assert!((got - want).length() < 1e-3, "{format:?}: {got} != {want}");
+            let _ = std::fs::remove_dir_all(&dir);
+        }
     }
 }

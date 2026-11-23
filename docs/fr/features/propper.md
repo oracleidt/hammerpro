@@ -113,7 +113,7 @@ Ces choix sont enregistrés (`unprop_shape`, `unprop_detail`, `unprop_keep_prop`
 
 Chaque face de brush reprend le matériau et l'alignement de texture des triangles du modèle posés dessus ; les faces que le modèle ne dessine pas (faces cachées, faces nodraw et d'outils des brushes d'origine) reçoivent `tools/toolsnodraw`. Les nouveaux brushes sont sélectionnés, le prop est supprimé sauf si vous le gardez, le tout en une seule étape d'annulation. Une notification indique le nombre de brushes, de faces texturées et de faces nodraw, combien de brushes ne font qu'approcher le modèle, et combien de parties étaient trop petites ou trop plates pour devenir une brush.
 
-Limites : 20000 triangles de rendu au plus pour reconstruire, et 1024 brushes au plus par modèle.
+Limites : 20000 triangles de rendu au plus pour reconstruire, et 4096 brushes au plus par modèle. Une carte Source entière compile au plus 8192 brushes (et 65536 faces de brushes), un modèle peut donc prendre la moitié de ce budget et pas plus : un modèle au-delà est refusé avec son vrai nombre de brushes, et la solution est de simplifier le modèle, de le convertir en plusieurs parties, ou de le garder en prop. Quand une conversion fait passer la carte au-dessus de 8192 brushes, un avertissement le dit.
 
 ## Astuces
 

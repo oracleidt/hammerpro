@@ -2,7 +2,9 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::Duration;
 
-use hp_app::runtime::update::{PREBUILT_PLATFORM, SOURCE_UPDATE_COMMANDS, megabytes, platform_name};
+use hp_app::runtime::update::{
+    PREBUILT_PLATFORM, SOURCE_UPDATE_COMMANDS, megabytes, platform_name, speed_text, time_left_text,
+};
 use hp_app::runtime::{UpdateFailure, UpdateInfo, UpdateStatus};
 use hp_app::{AppState, Severity, t, tf};
 use hp_update::{CheckResult, Download, Downloaded, Release, UpdateError};
@@ -171,6 +173,7 @@ impl UpdateController {
                 rt.failure = None;
                 rt.done_bytes = 0;
                 rt.total_bytes = rt.latest.as_ref().map_or(0, |l| l.asset_size);
+                rt.meter.reset();
                 self.download = Some(download);
             }
             Err(error) => {
@@ -185,6 +188,7 @@ impl UpdateController {
         let rt = &mut state.runtime.update;
         rt.done_bytes = download.progress.done.load(Ordering::Relaxed);
         rt.total_bytes = download.progress.total.load(Ordering::Relaxed);
+        rt.meter.sample(std::time::Instant::now(), rt.done_bytes);
         let result = match download.rx.try_recv() {
             Ok(result) => result,
             Err(TryRecvError::Empty) => {
@@ -273,6 +277,12 @@ impl UpdateController {
                         ui.label(text);
                     });
                     ui.add(egui::ProgressBar::new(rt.progress().unwrap_or(0.0)).show_percentage());
+                    let pace = match (rt.speed(), rt.seconds_left()) {
+                        (Some(speed), Some(left)) => tf!("update.speed", speed_text(speed), time_left_text(left)),
+                        (Some(speed), None) => tf!("update.speed_only", speed_text(speed)),
+                        _ => t!("update.measuring").to_owned(),
+                    };
+                    ui.label(egui::RichText::new(pace).weak());
                     ui.add_space(6.0);
                     if ui.button(t!("update.btn_cancel")).clicked() {
                         cancel = true;

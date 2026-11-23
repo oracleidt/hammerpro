@@ -70,6 +70,15 @@ pub const TR: TrTable = &[
         "Ouvrir la map avec un lien steam:// au lieu de lancer l'exécutable du jeu",
     ),
     ("compile.load_pointfile", "Load the leak path on leak", "Charger le chemin de fuite en cas de fuite"),
+    ("compile.finish_sound", "Sound when done", "Son à la fin"),
+    (
+        "compile.finish_sound_tip",
+        "Play a short bell when a compile ends, even when Hammer Pro is in the background: a bright ding on success, a soft low tone on failure or leak. Nothing when the compile is cancelled.",
+        "Joue une courte cloche à la fin d'une compilation, même quand Hammer Pro est en arrière plan : un ding clair en cas de réussite, un son grave et doux en cas d'échec ou de fuite. Rien quand la compilation est annulée.",
+    ),
+    ("compile.finish_sound_volume", "Volume", "Volume"),
+    ("compile.finish_sound_test", "Test", "Tester"),
+    ("compile.finish_sound_test_tip", "Play the success sound now", "Jouer le son de réussite maintenant"),
     (
         "compile.load_pointfile_tip",
         "When the map leaks, load the leak path (.lin) into the views to find the hole",
@@ -395,6 +404,16 @@ pub const TR: TrTable = &[
     ("compile.notice.crashed", "{0} failed with exit code {1}: {2}", "{0} a échoué avec le code de sortie {1} : {2}"),
     ("compile.notice.exit_code", "{0} failed with exit code {1}.", "{0} a échoué avec le code de sortie {1}."),
     ("compile.notice.terminated", "{0} was terminated.", "{0} a été interrompu."),
+    (
+        "compile.notice.step_out_of_memory",
+        "The {0} step ran out of memory: it asked for {1} in one block. One part of the map is probably far bigger than the rest (a huge or broken face, a very fine lightmap scale, a corrupted displacement): run Check for problems, or send the compile log to the Hammer Pro developers.",
+        "L'étape {0} a manqué de mémoire : elle a demandé {1} d'un seul bloc. Une partie de la carte est sans doute bien plus grande que le reste (une face énorme ou cassée, une échelle de lightmap très fine, un déplacement corrompu) : lancez Vérifier les problèmes, ou envoyez le journal de compilation aux développeurs de Hammer Pro.",
+    ),
+    (
+        "compile.notice.crashed_during",
+        "The {0} step stopped. Last lines of its log:",
+        "L'étape {0} s'est arrêtée. Dernières lignes de son journal :",
+    ),
     (
         "compile.crash.access_violation",
         "The program crashed (access violation).",
@@ -1280,8 +1299,8 @@ pub const TR: TrTable = &[
     ("compile.prop_lighting", "Light static props (per vertex)", "Éclairer les props statiques (par sommet)"),
     (
         "compile.prop_lighting_tip",
-        "When the quality asks for it (Final), the lighting bakes the light of every static prop vertex (-StaticPropLighting): slow on big maps. Off: never, the game lights the props itself.",
-        "Quand la qualité le demande (Final), l'éclairage précalcule la lumière de chaque sommet des props statiques (-StaticPropLighting) : lent sur les grandes maps. Décoché : jamais, le jeu éclaire lui-même les props.",
+        "With the Normal and Final qualities, the lighting bakes the light of every static prop vertex (-StaticPropLighting), so props match the brushes around them. Off: never, the game lights each prop from one point, often darker than the walls next to it.",
+        "Avec les qualités Normal et Final, l'éclairage précalcule la lumière de chaque sommet des props statiques (-StaticPropLighting), pour que les props aient la même luminosité que les brushes autour. Décoché : jamais, le jeu éclaire chaque prop depuis un seul point, souvent plus sombre que les murs voisins.",
     ),
     ("compile.prop_shadows", "Static prop shadows", "Ombres des props statiques"),
     (

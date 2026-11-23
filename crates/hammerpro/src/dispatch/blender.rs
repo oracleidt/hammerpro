@@ -77,7 +77,7 @@ fn finish_pull(app: &mut HammerProApp, answer: PullAnswer) {
 }
 
 fn send_now(app: &mut HammerProApp) {
-    let opts = SendOptions { format: None, launch: true, live: None };
+    let opts = SendOptions { format: None, launch: true, live: None, scale: None };
     match blender::send(&mut app.state, &opts) {
         Ok(report) => {
             let severity = if report.problem.is_some() { Severity::Warning } else { Severity::Success };

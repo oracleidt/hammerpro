@@ -233,12 +233,22 @@ impl Scene {
             if s.first_luxel as usize + s.luxels() > self.luxels.len() {
                 return Err("a surface points past the luxel list".to_owned());
             }
-            if (s.lights.0 + s.lights.1) as usize > self.light_lists.len() {
+            if u64::from(s.lights.0) + u64::from(s.lights.1) > self.light_lists.len() as u64 {
                 return Err("a surface points past the light lists".to_owned());
             }
         }
+        let (values, cache) = self.surfaces.iter().fold((0u64, 0u64), |(v, c), s| {
+            let per = u64::from(self.passes) * s.styles.len().clamp(1, MAX_SLOTS) as u64 * s.luxels() as u64;
+            (v + per * u64::from(s.normals), c + per)
+        });
+        if values > u64::from(u32::MAX) || cache > u64::from(u32::MAX) {
+            return Err(format!(
+                "the lightmaps are too large for the ray tracer: {values} light values over {} luxels (4294967295 at most): raise the lightmap scale of large faces or lower the ray tracing quality",
+                self.luxels.len()
+            ));
+        }
         for l in &self.luxels {
-            if (l.first_point + l.points) as usize > self.points.len() {
+            if u64::from(l.first_point) + u64::from(l.points) > self.points.len() as u64 {
                 return Err("a luxel points past the sample points".to_owned());
             }
         }

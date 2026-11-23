@@ -223,7 +223,7 @@ Menu group **Static props** (lighting step).
 
 | Flag | Effect | Default |
 |---|---|---|
-| `-StaticPropLighting` | Bakes the lighting of every static prop vertex (shadows and bounced light) instead of letting the game light props at run time. | Final preset, when **Light static props (per vertex)** is on |
+| `-StaticPropLighting` | Bakes the lighting of every static prop vertex (shadows and bounced light) instead of letting the game light props at run time. | Normal and Final presets, when **Light static props (per vertex)** is on |
 | `-StaticPropPolys` | Static props cast shadows with the triangles they draw instead of their collision model (finer shadows, slower). Models listed with `forcetextureshadow` in a `.rad` file always do (see [Light file (.rad)](#light-file-rad)). | off |
 | `-textureshadows` | With `-StaticPropPolys`: alpha tested prop textures (leaves, fences) of models compiled with `$casttextureshadows` let light through. | off |
 | `-nossprops` | Static props never shadow themselves. | off |
@@ -300,7 +300,7 @@ Menu group **Debugging**.
 
 **I typed a flag in the extra arguments and it does nothing.** Check the log: an unknown flag gives a warning. Also check that the options menu does not force it off.
 
-**Can I use the VRAD option `-StaticPropLighting` in Normal?** Yes: force it on in the lighting options menu (it still needs **Light static props (per vertex)** on).
+**Is `-StaticPropLighting` used in Normal?** Yes, since 2.3.2 Normal and Final bake the prop vertices (with **Light static props (per vertex)** on); Draft does not. Without it the game lights each prop from a single point (its center or its `info_lighting`), which in dim rooms often makes a prop much darker than the brush wall next to it, even with Valve's VRAD.
 
 ## Related pages
 - [Command line](command-line.md)

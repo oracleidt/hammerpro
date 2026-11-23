@@ -224,7 +224,7 @@ Groupe **Props statiques** (étape d'éclairage).
 
 | Paramètre | Effet | Par défaut |
 |---|---|---|
-| `-StaticPropLighting` | Précalcule l'éclairage de chaque sommet des props statiques (ombres et lumière rebondie) au lieu de laisser le jeu les éclairer en direct. | préréglage Final, si **Éclairer les props statiques (par sommet)** est coché |
+| `-StaticPropLighting` | Précalcule l'éclairage de chaque sommet des props statiques (ombres et lumière rebondie) au lieu de laisser le jeu les éclairer en direct. | préréglages Normal et Final, si **Éclairer les props statiques (par sommet)** est coché |
 | `-StaticPropPolys` | Les props statiques projettent leur ombre avec les triangles affichés au lieu de leur modèle de collision (ombres plus fines, plus lent). | désactivé |
 | `-textureshadows` | Avec `-StaticPropPolys` : les textures à transparence (feuillages, grillages) des modèles compilés avec `$casttextureshadows` laissent passer la lumière. | désactivé |
 | `-nossprops` | Les props statiques ne se font jamais d'ombre à eux-mêmes. | désactivé |
@@ -301,7 +301,7 @@ Groupe **Débogage**.
 
 **J'ai tapé un paramètre dans les arguments supplémentaires et il ne fait rien.** Regardez le journal : un paramètre inconnu donne un avertissement. Vérifiez aussi que le menu d'options ne le désactive pas.
 
-**Puis-je utiliser `-StaticPropLighting` en Normal ?** Oui : forcez-le dans le menu des options d'éclairage (il faut quand même que **Éclairer les props statiques (par sommet)** soit coché).
+**`-StaticPropLighting` est-il utilisé en Normal ?** Oui, depuis la 2.3.2 Normal et Final précalculent les sommets des props (avec **Éclairer les props statiques (par sommet)** coché) ; Brouillon non. Sans lui, le jeu éclaire chaque prop depuis un seul point (son centre ou son `info_lighting`), ce qui dans les pièces sombres rend souvent un prop bien plus sombre que le mur en brush à côté, même avec le VRAD de Valve.
 
 ## Pages liées
 - [Ligne de commande](command-line.md)

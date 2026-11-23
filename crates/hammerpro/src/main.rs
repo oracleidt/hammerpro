@@ -327,6 +327,16 @@ fn pick_adapter(
     Ok(best.clone())
 }
 
+fn compile_step_name(arg: &str) -> Option<&'static str> {
+    match arg {
+        bspc_cli::BSPC_ARG => Some("BSP and visibility"),
+        bspc_cli::RAD_ARG => Some("lighting"),
+        bspc_cli::CUBEMAPS_ARG => Some("cubemaps"),
+        dispatch::lighting::child::LIGHT_ARG => Some("lighting preview"),
+        _ => None,
+    }
+}
+
 fn main() -> eframe::Result<()> {
     if std::env::args()
         .nth(1)
@@ -334,6 +344,9 @@ fn main() -> eframe::Result<()> {
     {
         let settings = hp_app::settings::Settings::load_or_default(&hp_app::settings::Settings::default_path());
         hp_fs::configure_scan(settings.scan.to_config());
+    }
+    if let Some(step) = std::env::args().nth(1).as_deref().and_then(compile_step_name) {
+        native_crash::mark_compile_step(step);
     }
     if std::env::args().nth(1).as_deref() == Some(hp_mcp::BRIDGE_ARG) {
         let options = hp_mcp::bridge::BridgeOptions {

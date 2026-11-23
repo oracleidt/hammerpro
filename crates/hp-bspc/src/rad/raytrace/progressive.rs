@@ -78,7 +78,7 @@ impl Progressive {
         let sizes: Vec<(i32, i32)> =
             super::super::texlights::texdata(&scene.src).into_iter().map(|(_, w, h)| (w, h)).collect();
         let (styled_entities, _, lights) = session::scene_lights(&scene, &scene.map.entities, &opts);
-        let built = Self::build(&scene, &lights, &rt, &opts, &materials, &sizes);
+        let built = Self::build(&scene, &lights, &rt, &opts, &materials, &sizes).map_err(Stop::Failed)?;
         let effects = rt.effects.sanitized();
         let settings = hp_raytrace::Settings {
             params: rt.params(),
@@ -135,7 +135,7 @@ impl Progressive {
         opts: &RadOptions,
         materials: &[super::bake::MaterialInfo],
         sizes: &[(i32, i32)],
-    ) -> super::bake::Built {
+    ) -> Result<super::bake::Built, String> {
         let work = super::super::progress::Work::new();
         let ctx = session::make_ctx(scene, lights, session::params(opts), &work, opts.bounce_budget);
         super::bake::build(
@@ -179,7 +179,8 @@ impl Progressive {
     pub fn set_entities(&mut self, entities: &[hp_bsp::Entity], log: &mut dyn FnMut(&str)) -> Result<(), Stop> {
         let t = Instant::now();
         let (styled, _, lights) = session::scene_lights(&self.scene, entities, &self.opts);
-        let built = Self::build(&self.scene, &lights, &self.rt, &self.opts, &self.materials, &self.sizes);
+        let built = Self::build(&self.scene, &lights, &self.rt, &self.opts, &self.materials, &self.sizes)
+            .map_err(Stop::Failed)?;
         let ranges: Vec<(u32, u32)> = built.scene.surfaces.iter().map(|s| s.lights).collect();
         let styles_changed =
             built.scene.surfaces.iter().zip(&self.built.scene.surfaces).any(|(a, b)| a.styles != b.styles);

@@ -876,7 +876,8 @@ pub const LIGHTS: &str = "-lights";
 
 pub fn rad_flags(mode: RadMode) -> Vec<&'static str> {
     match mode {
-        RadMode::Off | RadMode::Normal => Vec::new(),
+        RadMode::Off => Vec::new(),
+        RadMode::Normal => vec![STATIC_PROP_LIGHTING],
         RadMode::Draft => vec!["-bounce", "1", "-fast"],
         RadMode::Final => vec!["-final", STATIC_PROP_LIGHTING],
     }
@@ -929,7 +930,7 @@ mod tests {
         );
         assert_eq!(rad_flags(RadMode::Draft), ["-bounce", "1", "-fast"]);
         assert_eq!(rad_flags(RadMode::Final), ["-final", "-StaticPropLighting"]);
-        assert!(rad_flags(RadMode::Normal).is_empty());
+        assert_eq!(rad_flags(RadMode::Normal), ["-StaticPropLighting"]);
         assert_eq!(rad_lighting(RadMode::Final, Lighting::Ldr), Lighting::Both);
         assert_eq!(rad_lighting(RadMode::Draft, Lighting::Both), Lighting::Ldr);
         assert_eq!(rad_lighting(RadMode::Draft, Lighting::Hdr), Lighting::Hdr);
