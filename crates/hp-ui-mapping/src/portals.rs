@@ -272,7 +272,7 @@ fn window_ui(ui: &mut egui::Ui, state: &mut AppState) {
     ui.horizontal_wrapped(|ui| {
         let building = state.runtime.health.portal_build_running;
         if building {
-            ui.spinner();
+            hp_app::widgets::spinner(ui);
             ui.label(t!("portals.building"));
         } else if ui.button(t!("portals.vbsp_only")).on_hover_text(t!("portals.vbsp_only_tip")).clicked() {
             state.request(Action::BuildPortals);

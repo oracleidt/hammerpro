@@ -420,9 +420,9 @@ pub(crate) fn prepare(input: PrepInput) -> PrepOutput {
         match &input.fs {
             Some(fs) => {
                 let map = input.vmf.file_stem().and_then(|n| n.to_str()).unwrap_or_default();
-                pack_files = fs.pack_list_with(&input.materials, &input.models, &input.roots, map, &input.cache_dir);
-                let n = pack_files.len();
-                messages.push((LogSeverity::Info, tf!(plural(n, "compile.pack_count_one", "compile.pack_count"), n)));
+                let pack = fs.pack_plan(&input.materials, &input.models, &input.roots, map, &input.cache_dir);
+                messages.extend(pack_notes(&pack));
+                pack_files = pack.files;
             }
             None => messages.push((LogSeverity::Warning, t!("compile.no_content").to_owned())),
         }
@@ -459,6 +459,26 @@ pub(crate) fn prepare(input: PrepInput) -> PrepOutput {
         }
         Err(e) => fail(messages, super::notices::plan_error_text(&e)),
     }
+}
+
+pub(crate) fn pack_notes(pack: &hp_fs::PackPlan) -> Vec<(LogSeverity, String)> {
+    let n = pack.files.len();
+    let mut notes = vec![(LogSeverity::Info, tf!(plural(n, "compile.pack_count_one", "compile.pack_count"), n))];
+    for (source, files) in pack.mounted_by_source() {
+        notes.push((LogSeverity::Warning, tf!("compile.pack_mount_summary", files.len(), source)));
+        for file in files {
+            notes.push((LogSeverity::Info, tf!("compile.pack_mount_file", source, file)));
+        }
+    }
+    for (kind, name) in &pack.missing {
+        let key = if *kind == hp_fs::deps::DepKind::ParticleSystem {
+            "compile.pack_missing_system"
+        } else {
+            "compile.pack_missing_file"
+        };
+        notes.push((LogSeverity::Warning, tf!(key, name)));
+    }
+    notes
 }
 
 pub(crate) fn work_dir(vmf: &Path) -> PathBuf {
@@ -602,6 +622,45 @@ pub(crate) fn compile_gameinfo(original: &str, game_dir: &Path, content_dir: &Pa
 mod tests {
     use super::*;
     use hp_compile::{StepAction, StepKind};
+
+    #[test]
+    fn the_pack_notes_name_the_mount_of_every_file_and_what_is_missing() {
+        crate::register_translations();
+        let pack = hp_fs::PackPlan {
+            files: vec![
+                ("models/css/a.mdl".into(), PathBuf::from("a.mdl")),
+                ("models/css/a.vvd".into(), PathBuf::from("a.vvd")),
+                ("materials/mine/x.vmt".into(), PathBuf::from("x.vmt")),
+            ],
+            mounted: vec![
+                hp_fs::MountedFile {
+                    vpath: "models/css/a.vvd".into(),
+                    source: "Mount: cstrike (cstrike_pak.vpk)".into(),
+                },
+                hp_fs::MountedFile {
+                    vpath: "models/css/a.mdl".into(),
+                    source: "Mount: cstrike (cstrike_pak.vpk)".into(),
+                },
+            ],
+            missing: vec![
+                (hp_fs::deps::DepKind::Model, "models/gone.mdl".into()),
+                (hp_fs::deps::DepKind::ParticleSystem, "gone_fx".into()),
+            ],
+        };
+        let notes = pack_notes(&pack);
+        let lines: Vec<&str> = notes.iter().map(|(_, l)| l.as_str()).collect();
+        assert_eq!(notes.len(), 6, "{lines:?}");
+        assert!(lines[0].contains('3'), "{lines:?}");
+        assert!(lines[1].contains("2") && lines[1].contains("Mount: cstrike (cstrike_pak.vpk)"), "{lines:?}");
+        assert_eq!(notes[1].0, LogSeverity::Warning);
+        assert!(
+            lines[2].contains("Mount: cstrike (cstrike_pak.vpk)") && lines[2].ends_with("models/css/a.mdl"),
+            "{lines:?}"
+        );
+        assert!(lines[3].ends_with("models/css/a.vvd"), "{lines:?}");
+        assert!(lines[4].contains("models/gone.mdl") && lines[5].contains("gone_fx"), "{lines:?}");
+        assert_ne!(lines[4], lines[5].replace("gone_fx", "models/gone.mdl"), "systems and files read differently");
+    }
 
     fn tools() -> ToolPaths {
         ToolPaths {
@@ -839,6 +898,74 @@ mod tests {
         };
         let out = prepare(input);
         assert!(out.result.is_err());
+    }
+
+    #[test]
+    fn the_compile_packs_models_of_a_mount_cfg_folder_on_another_drive() {
+        crate::register_translations();
+        let dir = crate::test_scratch("prep_mount_cfg");
+        let _ = std::fs::remove_dir_all(&dir);
+        let root = dir.join("gmod");
+        let props = dir.join("External Drive").join("props");
+        let write = |path: PathBuf, bytes: &[u8]| {
+            std::fs::create_dir_all(path.parent().expect("parent")).expect("dir");
+            std::fs::write(path, bytes).expect("write");
+        };
+        let probe =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../hp-assets/tests/data/static_pose/models/hp_staticpose");
+        write(root.join("garrysmod/gameinfo.txt"), b"GameInfo { FileSystem { SearchPaths { game garrysmod } } }");
+        let cfg = format!("\"mountcfg\" {{ \"props\" \"{}\" }}", props.display().to_string().replace('\\', "/"));
+        write(root.join("garrysmod/cfg/mount.cfg"), cfg.as_bytes());
+        for ext in ["mdl", "vvd", "dx90.vtx"] {
+            let bytes = std::fs::read(probe.join(format!("probe.{ext}"))).expect("probe");
+            write(props.join(format!("models/Loose/Crate.{ext}")), &bytes);
+        }
+        write(
+            props.join("materials/hp_staticpose/gray.vmt"),
+            b"\"VertexLitGeneric\" { \"$basetexture\" \"hp_staticpose/gray\" }",
+        );
+        let opts =
+            hp_fs::MountOptions { mount_workshop: false, mount_downloads: false, ..hp_fs::MountOptions::default() };
+        let fs = hp_fs::GameFs::for_gmod(&root, &opts).expect("mount");
+        let vmf = dir.join("gm_mount.vmf");
+        write(vmf.clone(), b"world { \"id\" \"1\" \"classname\" \"worldspawn\" }");
+        let settings = CompileSettings {
+            pack_custom_content: true,
+            copy_to_maps: false,
+            launch_game: false,
+            ..CompileSettings::default()
+        };
+        let input = PrepInput {
+            vmf,
+            settings,
+            gmod_root: Some(root),
+            fs: Some(fs),
+            materials: Vec::new(),
+            models: vec!["models/loose/crate.mdl".to_owned()],
+            roots: Vec::new(),
+            cache_dir: dir.join("cache"),
+            content_dir: dir.join("content"),
+        };
+        let out = prepare(input);
+        let lines: Vec<&str> = out.messages.iter().map(|(_, l)| l.as_str()).collect();
+        let (plan, _) = out.result.expect("plan");
+        let pack = plan.steps.iter().find(|s| s.kind == StepKind::Pack).expect("pack step");
+        let StepAction::Pack { files } = &pack.action else { panic!("pack files") };
+        let mut names: Vec<&str> = files.iter().map(|(v, _)| v.as_str()).collect();
+        names.sort_unstable();
+        for want in ["models/loose/crate.dx90.vtx", "models/loose/crate.mdl", "models/loose/crate.vvd"] {
+            assert!(names.contains(&want), "{want} in {names:?}");
+        }
+        let file_line = lines.iter().position(|l| l.contains("Mount: props") && l.ends_with("models/loose/crate.mdl"));
+        let summary = lines.iter().position(|l| {
+            l.contains("Mount: props")
+                && !l.ends_with(".mdl")
+                && !l.ends_with(".vvd")
+                && !l.ends_with(".vtx")
+                && !l.ends_with(".vmt")
+        });
+        assert!(file_line.is_some() && summary.is_some() && summary < file_line, "{lines:?}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     const GMOD_GAMEINFO: &str = "\"GameInfo\"\n{\n\tgame\t\"Garry's Mod\"\n\t\"GameData\"\t\t\"garrysmod.fgd\"\n\tFileSystem\n\t{\n\t\tSteamAppId\t\t\t\t4000\n\t\tSearchPaths\n\t\t{\n\t\t\tgame+mod\t\t\tgarrysmod/addons/*\n\t\t\tgame\t\t\t\t|all_source_engine_paths|sourceengine/hl2_textures.vpk\n\t\t\tmod+mod_write+default_write_path\t\t|gameinfo_path|.\n\t\t\tgame+game_write\t\tgarrysmod\n\t\t\tgame\t\"|GameInfo_Path|sub dir\" // comment\n\t\t}\n\t}\n}\n";

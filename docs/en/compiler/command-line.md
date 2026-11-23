@@ -189,7 +189,7 @@ While it lights, `--rad` lists its stages (`Lighting stages: direct lighting, bo
 Lighting 41%: direct lighting 60% (stage 2 of 7), 27 s elapsed, about 17 s left
 ```
 
-The first percentage is the whole lighting, the second the stage. A line comes every 5% and at least every 30 seconds. A stage that has not advanced for a minute prints `Warning: the lighting stage "..." has not advanced for ...` with what makes that stage slow, and one that runs past ten minutes prints `Warning: the lighting stage "..." has run for ...`. The editor reads these lines for its progress bar. At the end `--rad` prints where the time went, in wall clock seconds (a phase that did not run shows 0.00 s):
+The first percentage is the whole lighting, the second the stage. A line comes every 5%, every 1% when a stage is slow (at most one such line each 10 seconds) and at least every 30 seconds, and the percentages never go back: a ray traced stage that takes more samples where the light is noisy spreads its extra rounds over the rest of the bar. A stage that has not advanced for a minute prints `Warning: the lighting stage "..." has not advanced for ...` with what makes that stage slow, and one that runs past ten minutes prints `Warning: the lighting stage "..." has run for ...`. The editor reads these lines for its progress bar. At the end `--rad` prints where the time went, in wall clock seconds (a phase that did not run shows 0.00 s):
 
 ```
 Light phase times: setup 0.15 s, faces 0.63 s, static prop models 0.41 s, shadow tree 1.56 s, surface tree 0.19 s, blocker tree 0.04 s, direct light 13.50 s, displacement blend 1.24 s, displacement bounce blend 1.00 s, bounce rays 3.23 s, bounce passes 3.02 s, seams 0.31 s, leaf ambient 0.45 s, write 0.77 s

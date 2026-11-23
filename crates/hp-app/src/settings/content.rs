@@ -50,7 +50,7 @@ impl Default for ContentSettings {
             compress_pakfile: false,
             lzma_level: 6,
             pack_workshop: true,
-            pack_mounted: false,
+            pack_mounted: true,
             missing_as_errors: false,
             keep_cubemaps: true,
             game_session: false,

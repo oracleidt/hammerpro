@@ -468,11 +468,11 @@ impl MaterialPicker {
         ui.horizontal_wrapped(|ui| {
             ui.label(RichText::new(tf!("tex.picker.count", self.filtered.len())).small().weak());
             if self.query.needs_info() && self.keywords.pending() {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(RichText::new(t!("tex.browser.kw_index")).small().weak());
             }
             if self.query.needs_flags() && self.flags.pending() {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(RichText::new(t!("tex.browser.flags_index")).small().weak());
             }
             let enter = hp_app::actions::key_label(Key::Enter);

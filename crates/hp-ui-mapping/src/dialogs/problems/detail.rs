@@ -189,7 +189,7 @@ impl DetailWindow {
         if let Some(text) = message {
             ui.horizontal(|ui| {
                 if busy {
-                    ui.spinner();
+                    hp_app::widgets::spinner(ui);
                 }
                 ui.label(RichText::new(text).weak());
             });
@@ -203,7 +203,7 @@ impl DetailWindow {
             let checked = total - self.unchecked.len().min(total);
             ui.label(tf!(plural(total, "problems.detail.count_one", "problems.detail.count"), total, checked));
             if busy {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.small_button(t!("problems.detail.check_none")).clicked() {

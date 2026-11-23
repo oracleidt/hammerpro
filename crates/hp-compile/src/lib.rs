@@ -35,8 +35,9 @@ pub use log::{LogLocation, Severity, describe_exit_code, is_leak_line, parse_log
 pub use notice::{CrashKind, Notice, crash_kind, format_bytes, format_exit_code};
 pub use plan::{
     BUILD_CUBEMAPS_FLAG, BspMode, CompilePlan, CubemapMode, DeferredFiles, DeferredSender, Lighting,
-    NO_BUILD_CUBEMAPS_FLAG, PARALLAX_CUBEMAPS_FLAG, PlanNotice, PlanOptions, Preset, RadMode, Step, StepAction,
-    StepKind, StepModes, VisMode, command_line_string, quote_arg, rad_step_flags, split_args, validated_map_name,
+    NO_BUILD_CUBEMAPS_FLAG, PARALLAX_CUBEMAPS_FLAG, PackNote, PlanNotice, PlanOptions, Preset, RadMode, Step,
+    StepAction, StepKind, StepModes, VisMode, command_line_string, quote_arg, rad_step_flags, split_args,
+    validated_map_name,
 };
 pub use pointfile::{find_pointfile, parse_pointfile, read_pointfile};
 pub use progress::{LightProgress, parse_light_progress};

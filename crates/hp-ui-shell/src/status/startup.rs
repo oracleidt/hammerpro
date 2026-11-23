@@ -79,7 +79,7 @@ impl StatusSegment for Content {
                 if let Some((text, tip)) = late_text(state) {
                     ui.separator();
                     ui.label(RichText::new(text).small()).on_hover_text(tip);
-                    ui.add(egui::Spinner::new().size(12.0));
+                    hp_app::widgets::paced_spinner(ui, 12.0);
                     ui.ctx().request_repaint_after(std::time::Duration::from_millis(250));
                 }
             }

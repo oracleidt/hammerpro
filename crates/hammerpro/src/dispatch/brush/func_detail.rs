@@ -503,7 +503,7 @@ impl HammerProApp {
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     if running {
-                        ui.spinner();
+                        hp_app::widgets::spinner(ui);
                         ui.label(t!("brush.detail.cand_running"));
                     } else {
                         start = ui.button(t!("brush.detail.cand_select")).clicked();

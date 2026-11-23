@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,8 +45,10 @@ impl Stage {
         Stage::ALL.iter().copied().find(|s| s.name() == name)
     }
 
-    fn weight(self) -> f64 {
+    fn weight(self, traced: bool) -> f64 {
         match self {
+            Stage::Bounces if traced => 0.35,
+            Stage::StaticProps if traced => 0.05,
             Stage::Scene => 0.03,
             Stage::Direct => 0.55,
             Stage::BounceRays => 0.08,
@@ -91,6 +93,7 @@ pub struct Work {
     done: AtomicU64,
     total: AtomicU64,
     plan: AtomicU32,
+    traced: AtomicBool,
 }
 
 impl Default for Work {
@@ -106,11 +109,16 @@ impl Work {
             done: AtomicU64::new(0),
             total: AtomicU64::new(1),
             plan: AtomicU32::new(0),
+            traced: AtomicBool::new(false),
         }
     }
 
     pub fn plan(&self, stages: &[Stage]) {
         self.plan.store(stages.iter().fold(0, |m, s| m | s.bit()), Ordering::Release);
+    }
+
+    pub fn set_raytracing(&self, on: bool) {
+        self.traced.store(on, Ordering::Release);
     }
 
     pub fn begin(&self, stage: Stage, total: u64) {
@@ -132,12 +140,19 @@ impl Work {
         self.done.fetch_add(n, Ordering::Relaxed);
     }
 
-    fn snapshot(&self) -> Option<(Stage, u64, u64, u32)> {
+    fn snapshot(&self) -> Option<(Stage, u64, u64, Plan)> {
         let stage = *Stage::ALL.get(self.stage.load(Ordering::Acquire))?;
         let total = self.total.load(Ordering::Relaxed).max(1);
         let done = self.done.load(Ordering::Relaxed).min(total);
-        Some((stage, done, total, self.plan.load(Ordering::Acquire)))
+        let plan = Plan { stages: self.plan.load(Ordering::Acquire), traced: self.traced.load(Ordering::Acquire) };
+        Some((stage, done, total, plan))
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Plan {
+    stages: u32,
+    traced: bool,
 }
 
 pub fn duration_text(d: Duration) -> String {
@@ -158,12 +173,15 @@ const STALL: Duration = Duration::from_secs(60);
 const STALL_REPEAT: Duration = Duration::from_secs(180);
 const LONG_STAGE: Duration = Duration::from_secs(600);
 const STEPS: f64 = 20.0;
+const FINE_STEPS: f64 = 100.0;
+const FINE_GAP: Duration = Duration::from_secs(10);
 
 pub struct Reporter {
     current: Option<Stage>,
     stage_start: Instant,
     last_print: Option<Instant>,
     last_step: i64,
+    last_fine: i64,
     last_done: u64,
     last_change: Instant,
     stall_warned: Option<Instant>,
@@ -184,6 +202,7 @@ impl Reporter {
             stage_start: now,
             last_print: None,
             last_step: -1,
+            last_fine: -1,
             last_done: 0,
             last_change: now,
             stall_warned: None,
@@ -202,6 +221,7 @@ impl Reporter {
             self.stage_start = now;
             self.last_print = None;
             self.last_step = -1;
+            self.last_fine = -1;
             self.last_done = done;
             self.last_change = now;
             self.stall_warned = None;
@@ -214,16 +234,22 @@ impl Reporter {
         let elapsed = now.saturating_duration_since(self.stage_start);
         let fraction = done as f64 / total as f64;
         let step = (fraction * STEPS).floor() as i64;
+        let fine = (fraction * FINE_STEPS).floor() as i64;
         let since_print = self.last_print.map(|t| now.saturating_duration_since(t));
         let due = elapsed >= FIRST_LINE
             && match since_print {
                 None => true,
-                Some(gap) => (step > self.last_step && gap >= MIN_GAP) || gap >= HEARTBEAT,
+                Some(gap) => {
+                    (step > self.last_step && gap >= MIN_GAP)
+                        || (fine > self.last_fine && gap >= FINE_GAP)
+                        || gap >= HEARTBEAT
+                }
             };
         if due {
             log(&progress_line(stage, plan, fraction, elapsed));
             self.last_print = Some(now);
             self.last_step = step;
+            self.last_fine = fine;
         }
         let stalled = now.saturating_duration_since(self.last_change);
         if stalled >= STALL && self.stall_warned.is_none_or(|t| now.saturating_duration_since(t) >= STALL_REPEAT) {
@@ -248,16 +274,18 @@ impl Reporter {
     }
 }
 
-fn overall(stage: Stage, plan: u32, fraction: f64) -> (f64, usize, usize) {
-    let planned: Vec<Stage> = Stage::ALL.iter().copied().filter(|s| plan & s.bit() != 0 || *s == stage).collect();
-    let sum: f64 = planned.iter().map(|s| s.weight()).sum();
+fn overall(stage: Stage, plan: Plan, fraction: f64) -> (f64, usize, usize) {
+    let planned: Vec<Stage> =
+        Stage::ALL.iter().copied().filter(|s| plan.stages & s.bit() != 0 || *s == stage).collect();
+    let w = |s: &Stage| s.weight(plan.traced);
+    let sum: f64 = planned.iter().map(w).sum();
     let index = planned.iter().position(|s| *s == stage).unwrap_or(0);
-    let before: f64 = planned[..index].iter().map(|s| s.weight()).sum();
-    let value = if sum > 0.0 { (before + stage.weight() * fraction) / sum } else { fraction };
+    let before: f64 = planned[..index].iter().map(w).sum();
+    let value = if sum > 0.0 { (before + w(&stage) * fraction) / sum } else { fraction };
     (value.clamp(0.0, 1.0), index + 1, planned.len())
 }
 
-fn progress_line(stage: Stage, plan: u32, fraction: f64, elapsed: Duration) -> String {
+fn progress_line(stage: Stage, plan: Plan, fraction: f64, elapsed: Duration) -> String {
     let (all, index, count) = overall(stage, plan, fraction);
     let left = if fraction >= 0.02 && elapsed >= Duration::from_secs(2) {
         let rest = elapsed.as_secs_f64() * (1.0 - fraction) / fraction;
@@ -321,7 +349,7 @@ mod tests {
 
     #[test]
     fn overall_fraction_follows_the_plan() {
-        let plan = Stage::Direct.bit() | Stage::LeafAmbient.bit() | Stage::Write.bit();
+        let plan = Plan { stages: Stage::Direct.bit() | Stage::LeafAmbient.bit() | Stage::Write.bit(), traced: false };
         let (a, i, n) = overall(Stage::Direct, plan, 0.0);
         assert_eq!((i, n), (1, 3));
         assert_eq!(a, 0.0);
@@ -330,6 +358,36 @@ mod tests {
         assert!(b > 0.8 && b < 1.0, "{b}");
         assert_eq!(overall(Stage::Write, plan, 1.0).0, 1.0);
         assert!(overall(Stage::Direct, plan, 0.5).0 < overall(Stage::Direct, plan, 0.6).0);
+    }
+
+    #[test]
+    fn ray_traced_bounces_get_their_share_of_the_bar() {
+        let stages =
+            [Stage::Scene, Stage::Direct, Stage::Bounces, Stage::LeafAmbient, Stage::StaticProps, Stage::Write]
+                .iter()
+                .fold(0, |m, s| m | s.bit());
+        let classic = overall(Stage::Bounces, Plan { stages, traced: false }, 0.0).0;
+        let traced = overall(Stage::Bounces, Plan { stages, traced: true }, 0.0).0;
+        let traced_end = overall(Stage::Bounces, Plan { stages, traced: true }, 1.0).0;
+        assert!(traced < 0.65 && traced < classic, "{traced} {classic}");
+        assert!(traced_end > 0.85, "{traced_end}");
+    }
+
+    #[test]
+    fn slow_stages_print_every_percent() {
+        let work = Work::new();
+        work.plan(&[Stage::Direct, Stage::Write]);
+        work.begin(Stage::Direct, 1000);
+        let mut r = Reporter::new();
+        let mut lines = Vec::new();
+        let t0 = Instant::now();
+        r.poll_at(&work, t0, &mut |l| lines.push(l.to_owned()));
+        for k in 1..=6u64 {
+            work.add(10);
+            r.poll_at(&work, t0 + Duration::from_secs(12 * k), &mut |l| lines.push(l.to_owned()));
+        }
+        assert_eq!(lines.len(), 6, "{lines:?}");
+        assert!(lines[5].contains("direct lighting 6%"), "{lines:?}");
     }
 
     #[test]

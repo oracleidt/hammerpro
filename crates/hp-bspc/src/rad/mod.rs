@@ -464,6 +464,7 @@ fn run_with(
     }
     plan.push(Stage::Write);
     work.plan(&plan);
+    work.set_raytracing(opts.raytracing.is_some());
     log(&format!("Lighting stages: {}", plan[1..].iter().map(|s| s.name()).collect::<Vec<_>>().join(", ")));
     let ctx = bake::Ctx {
         map: &map,

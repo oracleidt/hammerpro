@@ -126,7 +126,7 @@ pub fn hud_lines(state: &AppState) -> Vec<String> {
     let p = &rt.render.perf;
     let s = &p.sample;
     let mut lines = Vec::new();
-    let fps = if s.frame_ms > 0.0 { 1000.0 / s.frame_ms } else { state.frame.fps };
+    let fps = state.frame.fps;
     lines.push(tf!("perf.hud_fps", format!("{fps:.0}"), ms(s.frame_ms)));
     lines.push(tf!(
         "perf.hud_cpu",

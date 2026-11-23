@@ -193,7 +193,7 @@ impl PrefabTab {
                 state.settings_dirty = true;
             }
             if self.scanning.is_some() {
-                ui.spinner().on_hover_text(t!("prefabs.scanning"));
+                hp_app::widgets::spinner(ui).on_hover_text(t!("prefabs.scanning"));
             }
         });
         ui.horizontal(|ui| {
@@ -224,7 +224,7 @@ impl PrefabTab {
     fn empty_ui(&mut self, ui: &mut Ui, state: &mut AppState) {
         if self.scanning.is_some() {
             ui.horizontal(|ui| {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.weak(t!("prefabs.scanning"));
             });
             return;

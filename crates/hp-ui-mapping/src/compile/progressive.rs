@@ -73,7 +73,7 @@ impl Progressive {
             hp_sched::lower_current_thread(hp_sched::Level::BelowNormal);
             let send = |e: Event| {
                 let _ = tx.send(e);
-                repaint.request_repaint();
+                repaint.request_repaint_after(hp_app::widgets::PROGRESS_REPAINT);
             };
             let result = run(&snapshot_vmf, &dir, &map_name, (s, root, fs, output_bsp), &c2, &send);
             send(Event::Done(result));

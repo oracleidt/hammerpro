@@ -219,7 +219,7 @@ impl Inspector {
 pub(crate) fn inspector_ui(ui: &mut Ui, inspection: Option<&Inspection>) {
     let Some(i) = inspection else {
         ui.horizontal(|ui| {
-            ui.spinner();
+            hp_app::widgets::spinner(ui);
             ui.label(t!("common.loading"));
         });
         return;

@@ -115,7 +115,7 @@ impl MapAssetsPanel {
                 self.refresh();
             }
             if busy {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(RichText::new(t!("mapassets.resolving")).weak());
             } else if let Some(e) = &self.error {
                 ui.colored_label(theme::error(), e);
@@ -404,7 +404,7 @@ impl MapAssetsPanel {
                     self.check_unused();
                 }
                 if let Some(job) = &self.unused_job {
-                    ui.spinner();
+                    hp_app::widgets::spinner(ui);
                     if ui.small_button(t!("mapassets.cancel")).clicked() {
                         job.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
                     }

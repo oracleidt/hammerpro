@@ -59,7 +59,11 @@ impl ReportView {
             shipped_bytes,
             workshop: graph.workshop_items(),
             origins: graph.by_origin(),
-            mounted: graph.nodes.iter().filter(|n| n.origin == Some(SourceOrigin::Mounted)).count(),
+            mounted: graph
+                .nodes
+                .iter()
+                .filter(|n| n.origin.is_some_and(SourceOrigin::is_mounted_game) && !n.in_base)
+                .count(),
         };
     }
 
@@ -335,7 +339,7 @@ fn origins_section(ui: &mut Ui, state: &mut AppState, origins: &[hp_fs::deps::Or
             ui.label(fmt_bytes(o.bytes));
             let s = &mut state.settings.content;
             match o.origin {
-                Some(SourceOrigin::Mounted) => {
+                Some(SourceOrigin::Mounted | SourceOrigin::Extra) => {
                     if ui
                         .checkbox(&mut s.pack_mounted, t!("release.ship_mounted"))
                         .on_hover_text(t!("release.opt_mounted_tip"))
@@ -353,7 +357,7 @@ fn origins_section(ui: &mut Ui, state: &mut AppState, origins: &[hp_fs::deps::Or
                         state.settings_dirty = true;
                     }
                 }
-                Some(SourceOrigin::BaseGame) | Some(SourceOrigin::Extra) => {
+                Some(SourceOrigin::BaseGame) => {
                     ui.label(RichText::new(t!("release.never_shipped")).weak());
                 }
                 _ => {

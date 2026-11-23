@@ -722,7 +722,7 @@ impl CompileDialog {
         match &self.probe.result {
             None => {
                 ui.horizontal(|ui| {
-                    ui.spinner();
+                    hp_app::widgets::spinner(ui);
                     ui.label(RichText::new(t!("compile.detecting")).weak());
                 });
             }

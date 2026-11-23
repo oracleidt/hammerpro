@@ -95,6 +95,7 @@ pub struct HammerProApp {
     last_frame: Instant,
     start: Instant,
     avg_frame_time: f32,
+    frame_rate: crate::perf::FrameRate,
     worst_frame: f32,
     title: String,
     native_frames_at_start: bool,
@@ -369,6 +370,7 @@ impl HammerProApp {
             last_frame: Instant::now(),
             start: Instant::now(),
             avg_frame_time: 0.0,
+            frame_rate: crate::perf::FrameRate::default(),
             worst_frame: 0.0,
             title: String::new(),
             native_frames_at_start,
@@ -586,13 +588,18 @@ impl HammerProApp {
         self.state.apply_selection_undo_setting();
         self.state.sync_pick_elements();
         self.state.sync_lifted_face();
+        let (fps, settle) = self.frame_rate.note(now);
+        let shown = self.state.settings.view.show_fps
+            || self.state.settings.render.perf_hud
+            || self.state.settings.workflow.show_view_info;
+        if let Some(wait) = settle.filter(|_| shown) {
+            ctx.request_repaint_after(wait);
+        }
         let f = &mut self.state.frame;
         f.dt = dt;
         f.time = now.duration_since(self.start).as_secs_f64();
         f.index += 1;
-        if self.avg_frame_time > 0.0 {
-            f.fps = 1.0 / self.avg_frame_time;
-        }
+        f.fps = fps;
 
         self.tick_gpu_recovery(frame);
 

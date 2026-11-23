@@ -512,7 +512,7 @@ impl CombineDialog {
                 start = true;
             }
             if state.runtime.lab.combine_busy {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(RichText::new(t!("propper.combine_running")).weak());
             }
         });

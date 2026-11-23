@@ -184,10 +184,11 @@ impl Background {
                     self.prep = None;
                     match out.result {
                         Ok(p) if self.seen == Some(key) => {
-                            let repaint = ctx.clone();
-                            self.job = Some(hp_compile::start_with_waker(p.plan, &p.workdir, move || {
-                                repaint.request_repaint();
-                            }));
+                            self.job = Some(hp_compile::start_with_waker(
+                                p.plan,
+                                &p.workdir,
+                                hp_app::widgets::progress_waker(ctx),
+                            ));
                         }
                         Ok(_) | Err(PrepError::NeedsMount(_) | PrepError::Failed(_)) => {}
                     }

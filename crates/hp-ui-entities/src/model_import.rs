@@ -204,7 +204,7 @@ impl ModelImportDialog {
             }
             let resp = window.show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.spinner();
+                    hp_app::widgets::spinner(ui);
                     ui.label(text);
                 });
             });

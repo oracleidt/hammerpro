@@ -27,7 +27,7 @@ La publication est construite à partir du fichier enregistré : si la map a des
 | **Garder les cubemaps construites du BSP précédent** | Recopie les cubemaps déjà construites dans le nouveau BSP. | activé |
 | **Écrire le .gma** | Écrit le fichier de l'addon. | activé |
 | **Inclure le contenu des objets du Workshop** | Désactivé : les objets du Workshop sont listés comme objets requis (les joueurs s'y abonnent). | activé |
-| **Inclure le contenu des jeux montés** | Contenu des jeux montés par `mount.cfg` (CS:S, épisodes de HL2...). Les joueurs qui ne les ont pas voient des erreurs ; le redistribuer est sous votre responsabilité. | désactivé |
+| **Inclure le contenu des jeux montés** | Contenu des jeux et dossiers montés par `mount.cfg` ou comme jeux Steam par AppID (CS:S, épisodes de HL2, un dossier de props sur un autre disque...), lu dans leurs VPK ou leurs fichiers. Les joueurs qui ne les ont pas voient des erreurs, c'est donc activé par défaut (la 2.3.1 l'active une fois pour les réglages existants) ; les fichiers que Garry's Mod de base possède déjà ne sont jamais inclus. Le journal donne une ligne par jeu monté et une ligne par fichier avec le montage d'où il vient. Le redistribuer est sous votre responsabilité. | activé |
 | **Construire les cubemaps et la navigation en jeu** | Lance Garry's Mod, après confirmation, pour construire les cubemaps et générer le maillage de navigation, puis le ferme. | désactivé |
 | **Ouvrir le dossier de sortie à la fin** | | désactivé |
 | **Protect your BSP** | Livre une copie protégée et garde la map complète pour votre serveur. Voir [Protect your BSP](bsp-protection.md). | désactivé |

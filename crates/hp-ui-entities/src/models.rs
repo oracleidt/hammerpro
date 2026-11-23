@@ -372,7 +372,7 @@ impl ModelBrowser {
             AssetStatus::Ready => {}
             AssetStatus::Mounting => {
                 ui.horizontal(|ui| {
-                    ui.spinner();
+                    hp_app::widgets::spinner(ui);
                     ui.label(t!("status.loading_assets"));
                 });
             }
@@ -515,7 +515,7 @@ impl ModelBrowser {
         };
         if self.index.is_none() && !self.models.is_empty() {
             ui.horizontal(|ui| {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(t!("entities.indexing_models"));
             });
         } else if self.rows.is_empty() {
@@ -1032,7 +1032,7 @@ impl ModelBrowser {
         match &info {
             ModelState::Loading => {
                 ui.horizontal(|ui| {
-                    ui.spinner();
+                    hp_app::widgets::spinner(ui);
                     ui.label(t!("common.loading"));
                 });
                 ui.ctx().request_repaint_after(Duration::from_millis(100));

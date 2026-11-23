@@ -315,7 +315,7 @@ impl ModelBatchDialog {
             Stage::Scanning(_, done, total, cancel) => {
                 let (d, n) = (done.load(Ordering::SeqCst), *total);
                 ui.horizontal(|ui| {
-                    ui.spinner();
+                    hp_app::widgets::spinner(ui);
                     ui.label(tf!("entities.mb_scanning", d, n));
                     if ui.button(t!("entities.mb_cancel")).clicked() {
                         cancel.store(true, Ordering::SeqCst);

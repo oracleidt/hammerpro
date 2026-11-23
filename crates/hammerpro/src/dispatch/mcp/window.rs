@@ -225,7 +225,7 @@ fn apps_section(ui: &mut egui::Ui, win: &mut McpWindow, state: &AppState, task: 
             *task = Some(Task::InstallAll);
         }
         if busy {
-            ui.add(egui::Spinner::new().size(14.0));
+            hp_app::widgets::paced_spinner(ui, 14.0);
             ui.label(RichText::new(t!("mcp.working")).weak());
         }
     });

@@ -233,6 +233,44 @@ pub const TR: TrTable = &[
     ),
     ("propper.preview_fit", "Frame", "Cadrer"),
     ("propper.preview_wire", "Wireframe", "Fil de fer"),
+    (
+        "propper.lod_short",
+        "Target {0} %: simplifying further would break the shape, so this level keeps more.",
+        "Objectif {0} % : simplifier davantage casserait la forme, ce niveau garde donc plus de triangles.",
+    ),
+    ("propper.lod_preview", "Level of detail:", "Niveau de détail :"),
+    (
+        "propper.lod_full_tip",
+        "{0} triangles: the full model, drawn up close.",
+        "{0} triangles : le modèle complet, affiché de près.",
+    ),
+    (
+        "propper.lod_level_tip",
+        "{0} triangles ({1} % of the full model), from $lod {2}: about {3} units away in game (1080p, field of view 75).",
+        "{0} triangles ({1} % du modèle complet), à partir de $lod {2} : à environ {3} unités en jeu (1080p, champ de vision 75).",
+    ),
+    ("propper.lod_auto", "Auto by distance", "Auto selon la distance"),
+    (
+        "propper.lod_auto_tip",
+        "Pick the level from the camera distance like the game does (1080p, field of view 75). Zoom out with the wheel to watch the levels switch.",
+        "Choisit le niveau selon la distance de la caméra comme le jeu (1080p, champ de vision 75). Dézoomez à la molette pour voir les niveaux changer.",
+    ),
+    ("propper.lod_full", "LOD 0: {0} triangles, the full model.", "LOD 0 : {0} triangles, le modèle complet."),
+    (
+        "propper.lod_summary",
+        "LOD {0}: {1} triangles ({2} % of the full model), from $lod {3}.",
+        "LOD {0} : {1} triangles ({2} % du modèle complet), à partir de $lod {3}.",
+    ),
+    (
+        "propper.lod_off",
+        "Levels of detail are off (Model tab).",
+        "Les niveaux de détail sont désactivés (onglet Modèle).",
+    ),
+    (
+        "propper.lod_camera",
+        "Camera {0} units away: the game draws LOD {1}.",
+        "Caméra à {0} unités : le jeu affiche le LOD {1}.",
+    ),
     ("propper.reset_bounds", "Reset bounds", "Réinitialiser les limites"),
     ("propper.select_illum", "Edit illumination marker", "Déplacer le point d’éclairage"),
     (

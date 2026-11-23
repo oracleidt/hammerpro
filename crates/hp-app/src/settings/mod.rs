@@ -231,7 +231,7 @@ impl Default for Settings {
     }
 }
 
-pub const SETTINGS_REVISION: u32 = 2;
+pub const SETTINGS_REVISION: u32 = 3;
 
 impl Settings {
     pub fn migrate(&mut self) {
@@ -241,6 +241,9 @@ impl Settings {
         if self.revision < 2 {
             self.compile.background_precompile = false;
             self.lighting.prepare = false;
+        }
+        if self.revision < 3 {
+            self.content.pack_mounted = true;
         }
         self.compile.merge_legacy_reflections();
         self.revision = self.revision.max(SETTINGS_REVISION);
@@ -424,6 +427,24 @@ prepare = true
         );
         let d = Settings::default();
         assert!(!d.compile.background_precompile && !d.lighting.prepare);
+    }
+
+    #[test]
+    fn mounted_game_content_is_packed_after_the_upgrade_and_stays_off_when_chosen_again() {
+        let mut old: Settings = toml::from_str(
+            "revision = 2
+[content]
+pack_mounted = false
+",
+        )
+        .unwrap();
+        old.migrate();
+        assert!(old.content.pack_mounted, "players may not own the mounted games: 2.3.1 ships their files");
+        old.content.pack_mounted = false;
+        let mut again: Settings = toml::from_str(&toml::to_string(&old).unwrap()).unwrap();
+        again.migrate();
+        assert!(!again.content.pack_mounted, "a user who turns it off again keeps it off");
+        assert!(Settings::default().content.pack_mounted);
     }
 
     #[test]

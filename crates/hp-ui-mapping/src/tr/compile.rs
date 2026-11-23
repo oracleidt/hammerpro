@@ -169,6 +169,18 @@ pub const TR: TrTable = &[
         "{0} custom files will be packed into the map",
         "{0} fichiers personnalisés seront intégrés à la map",
     ),
+    (
+        "compile.pack_mount_summary",
+        "{0} files packed from the mounted game {1}: players may not own this game, check that you may redistribute them",
+        "{0} fichiers intégrés depuis le jeu monté {1} : les joueurs n'ont peut-être pas ce jeu, vérifiez que vous avez le droit de les redistribuer",
+    ),
+    ("compile.pack_mount_file", "Packed from {0}: {1}", "Intégré depuis {0} : {1}"),
+    ("compile.pack_missing_file", "Not found anywhere, not packed: {0}", "Introuvable partout, non intégré : {0}"),
+    (
+        "compile.pack_missing_system",
+        "Particle system not found in any particle file, not packed: {0}",
+        "Système de particules introuvable dans les fichiers de particules, non intégré : {0}",
+    ),
     ("compile.err_no_steps", "Every step is disabled", "Toutes les étapes sont désactivées"),
     ("compile.err_plan", "Cannot compile this map: {0}", "Impossible de compiler cette map : {0}"),
     (

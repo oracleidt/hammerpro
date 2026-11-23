@@ -45,7 +45,7 @@ pub use custom::{
 pub use detect::{GMOD_APP_ID, detect_gmod_root, detect_steam_libraries, detect_workshop_dir};
 pub use drive::{DriveProbe, ScanMode, decide as scan_decision, parallel_with as scan_parallel_with};
 pub use error::FsError;
-pub use export::{ExportFailure, ExportReport, ResizedImage};
+pub use export::{ExportFailure, ExportReport, MountedFile, PackPlan, ResizedImage};
 pub use fs::{CustomReport, GameFs};
 pub use games::{
     GMOD_ID, GameProfile, KNOWN_GAMES, KnownGame, LightingPasses, detect_games, game_catalogue, known_game,

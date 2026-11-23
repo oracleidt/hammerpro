@@ -16,7 +16,7 @@ pub(super) fn target_game_ui(ui: &mut Ui, state: &mut AppState, running: bool) {
                 });
             }
             None => {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(RichText::new(t!("target.searching")).weak());
             }
         }

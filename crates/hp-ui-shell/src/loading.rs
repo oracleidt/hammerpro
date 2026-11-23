@@ -111,7 +111,7 @@ impl LoadingOverlay {
                     );
                     if progress.installing {
                         ui.horizontal(|ui| {
-                            ui.spinner();
+                            hp_app::widgets::spinner(ui);
                             ui.label(t!("shell.loading.geometry"));
                         });
                     } else {

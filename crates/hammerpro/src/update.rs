@@ -268,9 +268,11 @@ impl UpdateController {
                     } else {
                         tf!("update.downloading_unknown", megabytes(rt.done_bytes))
                     };
-                    ui.label(text);
-                    let bar = egui::ProgressBar::new(rt.progress().unwrap_or(0.0)).show_percentage();
-                    ui.add(if rt.total_bytes > 0 { bar } else { bar.animate(true) });
+                    ui.horizontal(|ui| {
+                        hp_app::widgets::spinner(ui);
+                        ui.label(text);
+                    });
+                    ui.add(egui::ProgressBar::new(rt.progress().unwrap_or(0.0)).show_percentage());
                     ui.add_space(6.0);
                     if ui.button(t!("update.btn_cancel")).clicked() {
                         cancel = true;

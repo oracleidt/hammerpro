@@ -23,10 +23,14 @@ pub enum StepKind {
 #[derive(Clone, Default)]
 pub struct DeferredFiles(Arc<Mutex<Option<DeferredReceiver>>>);
 
-type DeferredReceiver = crossbeam_channel::Receiver<Vec<(String, PathBuf)>>;
+pub type PackNote = (crate::log::Severity, String);
+
+type DeferredPayload = (Vec<(String, PathBuf)>, Vec<PackNote>);
+
+type DeferredReceiver = crossbeam_channel::Receiver<DeferredPayload>;
 
 #[derive(Debug)]
-pub struct DeferredSender(crossbeam_channel::Sender<Vec<(String, PathBuf)>>);
+pub struct DeferredSender(crossbeam_channel::Sender<DeferredPayload>);
 
 impl DeferredFiles {
     pub fn new() -> (DeferredFiles, DeferredSender) {
@@ -34,7 +38,7 @@ impl DeferredFiles {
         (DeferredFiles(Arc::new(Mutex::new(Some(rx)))), DeferredSender(tx))
     }
 
-    pub(crate) fn wait(&self, timeout: std::time::Duration) -> std::result::Result<Option<Vec<(String, PathBuf)>>, ()> {
+    pub(crate) fn wait(&self, timeout: std::time::Duration) -> std::result::Result<Option<DeferredPayload>, ()> {
         let Ok(mut slot) = self.0.lock() else { return Err(()) };
         let Some(rx) = slot.as_ref() else { return Err(()) };
         match rx.recv_timeout(timeout) {
@@ -53,7 +57,11 @@ impl DeferredFiles {
 
 impl DeferredSender {
     pub fn send(self, files: Vec<(String, PathBuf)>) {
-        let _ = self.0.send(files);
+        let _ = self.0.send((files, Vec::new()));
+    }
+
+    pub fn send_with_notes(self, files: Vec<(String, PathBuf)>, notes: Vec<PackNote>) {
+        let _ = self.0.send((files, notes));
     }
 }
 

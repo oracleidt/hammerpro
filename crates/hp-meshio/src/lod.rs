@@ -5,6 +5,9 @@ use glam::{DVec2, DVec3};
 
 use crate::Triangle;
 
+type CollapsePlan = (Vec<(u32, Corner)>, Vec<Wedge>);
+type SimplifiedLods = (Vec<Wedge>, Vec<Vec<([u32; 3], u32)>>);
+
 pub const MIN_LEVELS: usize = 3;
 pub const MAX_LEVELS: usize = 6;
 pub const DEFAULT_LEVELS: usize = 4;
@@ -99,7 +102,9 @@ impl Quadric {
 }
 
 const SEAM_WEIGHT: f64 = 8.0;
+const SOFT_SEAM_WEIGHT: f64 = 1.0;
 const MAX_FOLD_COS: f64 = 0.5;
+const MAX_DEVIATION: f64 = 0.05;
 
 struct Entry {
     cost: f64,
@@ -124,14 +129,29 @@ impl Ord for Entry {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Edge {
+    Smooth,
+    Soft,
+    Hard,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Corner {
+    Old(u32),
+    New(usize),
+}
+
 struct Collapse {
     target: u32,
     cost: f64,
-    remap: Vec<(u32, u32)>,
+    remap: Vec<(u32, Corner)>,
+    made: Vec<Wedge>,
 }
 
-struct Simplifier<'a> {
-    wedges: &'a [Wedge],
+struct Simplifier {
+    wedges: Vec<Wedge>,
+    synth: bool,
     point_of: Vec<u32>,
     points: Vec<DVec3>,
     tris: Vec<[u32; 3]>,
@@ -140,12 +160,15 @@ struct Simplifier<'a> {
     alive_count: usize,
     around: Vec<Vec<u32>>,
     quadric: Vec<Quadric>,
+    shape: Vec<Quadric>,
+    area: Vec<f64>,
+    limit: f64,
     removed: Vec<bool>,
     stamp: Vec<u32>,
 }
 
-impl<'a> Simplifier<'a> {
-    fn new(wedges: &'a [Wedge], tris: &[[u32; 3]], groups: &[u32]) -> Self {
+impl Simplifier {
+    fn new(wedges: &[Wedge], tris: &[[u32; 3]], groups: &[u32], synth: bool) -> Self {
         let mut index: HashMap<[i64; 3], u32> = HashMap::new();
         let mut points = Vec::new();
         let q = |v: f64| (v * 1e4).round() as i64;
@@ -158,11 +181,22 @@ impl<'a> Simplifier<'a> {
                 })
             })
             .collect();
+        let (mut lo, mut hi) = (DVec3::splat(f64::MAX), DVec3::splat(f64::MIN));
+        for p in &points {
+            lo = lo.min(*p);
+            hi = hi.max(*p);
+        }
+        let diagonal = if points.is_empty() { 0.0 } else { (hi - lo).length() };
+        let limit = if synth { (diagonal * MAX_DEVIATION).powi(2) } else { f64::INFINITY };
         let mut s = Simplifier {
-            wedges,
+            wedges: wedges.to_vec(),
+            synth,
             point_of,
             around: vec![Vec::new(); points.len()],
             quadric: vec![Quadric::default(); points.len()],
+            shape: vec![Quadric::default(); points.len()],
+            area: vec![0.0; points.len()],
+            limit,
             removed: vec![false; points.len()],
             stamp: vec![0; points.len()],
             points,
@@ -225,17 +259,19 @@ impl<'a> Simplifier<'a> {
         out
     }
 
-    fn edge_kind(&self, a: u32, b: u32) -> Option<bool> {
+    fn edge(&self, a: u32, b: u32) -> Option<Edge> {
         let tris = self.edge_tris(a, b);
         match tris.len() {
-            1 => Some(true),
+            1 => Some(Edge::Hard),
             2 => {
                 let (t1, t2) = (tris[0], tris[1]);
-                Some(
-                    self.group[t1 as usize] != self.group[t2 as usize]
-                        || self.wedge_at(t1, a) != self.wedge_at(t2, a)
-                        || self.wedge_at(t1, b) != self.wedge_at(t2, b),
-                )
+                if self.group[t1 as usize] != self.group[t2 as usize] {
+                    Some(Edge::Hard)
+                } else if self.wedge_at(t1, a) != self.wedge_at(t2, a) || self.wedge_at(t1, b) != self.wedge_at(t2, b) {
+                    Some(if self.synth { Edge::Soft } else { Edge::Hard })
+                } else {
+                    Some(Edge::Smooth)
+                }
             }
             _ => None,
         }
@@ -253,6 +289,8 @@ impl<'a> Simplifier<'a> {
             let q = Quadric::plane(n, -n.dot(self.points[p[0] as usize]), area2 * 0.5);
             for k in p {
                 self.quadric[k as usize].add(&q);
+                self.shape[k as usize].add(&q);
+                self.area[k as usize] += area2 * 0.5;
             }
         }
         let mut seen = HashSet::new();
@@ -260,20 +298,32 @@ impl<'a> Simplifier<'a> {
             let p = self.tri_points(t);
             for k in 0..3 {
                 let (a, b) = (p[k], p[(k + 1) % 3]);
-                if !seen.insert((a.min(b), a.max(b), t)) || self.edge_kind(a, b) == Some(false) {
+                if !seen.insert((a.min(b), a.max(b), t)) {
                     continue;
                 }
+                let weight = match self.edge(a, b) {
+                    Some(Edge::Smooth) => continue,
+                    Some(Edge::Soft) => SOFT_SEAM_WEIGHT,
+                    _ => SEAM_WEIGHT,
+                };
                 let (pa, pb) = (self.points[a as usize], self.points[b as usize]);
                 let e = pb - pa;
                 let n = e.cross(self.tri_normal(t)).normalize_or_zero();
                 if n == DVec3::ZERO {
                     continue;
                 }
-                let q = Quadric::plane(n, -n.dot(pa), e.length_squared() * SEAM_WEIGHT);
+                let q = Quadric::plane(n, -n.dot(pa), e.length_squared() * weight);
                 self.quadric[a as usize].add(&q);
                 self.quadric[b as usize].add(&q);
             }
         }
+    }
+
+    fn deviation(&self, p: u32, q: u32) -> f64 {
+        let mut shape = self.shape[p as usize];
+        shape.add(&self.shape[q as usize]);
+        let area = self.area[p as usize] + self.area[q as usize];
+        if area <= 1e-12 { 0.0 } else { shape.error(self.points[q as usize]).max(0.0) / area }
     }
 
     fn best(&self, p: u32) -> Option<Collapse> {
@@ -284,17 +334,17 @@ impl<'a> Simplifier<'a> {
         if ring.is_empty() {
             return None;
         }
-        let mut seams = Vec::new();
+        let mut hard = Vec::new();
         for &q in &ring {
-            match self.edge_kind(p, q) {
+            match self.edge(p, q) {
                 None => return None,
-                Some(true) => seams.push(q),
-                Some(false) => {}
+                Some(Edge::Hard) => hard.push(q),
+                Some(_) => {}
             }
         }
-        let candidates: &[u32] = match seams.len() {
+        let candidates: &[u32] = match hard.len() {
             0 => &ring,
-            2 => &seams,
+            2 => &hard,
             _ => return None,
         };
         let mut best: Option<Collapse> = None;
@@ -305,14 +355,33 @@ impl<'a> Simplifier<'a> {
             if best.as_ref().is_some_and(|b| b.cost <= cost) {
                 continue;
             }
-            if let Some(remap) = self.check(p, q, &ring) {
-                best = Some(Collapse { target: q, cost, remap });
+            if self.deviation(p, q) > self.limit {
+                continue;
+            }
+            if let Some((remap, made)) = self.check(p, q, &ring) {
+                best = Some(Collapse { target: q, cost, remap, made });
             }
         }
         best
     }
 
-    fn check(&self, p: u32, q: u32, ring_p: &[u32]) -> Option<Vec<(u32, u32)>> {
+    fn extrapolated(&self, t: u32, p: u32, at: DVec3) -> Option<Wedge> {
+        let corners = self.tris[t as usize].map(|i| self.wedges[i as usize]);
+        let own = corners[self.tris[t as usize].iter().position(|&w| self.point_of[w as usize] == p)?];
+        let (a, e1, e2) = (corners[0].pos, corners[1].pos - corners[0].pos, corners[2].pos - corners[0].pos);
+        let n = e1.cross(e2);
+        let nn = n.length_squared();
+        if nn <= 1e-18 {
+            return None;
+        }
+        let d = at - a;
+        let u = d.cross(e2).dot(n) / nn;
+        let v = e1.cross(d).dot(n) / nn;
+        let uv = corners[0].uv + (corners[1].uv - corners[0].uv) * u + (corners[2].uv - corners[0].uv) * v;
+        (uv.is_finite()).then_some(Wedge { pos: at, normal: own.normal, uv })
+    }
+
+    fn check(&self, p: u32, q: u32, ring_p: &[u32]) -> Option<CollapsePlan> {
         let shared = self.edge_tris(p, q);
         if shared.is_empty() {
             return None;
@@ -323,27 +392,45 @@ impl<'a> Simplifier<'a> {
             return None;
         }
         let fan: Vec<u32> = self.alive_around(p).collect();
-        let mut side: HashMap<u32, u32> = HashMap::new();
-        let mut stack: Vec<u32> = Vec::new();
+        let pos_q = self.points[q as usize];
+        let mut side: HashMap<u32, Corner> = HashMap::new();
+        let mut made: Vec<Wedge> = Vec::new();
+        let mut seeds: Vec<(u32, Corner)> = Vec::new();
         for &t in &shared {
-            side.insert(t, self.wedge_at(t, q)?);
-            stack.push(t);
+            seeds.push((t, Corner::Old(self.wedge_at(t, q)?)));
         }
-        while let Some(t) = stack.pop() {
-            let w = side[&t];
-            for x in self.tri_points(t) {
-                if x == p || x == q || self.edge_kind(p, x) != Some(false) {
+        loop {
+            for (t, corner) in seeds.drain(..) {
+                if side.contains_key(&t) {
                     continue;
                 }
-                for &u in &fan {
-                    if !side.contains_key(&u) && self.tri_points(u).contains(&x) {
-                        side.insert(u, w);
-                        stack.push(u);
+                side.insert(t, corner);
+                let mut stack = vec![t];
+                while let Some(t) = stack.pop() {
+                    for x in self.tri_points(t) {
+                        if x == p || x == q || self.edge(p, x) != Some(Edge::Smooth) {
+                            continue;
+                        }
+                        for &u in &fan {
+                            if !side.contains_key(&u) && self.tri_points(u).contains(&x) {
+                                side.insert(u, corner);
+                                stack.push(u);
+                            }
+                        }
                     }
                 }
             }
+            let Some(&rest) = fan.iter().find(|t| !side.contains_key(t)) else { break };
+            if !self.synth {
+                return None;
+            }
+            made.push(self.extrapolated(rest, p, pos_q)?);
+            seeds.push((rest, Corner::New(made.len() - 1)));
         }
-        let pos_q = self.points[q as usize];
+        let wedge = |c: Corner| match c {
+            Corner::Old(i) => self.wedges[i as usize],
+            Corner::New(i) => made[i],
+        };
         let mut remap = Vec::new();
         for &t in &fan {
             if shared.contains(&t) {
@@ -362,16 +449,17 @@ impl<'a> Simplifier<'a> {
                 return None;
             }
             let corners = self.tris[t as usize];
-            let uv = |c: [u32; 3]| c.map(|i| self.wedges[i as usize].uv);
+            let old_uv = corners.map(|i| self.wedges[i as usize].uv);
+            let new_uv =
+                corners.map(|c| if self.point_of[c as usize] == p { wedge(w).uv } else { self.wedges[c as usize].uv });
             let area = |u: [DVec2; 3]| (u[1] - u[0]).perp_dot(u[2] - u[0]);
-            let new_corners = corners.map(|c| if self.point_of[c as usize] == p { w } else { c });
-            let (a0, a1) = (area(uv(corners)), area(uv(new_corners)));
+            let (a0, a1) = (area(old_uv), area(new_uv));
             if a0.abs() > 1e-12 && a0 * a1 <= 0.0 {
                 return None;
             }
             remap.push((t, w));
         }
-        Some(remap)
+        Some((remap, made))
     }
 
     fn apply(&mut self, p: u32, c: Collapse) {
@@ -380,10 +468,18 @@ impl<'a> Simplifier<'a> {
             self.alive[t as usize] = false;
             self.alive_count -= 1;
         }
+        let base = self.wedges.len() as u32;
+        for w in c.made {
+            self.wedges.push(w);
+            self.point_of.push(q);
+        }
         for (t, w) in c.remap {
-            let p_ = p;
+            let w = match w {
+                Corner::Old(i) => i,
+                Corner::New(i) => base + i as u32,
+            };
             for corner in self.tris[t as usize].iter_mut() {
-                if self.point_of[*corner as usize] == p_ {
+                if self.point_of[*corner as usize] == p {
                     *corner = w;
                 }
             }
@@ -392,6 +488,9 @@ impl<'a> Simplifier<'a> {
         self.removed[p as usize] = true;
         let qp = self.quadric[p as usize];
         self.quadric[q as usize].add(&qp);
+        let sp = self.shape[p as usize];
+        self.shape[q as usize].add(&sp);
+        self.area[q as usize] += self.area[p as usize];
         self.around[p as usize].clear();
         let alive = &self.alive;
         self.around[q as usize].retain(|&t| alive[t as usize]);
@@ -401,7 +500,7 @@ impl<'a> Simplifier<'a> {
         (0..self.tris.len()).filter(|&t| self.alive[t]).map(|t| (self.tris[t], self.group[t])).collect()
     }
 
-    fn run(mut self, targets: &[usize]) -> Vec<Vec<([u32; 3], u32)>> {
+    fn run(mut self, targets: &[usize]) -> SimplifiedLods {
         let mut heap = BinaryHeap::new();
         for p in 0..self.points.len() as u32 {
             if let Some(c) = self.best(p) {
@@ -433,12 +532,21 @@ impl<'a> Simplifier<'a> {
             }
             out.push(self.snapshot());
         }
-        out
+        (self.wedges, out)
     }
 }
 
 pub fn simplify(wedges: &[Wedge], tris: &[[u32; 3]], groups: &[u32], targets: &[usize]) -> Vec<Vec<([u32; 3], u32)>> {
-    Simplifier::new(wedges, tris, groups).run(targets)
+    Simplifier::new(wedges, tris, groups, false).run(targets).1
+}
+
+pub fn simplify_with_new_corners(
+    wedges: &[Wedge],
+    tris: &[[u32; 3]],
+    groups: &[u32],
+    targets: &[usize],
+) -> SimplifiedLods {
+    Simplifier::new(wedges, tris, groups, true).run(targets)
 }
 
 fn wedge_key(p: DVec3, n: DVec3, uv: DVec2) -> [i64; 8] {
@@ -468,7 +576,8 @@ pub fn simplify_triangles(triangles: &[Triangle], levels: &[LodLevel]) -> Vec<Ve
     }
     let targets: Vec<usize> =
         levels.iter().map(|l| ((triangles.len() as f64) * l.fraction).round().max(1.0) as usize).collect();
-    simplify(&wedges, &tris, &groups, &targets)
+    let (wedges, levels) = simplify_with_new_corners(&wedges, &tris, &groups, &targets);
+    levels
         .into_iter()
         .map(|level| {
             level

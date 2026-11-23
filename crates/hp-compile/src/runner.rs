@@ -14,6 +14,8 @@ use crate::pack::{self, PackReport};
 use crate::plan::{CompilePlan, Step, StepAction, StepKind, command_line_string};
 use crate::progress::{OutputSplitter, Piece};
 
+type DeferredPack = (Vec<(String, PathBuf)>, Vec<crate::plan::PackNote>);
+
 const POLL: Duration = Duration::from_millis(20);
 
 const PIPE_GRACE: Duration = Duration::from_millis(500);
@@ -279,7 +281,10 @@ impl Worker {
                 self.clean_pak(index, outcome)
             }
             StepAction::PackDeferred { files } => match self.wait_deferred(index, files) {
-                Some(files) => {
+                Some((files, notes)) => {
+                    for (severity, line) in notes {
+                        self.emit(CompileEvent::Log { step: index, line, severity, location: None });
+                    }
                     let outcome = self.run_pack(index, &files);
                     self.clean_pak(index, outcome)
                 }
@@ -377,7 +382,7 @@ impl Worker {
         Ok(())
     }
 
-    fn wait_deferred(&self, index: usize, files: &crate::plan::DeferredFiles) -> Option<Vec<(String, PathBuf)>> {
+    fn wait_deferred(&self, index: usize, files: &crate::plan::DeferredFiles) -> Option<DeferredPack> {
         let mut told = false;
         loop {
             if self.cancelled() {
@@ -1234,10 +1239,14 @@ mod tests {
             }
         }
         assert!(waiting, "the pack step says it waits for its list");
-        sender.send(vec![("materials/x/a.vmt".into(), src.clone())]);
+        sender.send_with_notes(
+            vec![("materials/x/a.vmt".into(), src.clone())],
+            vec![(Severity::Info, "from Mount: cstrike".to_owned())],
+        );
         let events = collect(handle);
         assert_eq!(finished(&events), (true, false, false), "{:?}", notices(&events));
         assert_eq!(pack::pak_entries(&bsp).unwrap(), ["materials/x/a.vmt"]);
+        assert!(events.iter().any(|e| matches!(e, CompileEvent::Log { line, .. } if line == "from Mount: cstrike")));
 
         let (files, sender) = crate::plan::DeferredFiles::new();
         drop(sender);

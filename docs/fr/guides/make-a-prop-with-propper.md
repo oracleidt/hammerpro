@@ -35,7 +35,7 @@ La fenêtre rappelle aussi comment le modèle est construit :
 
 1. Sélectionnez les brushes (et displacements) de l'objet.
 2. Choisissez **Outils > Placement et props > Convertir les brushes en prop**.
-3. Dans la fenêtre de création, choisissez le chemin/nom du modèle et le dossier exporté. Les onglets Collision, Éclairage et limites et Matériaux permettent de régler les pièces de collision, `$illumposition`, `$bbox`, `$surfaceprop` et `$cdmaterials`. Ajustez leurs poignées dans l’aperçu 3D intégré, choisissez la physique/`$staticprop` et les LOD, puis cliquez sur **Créer le prop**.
+3. Dans la fenêtre de création, choisissez le chemin/nom du modèle et le dossier exporté. Les onglets Collision, Éclairage et limites et Matériaux permettent de régler les pièces de collision, `$illumposition`, `$bbox`, `$surfaceprop` et `$cdmaterials`. Ajustez leurs poignées dans l’aperçu 3D intégré, choisissez la physique/`$staticprop` et les LOD (cliquez sur **LOD 1**, **LOD 2**... au-dessus de l’aperçu pour voir chaque niveau et son nombre de triangles, ou cochez **Auto selon la distance** et dézoomez), puis cliquez sur **Créer le prop**.
 4. La console affiche la préparation (textures de mélange, niveaux de détail, collision), puis la compilation `studiomdl`.
 5. Après compilation et vérification, les brushes sont remplacés par le `prop_static`, `prop_dynamic` ou `prop_physics` choisi, en une étape d’annulation : `Ctrl+Z` les restaure. Si la map a changé pendant la compilation, les fichiers sont exportés mais les brushes sont conservés.
 

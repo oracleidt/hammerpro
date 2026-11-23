@@ -231,7 +231,7 @@ impl SoundBrowser {
         let loading = self.mode == SoundMode::GameSounds && self.game.is_none() && state.assets.fs().is_some();
         ui.horizontal(|ui| {
             if loading {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(RichText::new(t!("entities.sb_loading")).weak().small());
             } else {
                 ui.label(RichText::new(tf!("entities.sb_count", self.rows.len())).weak().small());

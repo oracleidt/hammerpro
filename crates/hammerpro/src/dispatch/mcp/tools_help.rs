@@ -60,6 +60,7 @@ const EXAMPLES: &[(&str, &str)] = &[
     ("check_placement", r#"{"solid_ids":[3]}"#),
     ("place_object", r#"{"solid_ids":[3],"mode":"drop","dry_run":true}"#),
     ("render_shape", r#"{"solid_ids":[2],"width":512,"height":384}"#),
+    ("preview_prop_lods", r#"{"keep_percent":60,"lod":2}"#),
     ("find_floating_objects", r#"{"include":"all"}"#),
     ("drop_to_surface", r#"{"ids":[4]}"#),
     ("create_brush", r#"{"min":[0,0,0],"max":[512,512,16],"material":"dev/dev_measuregeneric01b"}"#),

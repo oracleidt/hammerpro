@@ -164,3 +164,77 @@ fn hard_edged_boxes_stay_whole() {
     let out = simplify_triangles(&s, &levels(&[0.5, 0.25, 0.125]));
     assert!(out.iter().all(|l| l.len() == 12));
 }
+
+fn faceted_sphere(radius: f64, rings: usize, segments: usize) -> Vec<Triangle> {
+    let point = |ring: usize, segment: usize| {
+        let theta = std::f64::consts::PI * ring as f64 / rings as f64;
+        let phi = std::f64::consts::TAU * (segment % segments) as f64 / segments as f64;
+        DVec3::new(theta.sin() * phi.cos(), theta.sin() * phi.sin(), theta.cos()) * radius
+    };
+    let mut out = Vec::new();
+    for ring in 0..rings {
+        for segment in 0..segments {
+            let quad = [
+                point(ring, segment),
+                point(ring + 1, segment),
+                point(ring + 1, segment + 1),
+                point(ring, segment + 1),
+            ];
+            let mut tris = Vec::new();
+            if ring > 0 {
+                tris.push([quad[0], quad[1], quad[3]]);
+            }
+            if ring + 1 < rings {
+                tris.push([quad[1], quad[2], quad[3]]);
+            }
+            if ring == 0 {
+                tris = vec![[quad[0], quad[1], quad[2]]];
+            }
+            if ring + 1 == rings {
+                tris = vec![[quad[0], quad[1], quad[3]]];
+            }
+            let n = (quad[1] - quad[0]).cross(quad[3] - quad[1]).normalize_or_zero();
+            let n = if n == DVec3::ZERO { (quad[2] - quad[1]).cross(quad[3] - quad[1]).normalize() } else { n };
+            let n = if n.dot(quad[1]) < 0.0 { -n } else { n };
+            let axis = if n.z.abs() >= n.x.abs().max(n.y.abs()) {
+                2
+            } else if n.x.abs() >= n.y.abs() {
+                0
+            } else {
+                1
+            };
+            let uv = |p: DVec3| match axis {
+                0 => DVec2::new(p.y, -p.z) / 128.0,
+                1 => DVec2::new(p.x, -p.z) / 128.0,
+                _ => DVec2::new(p.x, -p.y) / 128.0,
+            };
+            for t in tris {
+                let t = if (t[1] - t[0]).cross(t[2] - t[0]).dot(n) < 0.0 { [t[0], t[2], t[1]] } else { t };
+                out.push(Triangle { pos: t, normal: [n; 3], uv: t.map(uv), material: 0 });
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn faceted_brush_spheres_reach_the_requested_part() {
+    let s = faceted_sphere(64.0, 12, 24);
+    let full = s.len();
+    let out = simplify_triangles(&s, &levels(&[0.5, 0.25, 0.125]));
+    let parts: Vec<f64> = out.iter().map(|l| l.len() as f64 / full as f64).collect();
+    assert!((parts[0] - 0.5).abs() < 0.05, "LOD 1 keeps {:.3} of {full}", parts[0]);
+    assert!((parts[1] - 0.25).abs() < 0.05, "LOD 2 keeps {:.3}", parts[1]);
+    assert!(parts[2] < 0.25, "LOD 3 keeps {:.3}", parts[2]);
+    for level in &out {
+        for (edge, n) in edge_uses(level) {
+            assert_eq!(n, 2, "edge {edge:?} has {n} triangles: a hole or a fold");
+        }
+        for t in level {
+            let n = (t.pos[1] - t.pos[0]).cross(t.pos[2] - t.pos[0]);
+            assert!(n.dot(t.pos[0] + t.pos[1] + t.pos[2]) > 0.0, "a flipped triangle");
+            assert!(t.pos.iter().all(|p| (p.length() - 64.0).abs() < 1e-6));
+            assert!(t.normal.iter().all(|m| (m.length() - 1.0).abs() < 1e-6));
+        }
+    }
+}

@@ -27,6 +27,34 @@ pub struct ExportReport {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MountedFile {
+    pub vpath: String,
+    pub source: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PackPlan {
+    pub files: Vec<(String, PathBuf)>,
+    pub mounted: Vec<MountedFile>,
+    pub missing: Vec<(crate::deps::DepKind, String)>,
+}
+
+impl PackPlan {
+    pub fn mounted_by_source(&self) -> Vec<(String, Vec<String>)> {
+        let mut map: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for m in &self.mounted {
+            map.entry(m.source.clone()).or_default().push(m.vpath.clone());
+        }
+        map.into_iter()
+            .map(|(source, mut files)| {
+                files.sort_unstable();
+                (source, files)
+            })
+            .collect()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResizedImage {
     pub texture: String,
     pub size: (u32, u32),
@@ -330,6 +358,17 @@ impl GameFs {
         map_name: &str,
         cache_dir: &Path,
     ) -> Vec<(String, PathBuf)> {
+        self.pack_plan(used_materials, used_models, other_roots, map_name, cache_dir).files
+    }
+
+    pub fn pack_plan(
+        &self,
+        used_materials: &[String],
+        used_models: &[String],
+        other_roots: &[crate::deps::DepRoot],
+        map_name: &str,
+        cache_dir: &Path,
+    ) -> PackPlan {
         use crate::deps::{DepRoot, DepsCache, PackPolicy, ResolveOptions, RootKind};
         let root = |kind, name: &String| DepRoot { kind, name: name.clone(), why: String::new() };
         let roots: Vec<DepRoot> = used_materials
@@ -340,18 +379,30 @@ impl GameFs {
             .collect();
         let opts = ResolveOptions { map_name, ..ResolveOptions::default() };
         let graph = self.resolve_dependencies(&roots, &opts, &DepsCache::new());
-        let policy = PackPolicy { workshop: true, mounted: false };
+        let policy = PackPolicy { workshop: true, mounted: true };
         let nodes: Vec<&crate::deps::DepNode> = graph.shipped(policy).collect();
-        nodes
+        let packed: Vec<(String, PathBuf, Option<String>)> = nodes
             .into_par_iter()
             .filter_map(|node| match self.materialize_dependency(node, cache_dir) {
-                Ok(path) => Some((node.vpath.clone(), path)),
+                Ok(path) => {
+                    let mount = node.origin.filter(|o| o.is_mounted_game()).map(|_| node.source_label.clone());
+                    Some((node.vpath.clone(), path, mount))
+                }
                 Err(e) => {
                     log::warn!("cannot pack {}: {e}", node.vpath);
                     None
                 }
             })
-            .collect()
+            .collect();
+        let mut plan = PackPlan::default();
+        for (vpath, path, mount) in packed {
+            if let Some(source) = mount {
+                plan.mounted.push(MountedFile { vpath: vpath.clone(), source });
+            }
+            plan.files.push((vpath, path));
+        }
+        plan.missing = graph.missing.iter().map(|m| (m.kind, m.name.clone())).collect();
+        plan
     }
 
     pub fn export_custom_dependencies(

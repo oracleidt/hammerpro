@@ -297,8 +297,11 @@ fn budget(b: &Baker, kind: Kind) -> usize {
         Kind::Direct => lights + p.sky_samples as usize + 1,
         Kind::Indirect => (p.bounces as usize).min(4) * 2 + 1,
     };
-    (target / cost).max(256)
+    let threads = b.settings.threads.unwrap_or_else(rayon::current_num_threads).max(1);
+    (target / cost).max(256).max(threads * max_count(b) as usize * CPU_ITEMS_PER_THREAD)
 }
+
+const CPU_ITEMS_PER_THREAD: usize = 8;
 
 fn schedule(b: &Baker, kind: Kind, target: u32, focus: Option<&[u32]>) -> Vec<Work> {
     let st = &b.state;
@@ -344,58 +347,151 @@ fn schedule(b: &Baker, kind: Kind, target: u32, focus: Option<&[u32]>) -> Vec<Wo
     out
 }
 
-fn split(work: Vec<Work>, per_batch: usize, max_count: u32, max_items: usize) -> Vec<Vec<Work>> {
-    let mut items = Vec::with_capacity(work.len());
-    for w in work {
-        let mut start = w.start;
-        let end = w.start + w.count;
-        while start < end {
-            let c = (end - start).min(max_count);
-            items.push(Work { start, count: c, ..w });
-            start += c;
+pub(crate) struct Splitter {
+    work: Vec<Work>,
+    per_batch: usize,
+    max_count: u32,
+    max_items: usize,
+    level: u32,
+    index: usize,
+    live: usize,
+    stamp: Vec<u32>,
+    batch: u32,
+}
+
+impl Splitter {
+    pub(crate) fn new(mut work: Vec<Work>, per_batch: usize, max_count: u32, max_items: usize) -> Splitter {
+        work.par_sort_by(|a, b| b.count.cmp(&a.count));
+        let luxels = work.iter().map(|w| w.luxel as usize + 1).max().unwrap_or(0);
+        let live = work.len();
+        Splitter {
+            work,
+            per_batch: per_batch.max(1),
+            max_count: max_count.max(1),
+            max_items: max_items.max(1),
+            level: 0,
+            index: 0,
+            live,
+            stamp: vec![u32::MAX; luxels],
+            batch: 0,
         }
     }
-    items.sort_by_key(|w| (w.start, w.luxel));
-    let mut out: Vec<Vec<Work>> = Vec::new();
-    let mut cur: Vec<Work> = Vec::new();
-    let mut cost = 0usize;
-    let mut last_start = u32::MAX;
-    let mut seen = std::collections::HashSet::new();
-    for w in items {
-        if w.start != last_start {
-            last_start = w.start;
-        }
-        if cost + w.count as usize > per_batch || cur.len() >= max_items || !seen.insert(w.luxel) {
-            if !cur.is_empty() {
-                out.push(std::mem::take(&mut cur));
+
+    fn advance(&mut self) -> Option<Work> {
+        loop {
+            if self.index >= self.live {
+                self.level += 1;
+                self.index = 0;
+                let skip = self.level.saturating_mul(self.max_count);
+                self.live = self.work.partition_point(|w| w.count > skip);
+                if self.live == 0 {
+                    return None;
+                }
             }
-            seen.clear();
-            seen.insert(w.luxel);
-            cost = 0;
+            let w = self.work[self.index];
+            self.index += 1;
+            let skip = self.level * self.max_count;
+            if w.count > skip {
+                let count = (w.count - skip).min(self.max_count);
+                return Some(Work { start: w.start + skip, count, ..w });
+            }
         }
-        cost += w.count as usize;
-        cur.push(w);
     }
-    if !cur.is_empty() {
-        out.push(cur);
+
+    pub(crate) fn next_batch(&mut self) -> Option<Vec<Work>> {
+        let mut cur: Vec<Work> = Vec::new();
+        let mut cost = 0usize;
+        self.batch = self.batch.wrapping_add(1);
+        loop {
+            let (level, index) = (self.level, self.index);
+            let live = self.live;
+            let Some(w) = self.advance() else { break };
+            let l = w.luxel as usize;
+            if !cur.is_empty()
+                && (cost + w.count as usize > self.per_batch
+                    || cur.len() >= self.max_items
+                    || self.stamp[l] == self.batch)
+            {
+                self.level = level;
+                self.index = index;
+                self.live = live;
+                break;
+            }
+            self.stamp[l] = self.batch;
+            cost += w.count as usize;
+            cur.push(w);
+        }
+        (!cur.is_empty()).then_some(cur)
     }
-    out
+}
+
+#[cfg(test)]
+fn split(work: Vec<Work>, per_batch: usize, max_count: u32, max_items: usize) -> Vec<Vec<Work>> {
+    let mut s = Splitter::new(work, per_batch, max_count, max_items);
+    std::iter::from_fn(|| s.next_batch()).collect()
 }
 
 struct Meter {
     started: Instant,
-    total: f64,
+    shown: f64,
+    base: f64,
+    span: f64,
+    round_total: f64,
+    round_done: f64,
+    rest: f64,
     done: f64,
 }
 
 impl Meter {
+    fn new() -> Meter {
+        Meter {
+            started: Instant::now(),
+            shown: 0.0,
+            base: 0.0,
+            span: 0.0,
+            round_total: 0.0,
+            round_done: 0.0,
+            rest: 0.0,
+            done: 0.0,
+        }
+    }
+
+    fn round(&mut self, total: f64, rest: f64) {
+        self.base = self.shown;
+        self.round_total = total;
+        self.round_done = 0.0;
+        self.rest = rest.max(0.0);
+        let share = if total + self.rest > 0.0 { total / (total + self.rest) } else { 1.0 };
+        self.span = (1.0 - self.base) * share;
+    }
+
+    fn add(&mut self, n: f64) {
+        self.done += n;
+        self.round_done += n;
+        let f = if self.round_total > 0.0 { (self.round_done / self.round_total).min(1.0) } else { 1.0 };
+        self.shown = (self.base + self.span * f).clamp(self.shown, 1.0);
+    }
+
     fn report(&self, ctl: &Control<'_>, phase: Phase, base: f32, span: f32) {
-        let f = if self.total > 0.0 { (self.done / self.total).min(1.0) as f32 } else { 1.0 };
         let el = self.started.elapsed().as_secs_f64();
-        let left = (f > 0.02).then(|| el / f as f64 * (1.0 - f as f64));
-        (ctl.progress)(Progress { phase, fraction: base + span * f, seconds_left: left });
+        let left_units = (self.round_total - self.round_done).max(0.0) + self.rest;
+        let left = (self.done > 0.0 && el > 2.0).then(|| el / self.done * left_units);
+        (ctl.progress)(Progress { phase, fraction: base + span * self.shown as f32, seconds_left: left });
     }
 }
+
+pub(crate) fn expected_rest(first: bool, total: f64, previous: f64, adaptive: bool) -> f64 {
+    if !adaptive {
+        return 0.0;
+    }
+    if first {
+        return total * FIRST_ROUND_REST;
+    }
+    let ratio = if previous > 0.0 { (total / previous).clamp(0.0, 0.9) } else { 0.5 };
+    total * ratio / (1.0 - ratio)
+}
+
+const FIRST_ROUND_REST: f64 = 0.8;
 
 fn pass(
     b: &mut Baker,
@@ -407,36 +503,47 @@ fn pass(
     span: f32,
 ) -> Result<u64, Stop> {
     let mut samples = 0u64;
-    let started = Instant::now();
-    let mut meter = Meter { started, total: 0.0, done: 0.0 };
+    let mut meter = Meter::new();
+    let adaptive = b.settings.params.max_samples > b.settings.params.min_samples.min(target);
     let max_rounds = 16;
-    for _ in 0..max_rounds {
+    let mut previous = 0.0f64;
+    (ctl.progress)(Progress { phase, fraction: base, seconds_left: None });
+    for r in 0..max_rounds {
         let work = schedule(b, kind, target, None);
         if work.is_empty() {
             break;
         }
-        let total: u64 = work.iter().map(|w| u64::from(w.count)).sum();
-        meter.total = meter.done + total as f64;
+        let total = work.iter().map(|w| u64::from(w.count)).sum::<u64>() as f64;
+        let rest = if r + 1 == max_rounds { 0.0 } else { expected_rest(r == 0, total, previous, adaptive) };
+        meter.round(total, rest);
+        previous = total;
         let per = budget(b, kind);
-        for batch in split(work, per, max_count(b), item_cap(b)) {
+        let mut batches = Splitter::new(work, per, max_count(b), item_cap(b));
+        let mut last = Instant::now();
+        while let Some(batch) = batches.next_batch() {
             if (ctl.cancelled)() {
                 return Err(Stop::Cancelled);
             }
             run(b, kind, &batch)?;
             let n: u64 = batch.iter().map(|w| u64::from(w.count)).sum();
             samples += n;
-            meter.done += n as f64;
-            meter.report(ctl, phase, base, span);
+            meter.add(n as f64);
+            if last.elapsed().as_secs_f64() > 0.25 {
+                meter.report(ctl, phase, base, span);
+                last = Instant::now();
+            }
         }
         sync(b, kind)?;
+        meter.report(ctl, phase, base, span);
     }
+    (ctl.progress)(Progress { phase, fraction: base + span, seconds_left: Some(0.0) });
     Ok(samples)
 }
 
 pub(crate) fn bake(b: &mut Baker, ctl: &Control<'_>, log: &mut dyn FnMut(&str)) -> Result<Output, Stop> {
     let started = Instant::now();
     let p = b.settings.params;
-    let ds = pass(b, Kind::Direct, p.max_samples, ctl, Phase::Direct, 0.0, if p.bounces > 0 { 0.45 } else { 0.9 })?;
+    let ds = pass(b, Kind::Direct, p.max_samples, ctl, Phase::Direct, 0.0, 0.45)?;
     log(&format!(
         "ray tracing: direct light {} samples ({:.1} per luxel) in {:.1} s",
         ds,
@@ -461,7 +568,7 @@ pub(crate) fn bake(b: &mut Baker, ctl: &Control<'_>, log: &mut dyn FnMut(&str)) 
     }
     (ctl.progress)(Progress { phase: Phase::Denoise, fraction: 0.92, seconds_left: None });
     b.state.finished = true;
-    let mut out = output(b, true);
+    let mut out = output_reporting(b, true, ctl);
     out.direct_samples = ds;
     out.indirect_samples = is;
     out.seconds = started.elapsed().as_secs_f64();
@@ -518,8 +625,8 @@ pub(crate) fn refine(
             let n = keep.count().max(1);
             work.truncate(n);
         }
-        let batches = split(work, per, max_count(b).min(16), item_cap(b));
-        for batch in batches {
+        let mut batches = Splitter::new(work, per, max_count(b).min(16), item_cap(b));
+        while let Some(batch) = batches.next_batch() {
             if (ctl.cancelled)() {
                 return Err(Stop::Cancelled);
             }
@@ -574,6 +681,26 @@ pub(crate) fn output(b: &Baker, denoise: bool) -> Output {
     let strength = if denoise { b.settings.params.denoise } else { 0.0 };
     let surfaces: Vec<SurfaceOut> =
         (0..b.state.packed.surfaces.len()).into_par_iter().map(|si| surface_out(b, si, strength)).collect();
+    Output { surfaces, rays: b.state.rays, ..Output::default() }
+}
+
+fn output_reporting(b: &Baker, denoise: bool, ctl: &Control<'_>) -> Output {
+    let strength = if denoise { b.settings.params.denoise } else { 0.0 };
+    let total = b.state.packed.surfaces.len().max(1);
+    let done = std::sync::atomic::AtomicUsize::new(0);
+    let step = (total / 200).max(1);
+    let surfaces: Vec<SurfaceOut> = (0..b.state.packed.surfaces.len())
+        .into_par_iter()
+        .map(|si| {
+            let out = surface_out(b, si, strength);
+            let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            if n.is_multiple_of(step) {
+                let f = 0.92 + 0.08 * n as f32 / total as f32;
+                (ctl.progress)(Progress { phase: Phase::Denoise, fraction: f.min(0.999), seconds_left: None });
+            }
+            out
+        })
+        .collect();
     Output { surfaces, rays: b.state.rays, ..Output::default() }
 }
 
@@ -647,4 +774,64 @@ fn variance(s: &Stat) -> f32 {
     }
     let mean = s.sum / s.n;
     ((s.sq / s.n - mean * mean).max(0.0)) / s.n
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn work(luxels: u32, count: u32) -> Vec<Work> {
+        (0..luxels).map(|l| Work { luxel: l, surface: 0, start: 3, count: count + l % 3 }).collect()
+    }
+
+    #[test]
+    fn batches_cover_every_sample_once_without_repeating_a_luxel() {
+        let input = work(1000, 37);
+        let batches = split(input.clone(), 700, 4, 300);
+        let mut seen = std::collections::HashMap::new();
+        for b in &batches {
+            assert!(b.len() <= 300);
+            assert!(b.iter().map(|w| w.count as usize).sum::<usize>() <= 700);
+            let mut in_batch = std::collections::HashSet::new();
+            for w in b {
+                assert!(w.count >= 1 && w.count <= 4);
+                assert!(in_batch.insert(w.luxel));
+                seen.entry(w.luxel).or_insert_with(Vec::new).push((w.start, w.count));
+            }
+        }
+        for w in &input {
+            let mut runs = seen.remove(&w.luxel).unwrap_or_default();
+            runs.sort_unstable();
+            let mut at = w.start;
+            for (s, c) in runs {
+                assert_eq!(s, at);
+                at += c;
+            }
+            assert_eq!(at, w.start + w.count);
+        }
+        assert!(seen.is_empty());
+    }
+
+    #[test]
+    fn a_tiny_level_still_splits_repeated_luxels() {
+        let batches = split(vec![Work { luxel: 5, surface: 0, start: 0, count: 12 }], 1000, 4, 1000);
+        assert_eq!(batches.len(), 3);
+    }
+
+    #[test]
+    fn progress_only_moves_forward_across_rounds() {
+        let mut m = Meter::new();
+        let mut last = 0.0;
+        let mut previous = 0.0;
+        for (r, total) in [1000.0f64, 900.0, 1500.0, 200.0, 10.0].into_iter().enumerate() {
+            m.round(total, expected_rest(r == 0, total, previous, true));
+            previous = total;
+            for _ in 0..10 {
+                m.add(total / 10.0);
+                assert!(m.shown >= last && m.shown <= 1.0);
+                assert!(m.shown > last || total == 0.0);
+                last = m.shown;
+            }
+        }
+    }
 }

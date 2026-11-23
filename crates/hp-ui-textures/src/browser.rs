@@ -571,7 +571,7 @@ impl TextureBrowser {
                         }
                         None => {
                             ui.horizontal(|ui| {
-                                ui.spinner();
+                                hp_app::widgets::spinner(ui);
                                 ui.label(RichText::new(t!("tex.browser.flags_index")).small().weak());
                             });
                         }
@@ -1100,11 +1100,11 @@ impl TextureBrowser {
         ui.horizontal_wrapped(|ui| {
             ui.label(RichText::new(self.count_text.2.as_str()).small().weak());
             if self.indexing_keywords() {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(RichText::new(t!("tex.browser.kw_index")).small().weak());
             }
             if self.indexing_flags() {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(RichText::new(t!("tex.browser.flags_index")).small().weak());
             }
             if !self.marked.is_empty() {
@@ -1333,14 +1333,14 @@ impl TextureBrowser {
                 let late = state.assets.late_mount();
                 if late > 0 {
                     ui.horizontal(|ui| {
-                        ui.spinner();
+                        hp_app::widgets::spinner(ui);
                         ui.label(RichText::new(tf!("tex.browser.loading_late", late)).small());
                     });
                 }
             }
             AssetStatus::Mounting => {
                 ui.horizontal(|ui| {
-                    ui.spinner();
+                    hp_app::widgets::spinner(ui);
                     ui.label(RichText::new(t!("status.loading_assets")).small());
                 });
             }

@@ -102,7 +102,7 @@ impl DepNode {
         match self.origin {
             Some(SourceOrigin::GameLoose) => !self.in_base,
             Some(SourceOrigin::Workshop) => policy.workshop,
-            Some(SourceOrigin::Mounted) => policy.mounted,
+            Some(SourceOrigin::Mounted | SourceOrigin::Extra) => policy.mounted && !self.in_base,
             Some(o) => o.needs_packing(),
             None => false,
         }
@@ -811,6 +811,9 @@ impl GameFs {
             for s in snapshot.iter().filter(|s| s.is_enabled() && s.origin.needs_packing()) {
                 s.for_each_path("particles", Some("pcf"), &mut |p| others.push(p.to_owned()));
             }
+            for s in snapshot.iter().filter(|s| s.is_enabled() && s.origin.is_mounted_game()) {
+                s.for_each_path("particles", Some("pcf"), &mut |p| others.push(p.to_owned()));
+            }
             let mut order: Vec<String> = own.iter().chain(base.iter()).chain(others.iter()).cloned().collect();
             let mut seen = HashSet::new();
             order.retain(|f| seen.insert(f.clone()));
@@ -941,7 +944,7 @@ impl GameFs {
                         nodes.len() - 1
                     });
                     nodes[i].add_reason(&r.reason);
-                    if hit.source.origin == SourceOrigin::Mounted {
+                    if hit.source.origin.is_mounted_game() && !nodes[i].in_base {
                         warnings.push(DepWarning::MountedContent {
                             vpath: nodes[i].vpath.clone(),
                             source: hit.source.label.clone(),
@@ -1068,7 +1071,7 @@ impl GameFs {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{TempDir, vtf};
+    use crate::test_util::{TempDir, vpk, vtf};
     use crate::{CustomDir, MountOptions};
 
     fn root(kind: RootKind, name: &str) -> DepRoot {
@@ -1326,5 +1329,168 @@ mod tests {
         let again = fs.export_custom_dependencies(&custom_roots(), "gm_w", &addon, &cache);
         assert!(again.written.is_empty(), "{:?}", again.written);
         assert_eq!(again.up_to_date.len(), CUSTOM_FILES.len());
+    }
+
+    const PROBE_MDL: &[u8] = include_bytes!("../../hp-assets/tests/data/static_pose/models/hp_staticpose/probe.mdl");
+
+    fn probe_materials() -> Vec<String> {
+        hp_mdl::read_dependencies(PROBE_MDL)
+            .unwrap()
+            .material_candidates()
+            .into_iter()
+            .filter_map(|c| c.into_iter().next())
+            .collect()
+    }
+
+    fn mounted_games(tmp: &TempDir, mount_cfg: bool) -> GameFs {
+        tmp.write(
+            "gmod/garrysmod/gameinfo.txt",
+            b"GameInfo { FileSystem { SearchPaths { game garrysmod game |all_source_engine_paths|sourceengine } } }",
+        );
+        tmp.write(
+            "gmod/sourceengine/materials/base/wall.vmt",
+            b"\"LightmappedGeneric\" { \"$basetexture\" \"base/wall\" }",
+        );
+        tmp.write("gmod/sourceengine/materials/base/wall.vtf", &vtf(4, 4, [1, 1, 1, 255]));
+        tmp.write(
+            "gmod/sourceengine/particles/particles_manifest.txt",
+            b"particles_manifest { \"file\" \"particles/base.pcf\" }",
+        );
+        tmp.write("gmod/sourceengine/particles/base.pcf", &pcf::tests::build_pcf(&[("base_fire", "base/wall")]));
+        let css = tmp.path().join("External Drive").join("Counter-Strike Source").join("cstrike");
+        let props = tmp.path().join("External Drive").join("props");
+        let slash = |p: &Path| p.display().to_string().replace('\\', "/");
+        let cfg =
+            format!("\"mountcfg\"\n{{\n\t\"cstrike\"\t\"{}\"\n\t\"props\"\t\"{}\"\n}}\n", slash(&css), slash(&props));
+        tmp.write("gmod/garrysmod/cfg/mount.cfg", cfg.as_bytes());
+        let flame_vmt = b"\"UnlitGeneric\" { \"$basetexture\" \"css/flame\" }";
+        let flame_vtf = vtf(4, 4, [200, 90, 10, 255]);
+        let part_vtf = vtf(4, 4, [90, 90, 90, 255]);
+        let mut vpk_files: Vec<(String, Vec<u8>)> = vec![
+            ("models/css/probe.mdl".into(), PROBE_MDL.to_vec()),
+            ("models/css/probe.vvd".into(), b"IDSV".to_vec()),
+            ("models/css/probe.dx90.vtx".into(), b"vtx".to_vec()),
+            ("models/css/probe.phy".into(), b"phy".to_vec()),
+            ("particles/css_fx.pcf".into(), pcf::tests::build_pcf(&[("css_fire", "css/flame")])),
+            ("materials/css/flame.vmt".into(), flame_vmt.to_vec()),
+            ("materials/css/flame.vtf".into(), flame_vtf),
+            ("materials/base/wall.vmt".into(), b"\"LightmappedGeneric\" { \"$basetexture\" \"css/flame\" }".to_vec()),
+        ];
+        for (i, m) in probe_materials().iter().enumerate() {
+            let tex = format!("css/part{i}");
+            let vmt = format!("\"VertexLitGeneric\" {{ \"$basetexture\" \"{tex}\" }}");
+            vpk_files.push((format!("materials/{m}.vmt"), vmt.into_bytes()));
+            vpk_files.push((format!("materials/{tex}.vtf"), part_vtf.clone()));
+        }
+        let refs: Vec<(&str, &[u8])> = vpk_files.iter().map(|(p, b)| (p.as_str(), b.as_slice())).collect();
+        std::fs::create_dir_all(&css).unwrap();
+        std::fs::write(css.join("cstrike_pak_dir.vpk"), vpk(&refs)).unwrap();
+        tmp.write("External Drive/props/models/Loose/Crate.mdl", PROBE_MDL);
+        tmp.write("External Drive/props/models/Loose/Crate.vvd", b"IDSV");
+        tmp.write("External Drive/props/models/Loose/Crate.dx90.vtx", b"vtx");
+        let opts = MountOptions { mount_workshop: false, mount_cfg, ..MountOptions::default() };
+        GameFs::for_gmod(&tmp.path().join("gmod"), &opts).unwrap()
+    }
+
+    fn mounted_roots() -> Vec<DepRoot> {
+        vec![
+            root(RootKind::Model, "models/css/probe.mdl"),
+            root(RootKind::Model, "models/loose/crate.mdl"),
+            root(RootKind::Particle, "css_fire"),
+            root(RootKind::Particle, "base_fire"),
+            root(RootKind::Material, "base/wall"),
+        ]
+    }
+
+    #[test]
+    fn content_of_games_mounted_through_mount_cfg_is_packed_with_its_mount() {
+        let tmp = TempDir::new("deps-mount-cfg");
+        let fs = mounted_games(&tmp, true);
+        let cache = tmp.mkdir("cache");
+        let plan = fs.pack_plan(&[], &[], &mounted_roots(), "gm_m", &cache);
+        let mut names: Vec<&str> = plan.files.iter().map(|(v, _)| v.as_str()).collect();
+        names.sort_unstable();
+        let mut want: Vec<String> = [
+            "maps/gm_m_particles.txt",
+            "materials/css/flame.vmt",
+            "materials/css/flame.vtf",
+            "models/css/probe.dx90.vtx",
+            "models/css/probe.mdl",
+            "models/css/probe.phy",
+            "models/css/probe.vvd",
+            "models/loose/crate.dx90.vtx",
+            "models/loose/crate.mdl",
+            "models/loose/crate.vvd",
+            "particles/css_fx.pcf",
+        ]
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect();
+        let materials = probe_materials();
+        assert!(!materials.is_empty());
+        for (i, m) in materials.iter().enumerate() {
+            want.push(format!("materials/{m}.vmt"));
+            want.push(format!("materials/css/part{i}.vtf"));
+        }
+        want.sort_unstable();
+        want.dedup();
+        assert_eq!(names, want);
+        assert!(plan.missing.is_empty(), "{:?}", plan.missing);
+        for (_, disk) in &plan.files {
+            assert!(disk.is_file(), "{}", disk.display());
+        }
+        let mdl = plan.files.iter().find(|(v, _)| v == "models/css/probe.mdl").unwrap();
+        assert_eq!(std::fs::read(&mdl.1).unwrap(), PROBE_MDL, "files inside a mounted VPK are extracted");
+        let manifest = plan.files.iter().find(|(v, _)| v == "maps/gm_m_particles.txt").unwrap();
+        let text = std::fs::read_to_string(&manifest.1).unwrap();
+        assert!(text.contains("\"!particles/css_fx.pcf\""), "{text}");
+        assert!(!text.contains("base.pcf"), "{text}");
+        let groups = plan.mounted_by_source();
+        let labels: Vec<&str> = groups.iter().map(|(s, _)| s.as_str()).collect();
+        assert_eq!(labels, ["Mount: cstrike (cstrike_pak.vpk)", "Mount: props"]);
+        assert!(groups[0].1.contains(&"particles/css_fx.pcf".to_owned()));
+        assert!(groups[1].1.contains(&"models/loose/crate.vvd".to_owned()));
+        assert_eq!(
+            plan.mounted.len(),
+            plan.files.len() - 1,
+            "everything but the generated manifest comes from a mount"
+        );
+        assert!(!names.contains(&"materials/base/wall.vmt"), "what every player has is never packed");
+    }
+
+    #[test]
+    fn without_mount_cfg_the_same_map_reports_what_is_missing() {
+        let tmp = TempDir::new("deps-mount-cfg-off");
+        let fs = mounted_games(&tmp, false);
+        let cache = tmp.mkdir("cache");
+        let plan = fs.pack_plan(&[], &[], &mounted_roots(), "gm_m", &cache);
+        assert!(plan.files.is_empty(), "{:?}", plan.files);
+        let missing: Vec<&str> = plan.missing.iter().map(|(_, n)| n.as_str()).collect();
+        assert!(missing.contains(&"models/css/probe.mdl"), "{missing:?}");
+        assert!(missing.contains(&"css_fire"), "{missing:?}");
+    }
+
+    #[test]
+    fn mounted_files_also_in_the_base_game_never_ship() {
+        let mut node = DepNode {
+            vpath: "materials/base/wall.vmt".into(),
+            kind: DepKind::Material,
+            source: Some(1),
+            origin: Some(SourceOrigin::Mounted),
+            source_label: "Mount: hl2".into(),
+            workshop_id: None,
+            in_base: true,
+            size: 1,
+            reasons: Vec::new(),
+            reason_count: 0,
+            generated: None,
+        };
+        let all = PackPolicy { workshop: true, mounted: true };
+        assert!(!node.ships(all));
+        node.in_base = false;
+        assert!(node.ships(all));
+        assert!(!node.ships(PackPolicy { workshop: true, mounted: false }));
+        node.origin = Some(SourceOrigin::Extra);
+        assert!(node.ships(all), "games mounted from the settings ship like mount.cfg ones");
     }
 }

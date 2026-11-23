@@ -124,7 +124,7 @@ impl Tasks {
             ui.label(tr("Compressed local snapshots every 10 minutes. Only the latest 10 are kept. A safety snapshot is saved before restoring.", "Snapshots locaux compressés toutes les 10 minutes. Les 10 derniers sont conservés. Une copie de sécurité est créée avant restauration.", "Сжатые локальные снимки каждые 10 минут. Хранятся только последние 10. Перед восстановлением сохраняется резервная копия."));
             let bytes: u64 = self.rows.iter().map(|row| row.bytes).sum();
             ui.label(format!("{} / 10 | {:.1} KiB", self.rows.len(), bytes as f64 / 1024.0));
-            if self.busy() { ui.spinner(); }
+            if self.busy() { hp_app::widgets::spinner(ui); }
             if ui.add_enabled(!self.busy() && ready, egui::Button::new(tr("Save snapshot now", "Créer un snapshot maintenant", "Создать снимок сейчас"))).clicked() {
                 save = true;
             }

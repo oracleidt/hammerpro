@@ -237,7 +237,7 @@ pub fn game_section(ui: &mut Ui, state: &mut AppState, jobs: &mut GameJobs) {
                 }
             }
             None => {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(t!("shell.game.searching_games"));
             }
         }
@@ -317,7 +317,7 @@ pub fn gmod_root_section(ui: &mut Ui, state: &mut AppState, jobs: &mut GameJobs)
         |ui| {
             if jobs.detecting() {
                 ui.label(RichText::new(t!("shell.game.detecting")).small());
-                ui.add(egui::Spinner::new().size(14.0));
+                hp_app::widgets::paced_spinner(ui, 14.0);
             } else if ui
                 .button(format!("🔍 {}", t!("shell.game.detect")))
                 .on_hover_text(t!("shell.game.detect_tip"))
@@ -344,7 +344,7 @@ pub fn gmod_root_section(ui: &mut Ui, state: &mut AppState, jobs: &mut GameJobs)
     }
     if jobs.scanning() {
         ui.horizontal(|ui| {
-            ui.add(egui::Spinner::new().size(12.0));
+            hp_app::widgets::paced_spinner(ui, 12.0);
             ui.label(RichText::new(t!("shell.game.scanning")).small());
         });
         return;

@@ -298,6 +298,17 @@ pub const TR: TrTable = &[
         "{0} files come from mounted games and are shipped: make sure you may redistribute them.",
         "{0} fichiers viennent de jeux montés et sont inclus : vérifiez que vous avez le droit de les redistribuer.",
     ),
+    (
+        "release.mount_group_shipped",
+        "{0}: {1} files from this mounted game are shipped",
+        "{0} : {1} fichiers de ce jeu monté sont inclus",
+    ),
+    (
+        "release.mount_group_left",
+        "{0}: {1} files from this mounted game are not shipped",
+        "{0} : {1} fichiers de ce jeu monté ne sont pas inclus",
+    ),
+    ("release.mount_file", "From {0}: {1}", "Depuis {0} : {1}"),
     ("release.instance_unreadable", "Cannot read the instance {0}: {1}", "Impossible de lire l'instance {0} : {1}"),
     (
         "release.cubemaps_kept",

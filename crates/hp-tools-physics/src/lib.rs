@@ -489,7 +489,7 @@ impl Tool for PhysicsTool {
             }
         });
         if busy {
-            ui.spinner();
+            hp_app::widgets::spinner(ui);
             ui.label(t!("physics.loading"));
         }
         if let Some(session) = &self.session {

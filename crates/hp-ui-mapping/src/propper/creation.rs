@@ -9,6 +9,7 @@ use hp_editor::prop_export::{EditableCollision, PropDirectives, PropGeometry, co
 use hp_geom::Aabb;
 use hp_render::{Overlay, OverlayLine, OverlayPoint};
 
+use super::lod_preview::LodPreview;
 use super::viewport::{EditPoint, Scene, Viewport};
 use crate::dialogs::MapDialog;
 use crate::util::enter_pressed;
@@ -62,6 +63,7 @@ struct Draft {
     show_illum: bool,
     tab: usize,
     viewport: Viewport,
+    lods: LodPreview,
     revision: u64,
     overlay: Option<(u64, Arc<Overlay>)>,
     error: Option<String>,
@@ -170,6 +172,27 @@ fn vector(ui: &mut Ui, label: &str, value: &mut DVec3) -> bool {
     changed
 }
 
+pub fn prop_geometry(state: &mut AppState, ids: &[hp_editor::Id]) -> Result<PropGeometry, String> {
+    let names: Vec<String> = ids
+        .iter()
+        .filter_map(|id| state.doc.scene().solid(*id))
+        .flat_map(|node| node.solid.sides.iter().map(|side| side.material.clone()))
+        .collect();
+    let mut sizes = std::collections::HashMap::new();
+    for name in names {
+        let size = state
+            .assets
+            .material_info(&name)
+            .filter(|info| info.width > 0 && info.height > 0)
+            .map(|info| (info.width, info.height))
+            .or_else(|| state.assets.fs().and_then(|fs| fs.material_texture_size(&name)))
+            .unwrap_or((512, 512));
+        sizes.insert(name.to_ascii_lowercase(), size);
+    }
+    collect_prop(&state.doc, ids, &|name| sizes.get(&name.to_ascii_lowercase()).copied().unwrap_or((512, 512)))
+        .ok_or_else(|| t!("propper.empty").to_owned())
+}
+
 impl Draft {
     fn new(state: &mut AppState) -> Result<Self, String> {
         let mut ids = state.doc.selected_solid_ids();
@@ -177,28 +200,7 @@ impl Draft {
         if ids.is_empty() {
             return Err(t!("propper.create_select").into());
         }
-        let names: Vec<String> = ids
-            .iter()
-            .filter_map(|id| state.doc.scene().solid(*id))
-            .flat_map(|node| node.solid.sides.iter().map(|side| side.material.clone()))
-            .collect();
-        let mut sizes = std::collections::HashMap::new();
-        for name in names {
-            let size = state
-                .assets
-                .material_info(&name)
-                .filter(|info| info.width > 0 && info.height > 0)
-                .map(|info| (info.width, info.height))
-                .or_else(|| state.assets.fs().and_then(|fs| fs.material_texture_size(&name)))
-                .unwrap_or((512, 512));
-            sizes.insert(name.to_ascii_lowercase(), size);
-        }
-        let geometry = Arc::new(
-            collect_prop(&state.doc, &ids, &|name| {
-                sizes.get(&name.to_ascii_lowercase()).copied().unwrap_or((512, 512))
-            })
-            .ok_or_else(|| t!("propper.empty").to_owned())?,
-        );
+        let geometry = Arc::new(prop_geometry(state, &ids)?);
         let bounds = Aabb::from_points(geometry.tris.iter().flat_map(|tri| tri.pos));
         let mut hash = 0x811c_9dc5u32;
         for byte in ids.iter().flat_map(|id| id.to_le_bytes()) {
@@ -260,6 +262,7 @@ impl Draft {
             show_illum: true,
             tab: 0,
             viewport: Viewport::default(),
+            lods: LodPreview::default(),
             revision: 1,
             overlay: None,
             error: None,
@@ -769,6 +772,9 @@ impl MapDialog for CreateDialog {
     fn show(&mut self, ctx: &egui::Context, state: &mut AppState) {
         if !state.runtime.lab.propper_create_open {
             self.draft = None;
+            state.runtime.lab.propper_lod_camera = None;
+            state.runtime.lab.propper_lod_camera_request = None;
+            state.runtime.lab.propper_lod_levels.clear();
             return;
         }
         if let Some((folder, receiver)) = &self.picker {
@@ -844,6 +850,17 @@ impl MapDialog for CreateDialog {
                                 draft.viewport.fit(&draft.geometry, &points);
                             }
                         });
+                        draft.lods.update(ui.ctx(), &draft.geometry, state.settings.lab.model_lod);
+                        if let Some(distance) = state.runtime.lab.propper_lod_camera_request.take() {
+                            draft.viewport.set_distance(distance);
+                        }
+                        if state.settings.lab.propper_lod_auto
+                            && let Some(last) = draft.lods.levels().last()
+                        {
+                            draft.viewport.reach(last.game_distance() * 1.5);
+                        }
+                        let shown = draft.lods.bar(ui, state, draft.viewport.distance());
+                        let display = Arc::clone(draft.lods.geometry(shown).unwrap_or(&draft.geometry));
                         let collision = state.settings.lab.propper_options().collision;
                         let overlay = draft.overlay(collision);
                         let mut points = draft.points();
@@ -854,7 +871,7 @@ impl MapDialog for CreateDialog {
                             ui,
                             state,
                             Scene {
-                                geometry: &draft.geometry,
+                                geometry: &display,
                                 overlay: &overlay,
                                 points: &points,
                                 revision: draft.revision * 2 + u64::from(collision),

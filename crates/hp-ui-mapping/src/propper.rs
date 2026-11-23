@@ -15,8 +15,10 @@ pub mod bake;
 pub mod combine;
 mod creation;
 mod export;
+pub mod lod_preview;
 mod viewport;
 use creation::CreateDialog;
+pub use creation::prop_geometry;
 mod materials;
 pub use export::prepare_creation;
 pub use materials::stage as prepare_material_files;
@@ -131,19 +133,84 @@ pub fn prepare_prop(
     })
 }
 
+pub fn prop_lod_plan(
+    tris: &[hp_editor::prop_export::PropTri],
+    lod: hp_app::settings::ModelLodSettings,
+) -> Vec<hp_meshio::lod::LodLevel> {
+    let radius = tris.iter().flat_map(|t| t.pos.iter()).map(|p| p.length()).fold(0.0f64, f64::max);
+    hp_meshio::lod::plan(&lod_options(lod), tris.len(), radius)
+}
+
+fn face_plane(pos: &[DVec3; 3]) -> Option<(DVec3, f64)> {
+    let n = (pos[1] - pos[0]).cross(pos[2] - pos[0]).normalize_or_zero();
+    (n != DVec3::ZERO).then(|| (n, n.dot(pos[0])))
+}
+
+fn inside(pos: &[DVec3; 3], n: DVec3, p: DVec3) -> bool {
+    let tolerance = 0.01;
+    (0..3).all(|k| {
+        let (a, b) = (pos[k], pos[(k + 1) % 3]);
+        let edge = b - a;
+        let length = edge.length();
+        length <= 1e-9 || n.cross(edge).dot(p - a) / length >= -tolerance
+    })
+}
+
+pub fn hidden_faces(tris: &[hp_editor::prop_export::PropTri]) -> Vec<bool> {
+    let key = |n: DVec3, d: f64| {
+        [
+            (n.x * 100.0).round() as i64,
+            (n.y * 100.0).round() as i64,
+            (n.z * 100.0).round() as i64,
+            (d * 10.0).round() as i64,
+        ]
+    };
+    let mut planes: HashMap<[i64; 4], Vec<usize>> = HashMap::new();
+    let mut plane_of = Vec::with_capacity(tris.len());
+    for (index, t) in tris.iter().enumerate() {
+        let plane = face_plane(&t.pos);
+        if let Some((n, d)) = plane {
+            planes.entry(key(n, d)).or_default().push(index);
+        }
+        plane_of.push(plane);
+    }
+    tris.iter()
+        .zip(&plane_of)
+        .map(|(t, plane)| {
+            let Some((n, d)) = *plane else { return false };
+            let Some(others) = planes.get(&key(-n, -d)) else { return false };
+            let centroid = (t.pos[0] + t.pos[1] + t.pos[2]) / 3.0;
+            t.pos.iter().chain(std::iter::once(&centroid)).all(|&p| {
+                others.iter().any(|&o| {
+                    let (m, _) = plane_of[o].expect("planar");
+                    inside(&tris[o].pos, m, p)
+                })
+            })
+        })
+        .collect()
+}
+
 pub fn prop_lods(
     tris: &[hp_editor::prop_export::PropTri],
     lod: hp_app::settings::ModelLodSettings,
 ) -> Vec<hp_editor::prop_export::PropLod> {
-    let radius = tris.iter().flat_map(|t| t.pos.iter()).map(|p| p.length()).fold(0.0f64, f64::max);
-    let levels = hp_meshio::lod::plan(&lod_options(lod), tris.len(), radius);
+    let levels = prop_lod_plan(tris, lod);
     if levels.is_empty() {
         return Vec::new();
     }
+    let hidden = hidden_faces(tris);
+    let shown = hidden.iter().filter(|h| !**h).count().max(1);
+    let scale = tris.len() as f64 / shown as f64;
+    let levels: Vec<hp_meshio::lod::LodLevel> = levels
+        .into_iter()
+        .map(|l| hp_meshio::lod::LodLevel { fraction: (l.fraction * scale).min(1.0), switch: l.switch })
+        .collect();
     let mut materials: Vec<String> = Vec::new();
     let soup: Vec<hp_meshio::Triangle> = tris
         .iter()
-        .map(|t| {
+        .zip(&hidden)
+        .filter(|(_, hidden)| !**hidden)
+        .map(|(t, _)| {
             let material = match materials.iter().position(|m| *m == t.material) {
                 Some(i) => i,
                 None => {
@@ -578,6 +645,56 @@ impl MapDialog for UnpropDialog {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn brush_prop(shapes: &[(hp_geom::Primitive, [f64; 6], u32)]) -> Vec<hp_editor::prop_export::PropTri> {
+        let mut doc = hp_editor::Document::new_empty();
+        let mut ids = Vec::new();
+        for (kind, b, sides) in shapes {
+            let params = hp_geom::PrimitiveParams {
+                kind: *kind,
+                bounds: hp_geom::Aabb::new(DVec3::new(b[0], b[1], b[2]), DVec3::new(b[3], b[4], b[5])),
+                material: "dev/dev_measuregeneric01b".into(),
+                sides: *sides,
+                arch_wall_width: 24.0,
+                arch_arc_degrees: 180.0,
+                ..Default::default()
+            };
+            ids.extend(doc.create_primitive(&params, hp_editor::Owner::World).unwrap());
+        }
+        hp_editor::prop_export::collect_prop(&doc, &ids, &|_| (512, 512)).unwrap().tris
+    }
+
+    #[test]
+    fn brush_props_reach_the_requested_part() {
+        use hp_geom::Primitive::*;
+        let settings = hp_app::settings::ModelLodSettings::default();
+        for (name, shapes) in [
+            ("sphere", vec![(Sphere, [0.0, 0.0, 0.0, 128.0, 128.0, 128.0], 24)]),
+            ("pillar", vec![(Cylinder, [0.0, 0.0, 0.0, 64.0, 64.0, 256.0], 16)]),
+            ("arch", vec![(Arch, [0.0, 0.0, 0.0, 256.0, 64.0, 128.0], 12)]),
+        ] {
+            let tris = brush_prop(&shapes);
+            let lods = prop_lods(&tris, settings);
+            let counts: Vec<usize> = lods.iter().map(|l| l.tris.len()).collect();
+            let key = |p: DVec3| [(p.x * 1e3).round() as i64, (p.y * 1e3).round() as i64, (p.z * 1e3).round() as i64];
+            for level in &lods {
+                let mut uses: HashMap<([i64; 3], [i64; 3]), usize> = HashMap::new();
+                for t in &level.tris {
+                    for k in 0..3 {
+                        let (a, b) = (key(t.pos[k]), key(t.pos[(k + 1) % 3]));
+                        *uses.entry(if a < b { (a, b) } else { (b, a) }).or_insert(0) += 1;
+                    }
+                }
+                assert!(uses.values().all(|n| *n == 2), "{name}: a level of detail has a hole or a fold");
+            }
+            let half = counts[0] as f64 / tris.len() as f64;
+            if name == "sphere" {
+                assert!((half - 0.5).abs() < 0.08, "the brush sphere keeps {half:.3} at 50 %");
+            } else {
+                assert!(half < 0.8, "{name} keeps {half:.3} at 50 %");
+            }
+        }
+    }
 
     #[test]
     fn custom_lod_distances_reach_the_prop_qc_without_rounding() {

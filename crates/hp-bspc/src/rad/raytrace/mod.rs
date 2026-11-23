@@ -287,6 +287,7 @@ pub(crate) fn bake_lightmaps(
     let t = std::time::Instant::now();
     let sizes: Vec<(i32, i32)> = super::texlights::texdata(src).into_iter().map(|(_, w, h)| (w, h)).collect();
     let alpha = materials.iter().filter(|m| m.alpha.is_some()).count();
+    ctx.work.begin(Stage::Direct, 10_000);
     let built =
         bake::build(ctx, faces, prop_tris, occluders, &materials, &sizes, rt, !opts.no_style_bounce, ctx.passes);
     let luxels = built.scene.luxels.len();
@@ -297,6 +298,12 @@ pub(crate) fn bake_lightmaps(
         built.scene.materials.len(),
         built.scene.lights.len(),
         t.elapsed().as_millis()
+    ));
+    log(&format!(
+        "ray tracing: {:.1} lights tested per luxel ({:.1} before dropping lights too faint to see, below {} at the face)",
+        built.light_tests.1,
+        built.light_tests.0,
+        bake::LIGHT_CUTOFF
     ));
     if let Some(line) = light_size_line(&built.scene.lights) {
         log(&line);
@@ -319,7 +326,9 @@ pub(crate) fn bake_lightmaps(
         submit_seconds: 0.08,
         duty: 1.0,
     };
+    ctx.work.set(SETUP_SHARE / 2);
     let mut baker = hp_raytrace::Baker::new(built.scene.clone(), settings, log)?;
+    ctx.work.set(SETUP_SHARE);
     if baker.device().no_gpu {
         log(rt.no_gpu_message());
         if !rt.lang.trim().is_empty() && rt.no_gpu_message() != NO_GPU_MESSAGE {
@@ -350,7 +359,7 @@ pub(crate) fn bake_lightmaps(
         params.denoise
     ));
     let work = ctx.work;
-    let phase = AtomicU8::new(0);
+    let phase = AtomicU8::new(1);
     let progress = |p: hp_raytrace::Progress| {
         let code = match p.phase {
             hp_raytrace::Phase::Upload | hp_raytrace::Phase::Direct => 1,
@@ -360,7 +369,8 @@ pub(crate) fn bake_lightmaps(
             work.begin(if code == 1 { Stage::Direct } else { Stage::Bounces }, 10_000);
         }
         let local = if code == 1 { p.fraction / 0.45 } else { (p.fraction - 0.45) / 0.55 };
-        work.set((local.clamp(0.0, 1.0) * 10_000.0) as u64);
+        let floor = if code == 1 { SETUP_SHARE } else { 0 };
+        work.set(floor + (local.clamp(0.0, 1.0) * (10_000 - floor) as f32) as u64);
     };
     let ctl = hp_raytrace::Control { cancelled: &|| false, progress: &progress };
     let out = baker.bake(&ctl, log).map_err(|e| e.to_string())?;
@@ -388,6 +398,8 @@ pub(crate) fn bake_lightmaps(
     }
     Ok((lights, fx))
 }
+
+const SETUP_SHARE: u64 = 200;
 
 pub(crate) fn contact_strengths(cinematic: bool, strength: f32) -> (f32, f32) {
     if cinematic { (strength * CONTACT_DIRECT, (strength * 2.0).min(1.0)) } else { (0.0, strength) }

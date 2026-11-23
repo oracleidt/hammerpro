@@ -335,34 +335,7 @@ mod tests {
     use super::*;
     use crate::MountOptions;
     use crate::deps::{DepRoot, DepsCache, ResolveOptions, RootKind};
-    use crate::test_util::{TempDir, vtf};
-
-    fn vpk(files: &[(&str, &[u8])]) -> Vec<u8> {
-        let mut tree = Vec::new();
-        for (path, data) in files {
-            let (dir, file) = path.rsplit_once('/').unwrap();
-            let (name, ext) = file.rsplit_once('.').unwrap();
-            for part in [ext, dir, name] {
-                tree.extend_from_slice(part.as_bytes());
-                tree.push(0);
-            }
-            tree.extend_from_slice(&0u32.to_le_bytes());
-            tree.extend_from_slice(&(data.len() as u16).to_le_bytes());
-            tree.extend_from_slice(&0x7FFFu16.to_le_bytes());
-            tree.extend_from_slice(&0u32.to_le_bytes());
-            tree.extend_from_slice(&0u32.to_le_bytes());
-            tree.extend_from_slice(&0xFFFFu16.to_le_bytes());
-            tree.extend_from_slice(data);
-            tree.extend_from_slice(&[0, 0]);
-        }
-        tree.push(0);
-        let mut out = Vec::new();
-        out.extend_from_slice(&0x55AA_1234u32.to_le_bytes());
-        out.extend_from_slice(&1u32.to_le_bytes());
-        out.extend_from_slice(&(tree.len() as u32).to_le_bytes());
-        out.extend_from_slice(&tree);
-        out
-    }
+    use crate::test_util::{TempDir, vpk, vtf};
 
     fn setup(tmp: &TempDir) -> GameFs {
         tmp.write("gmod/garrysmod/gameinfo.txt", b"GameInfo { FileSystem { SearchPaths { game garrysmod } } }");

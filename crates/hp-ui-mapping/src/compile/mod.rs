@@ -948,8 +948,7 @@ impl CompileDialog {
             let models = job.models.clone();
             self.pack_wait = Some((job, models, Instant::now()));
         }
-        let ctx = ctx.clone();
-        let handle = hp_compile::start_with_waker(plan, &workdir, move || ctx.request_repaint());
+        let handle = hp_compile::start_with_waker(plan, &workdir, hp_app::widgets::progress_waker(ctx));
         self.job = Some(handle);
         state.runtime.compile.badge = None;
         state.log(Severity::Info, tf!("compile.console_started", state.map_title()));
@@ -1168,7 +1167,7 @@ impl CompileDialog {
         if run.steps.is_empty() {
             if run.summary.is_none() {
                 ui.horizontal(|ui| {
-                    ui.spinner();
+                    hp_app::widgets::spinner(ui);
                     ui.label(self.status_text());
                 });
             }
@@ -1180,7 +1179,7 @@ impl CompileDialog {
             for step in &run.steps {
                 match step.status {
                     StepStatus::Pending => ui.label(RichText::new("○").weak()),
-                    StepStatus::Running => ui.spinner(),
+                    StepStatus::Running => hp_app::widgets::spinner(ui),
                     StepStatus::Done => ui.label(RichText::new("✔").color(theme::success())),
                     StepStatus::Failed => ui.label(RichText::new("❌").color(theme::error())),
                     StepStatus::Skipped => ui.label(RichText::new("⊗").weak()),
@@ -1521,7 +1520,7 @@ impl CompileDialog {
             }
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 if running {
-                    ui.spinner();
+                    hp_app::widgets::spinner(ui);
                     if let Some(run) = &self.run {
                         ui.add(
                             hp_app::widgets::progress_bar(run.overall_progress())

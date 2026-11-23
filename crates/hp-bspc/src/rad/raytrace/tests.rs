@@ -722,3 +722,35 @@ fn volumetric_beams_are_off_unless_asked_for() {
     let out = light_bsp(&bsp, &opts, &mut |_| {}).expect("light");
     assert_eq!(sprites_in(&out, DVec3::splat(-1.0e5), DVec3::splat(1.0e5)), 0);
 }
+
+#[test]
+fn faint_light_tails_are_cut_where_they_stop_showing() {
+    let light = hp_raytrace::Light {
+        kind: hp_raytrace::LightKind::Point,
+        intensity: [[100.0; 3]; 2],
+        constant: 0.0,
+        linear: 0.0,
+        quadratic: 1.0,
+        cap: 1.0e22,
+        fade: (0.0, -1.0),
+        reach: 1.0e6,
+        size: 4.0,
+        ..Default::default()
+    };
+    let r = super::bake::visible_reach(&light);
+    let edge = (100.0 / super::bake::LIGHT_CUTOFF).sqrt();
+    assert!((r - edge - light.size).abs() < 1.0, "{r} {edge}");
+    let lum_at = |d: f32| light.falloff(Vec3A::Z, d) * 100.0;
+    assert!(lum_at(r - light.size - 1.0) >= super::bake::LIGHT_CUTOFF);
+    assert!(lum_at(r) < super::bake::LIGHT_CUTOFF);
+    let short = hp_raytrace::Light { reach: 30.0, ..light };
+    assert_eq!(super::bake::visible_reach(&short), 30.0, "never longer than the authored reach");
+    let sun = hp_raytrace::Light { kind: hp_raytrace::LightKind::Sun, ..light };
+    assert_eq!(super::bake::visible_reach(&sun), light.reach);
+    let spot = hp_raytrace::Light {
+        kind: hp_raytrace::LightKind::Spot { stopdot: 0.9, stopdot2: 0.8, exponent: 1.0 },
+        direction: [0.0, 0.0, -1.0],
+        ..light
+    };
+    assert!((super::bake::visible_reach(&spot) - r).abs() < 1.0, "spots keep the reach of their axis");
+}

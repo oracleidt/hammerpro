@@ -895,8 +895,7 @@ fn poll_prop_job(app: &mut HammerProApp, ctx: &egui::Context) {
                     &prepared.qc,
                     &app.state.settings.compile.model_compiler_args,
                 );
-                let repaint = ctx.clone();
-                let handle = hp_compile::start_with_waker(plan, &dir, move || repaint.request_repaint());
+                let handle = hp_compile::start_with_waker(plan, &dir, hp_app::widgets::progress_waker(ctx));
                 let triangles = prepared.lod_triangles.first().copied().unwrap_or(0);
                 app.state.console.info(tf!("lab.prop.compiling", triangles, prepared.model.clone()));
                 app.state.console.info(prepared.details());
@@ -1316,7 +1315,7 @@ impl StatusSegment for NavStatus {
         if let Some(name) = &state.runtime.lab.decompiling {
             ui.separator();
             ui.label(tf!("lab.bsp.working", name));
-            ui.add(egui::Spinner::new());
+            hp_app::widgets::spinner(ui);
         }
         if !state.settings.lab.show_nav_mesh {
             return;

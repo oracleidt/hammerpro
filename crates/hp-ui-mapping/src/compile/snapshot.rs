@@ -671,13 +671,12 @@ fn estimate_modes(entries: &[HistoryEntry], modes: &StepModes) -> Option<u64> {
 }
 
 pub(crate) fn run_pack_job(job: PackJob) -> usize {
-    let files = job.fs.pack_list_with(&job.materials, &job.models, &job.roots, &job.map, &job.cache_dir);
-    let files: Vec<(String, PathBuf)> = files
-        .into_iter()
-        .filter(|(_, disk)| !disk.components().any(|c| c.as_os_str().eq_ignore_ascii_case(super::devaddon::DEV_ADDON)))
-        .collect();
-    let n = files.len();
-    job.sender.send(files);
+    let mut pack = job.fs.pack_plan(&job.materials, &job.models, &job.roots, &job.map, &job.cache_dir);
+    pack.files
+        .retain(|(_, disk)| !disk.components().any(|c| c.as_os_str().eq_ignore_ascii_case(super::devaddon::DEV_ADDON)));
+    let notes = plan::pack_notes(&pack);
+    let n = pack.files.len();
+    job.sender.send_with_notes(pack.files, notes);
     n
 }
 

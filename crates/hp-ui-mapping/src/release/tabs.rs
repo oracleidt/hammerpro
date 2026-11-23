@@ -248,7 +248,7 @@ impl ReleaseWindow {
                 if ui.button(t!("release.cancel")).clicked() {
                     self.cancel();
                 }
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
             } else {
                 let build = ui.add(egui::Button::new(RichText::new(t!("release.build")).strong()));
                 if build.clicked() {
@@ -387,13 +387,13 @@ impl ReleaseWindow {
                 self.refresh_facts(ui.ctx(), state, true);
             }
             if self.facts_job.is_some() {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
             }
             ui.label(RichText::new(t!("release.checklist_hint")).weak());
         });
         ui.separator();
         let Some(rows) = self.rows.clone() else {
-            ui.spinner();
+            hp_app::widgets::spinner(ui);
             return;
         };
         egui::ScrollArea::vertical().id_salt("hp_release_checklist").auto_shrink([false, false]).show(ui, |ui| {
@@ -640,7 +640,7 @@ impl ReleaseWindow {
                 if ui.button(t!("release.cancel")).clicked() {
                     job.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
                 }
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
             }
         });
         if known && exe.is_none() {

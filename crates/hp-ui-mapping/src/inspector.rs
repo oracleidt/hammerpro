@@ -533,7 +533,7 @@ impl Inspector {
                 self.pick(&ctx, PickPurpose::Open, start);
             }
             if self.busy > 0 {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
             }
             if let Some(l) = &self.loaded {
                 ui.label(RichText::new(l.path.display().to_string()).monospace());

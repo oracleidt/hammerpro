@@ -287,7 +287,7 @@ fn compile_one(
     let t0 = std::time::Instant::now();
     let send = |step: String, fraction: f32| {
         let _ = tx.send(BatchEvent::Row(row, RowStatus::Running { step, fraction }));
-        repaint.request_repaint();
+        repaint.request_repaint_after(hp_app::widgets::PROGRESS_REPAINT);
     };
     send(t!("compile.preparing").to_owned(), 0.0);
     let target = match snapshot::target_for(

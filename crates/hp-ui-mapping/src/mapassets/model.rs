@@ -116,7 +116,9 @@ pub struct LeftOut {
 pub fn is_base(node: &DepNode) -> bool {
     match node.origin {
         Some(SourceOrigin::BaseGame) => true,
-        Some(SourceOrigin::GameLoose | SourceOrigin::Download) => node.in_base,
+        Some(SourceOrigin::GameLoose | SourceOrigin::Download | SourceOrigin::Mounted | SourceOrigin::Extra) => {
+            node.in_base
+        }
         _ => false,
     }
 }

@@ -184,7 +184,7 @@ impl ModelTools {
         };
         if let Some(text) = status {
             ui.horizontal_wrapped(|ui| {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(RichText::new(text).weak());
                 if let Some(Job::Compile { handle, .. }) = &self.job
                     && ui.small_button(t!("common.cancel")).clicked()
@@ -329,8 +329,7 @@ impl ModelTools {
     fn compile_with(&mut self, ctx: &egui::Context, state: &mut AppState, exe: &Path, game_dir: &Path, qc: PathBuf) {
         let plan = model_compiler_plan(exe, game_dir, &qc, &state.settings.compile.model_compiler_args);
         let workdir = qc.parent().map_or_else(|| PathBuf::from("."), Path::to_path_buf);
-        let repaint = ctx.clone();
-        let handle = hp_compile::start_with_waker(plan, &workdir, move || repaint.request_repaint());
+        let handle = hp_compile::start_with_waker(plan, &workdir, hp_app::widgets::progress_waker(ctx));
         state.console.info(tf!("entities.mt_compiling", file_name(&qc)));
         self.job = Some(Job::Compile { qc, handle });
     }

@@ -88,7 +88,7 @@ impl VtfEditor {
     fn status_line(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             if self.is_saving() {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
             }
             match &self.status {
                 Some((sev, text)) => {

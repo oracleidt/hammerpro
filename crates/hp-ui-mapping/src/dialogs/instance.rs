@@ -267,7 +267,7 @@ impl CreateInstanceDialog {
                 self.create(state);
             }
             if busy {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(t!("instancing.writing"));
             }
             if ui.add_enabled(!busy, egui::Button::new(t!("instancing.cancel"))).clicked() {

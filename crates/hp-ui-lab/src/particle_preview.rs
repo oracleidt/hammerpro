@@ -370,7 +370,7 @@ impl ParticlePreviewWindow {
         let indexing = self.catalog.is_none() && state.assets.fs().is_some();
         if indexing {
             ui.horizontal(|ui| {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(RichText::new(t!("entities.pb_indexing")).weak().small());
             });
             ui.ctx().request_repaint_after(std::time::Duration::from_millis(150));

@@ -1022,7 +1022,7 @@ impl ShaderEditor {
                 }
             });
             if self.bake.is_some() {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
             }
         });
         if let Some(e) = &self.export.error {

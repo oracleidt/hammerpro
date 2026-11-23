@@ -87,6 +87,8 @@ pub(crate) struct Gpu {
     timestamps: Option<wgpu::QuerySet>,
     tick: f64,
     use_hw: Option<bool>,
+    trial: [Trial; 2],
+    trial_turn: u32,
     pub calibration: Option<String>,
     words_cpu: Vec<u32>,
     rq_pipes: Option<(wgpu::ComputePipeline, wgpu::ComputePipeline, wgpu::BindGroupLayout)>,
@@ -379,6 +381,8 @@ impl Gpu {
             timestamps: None,
             tick: 0.0,
             use_hw: None,
+            trial: [Trial::default(); 2],
+            trial_turn: 0,
             calibration: None,
             words_cpu: Vec::new(),
             rq_pipes,
@@ -590,38 +594,42 @@ impl Gpu {
         kind: Kind,
         work: &[Work],
     ) -> Result<(), String> {
-        if self.rq.is_some() && self.use_hw.is_none() {
-            self.calibrate(scene, state, tune, kind, work)?;
-        }
-        let hardware = self.use_hw.unwrap_or(false);
+        let hardware = match self.use_hw {
+            Some(h) => h,
+            None if self.rq.is_some() && self.rq_pipes.is_some() => {
+                self.trial_turn = self.trial_turn.wrapping_add(1);
+                self.trial_turn.is_multiple_of(2)
+            }
+            None => false,
+        };
         self.dispatch(scene, state, tune, kind, work, hardware, true)
     }
 
-    fn calibrate(
-        &mut self,
-        scene: &Scene,
-        state: &mut State,
-        tune: Tuning,
-        kind: Kind,
-        work: &[Work],
-    ) -> Result<(), String> {
-        let sample: Vec<Work> = work.iter().take(16_384).map(|w| Work { count: w.count.min(2), ..*w }).collect();
-        let mut times = [0.0f64; 2];
-        for (k, hw) in [false, true].into_iter().enumerate() {
-            self.dispatch(scene, state, tune, kind, &sample, hw, false)?;
-            let t = Instant::now();
-            self.dispatch(scene, state, tune, kind, &sample, hw, false)?;
-            times[k] = t.elapsed().as_secs_f64();
+    fn record_trial(&mut self, hardware: bool, gpu: f64, units: u64) {
+        if self.use_hw.is_some() || units < TRIAL_UNITS || !(gpu.is_finite() && gpu > 0.0) {
+            return;
         }
-        let hw = times[1] < times[0];
+        let t = &mut self.trial[usize::from(hardware)];
+        t.batches += 1;
+        if t.batches <= TRIAL_SKIP {
+            return;
+        }
+        t.seconds += gpu;
+        t.units += units;
+        let [c, h] = self.trial;
+        if c.batches < TRIAL_SKIP + TRIAL_BATCHES || h.batches < TRIAL_SKIP + TRIAL_BATCHES {
+            return;
+        }
+        let per = |t: Trial| t.seconds / t.units.max(1) as f64 * 1.0e9;
+        let hw = per(h) < per(c);
         self.use_hw = Some(hw);
         self.calibration = Some(format!(
-            "test batch: hardware ray query {:.0} ms, compute BVH traversal {:.0} ms: {} used",
-            times[1] * 1000.0,
-            times[0] * 1000.0,
+            "measured on {} batches each: hardware ray query {:.1} ns per sample, compute BVH traversal {:.1} ns per sample: {} used",
+            TRIAL_BATCHES,
+            per(h),
+            per(c),
             if hw { "hardware ray query" } else { "compute BVH traversal" }
         ));
-        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -831,6 +839,7 @@ impl Gpu {
             submitted: Instant::now(),
             units,
             apply,
+            hardware,
         });
         if !apply || self.slots.len() == 1 {
             self.complete(si, state)?;
@@ -905,6 +914,9 @@ impl Gpu {
         staging.unmap();
         self.scatter_seconds += now.elapsed().as_secs_f64();
         self.dispatches += 1;
+        if p.apply {
+            self.record_trial(p.hardware, gpu, p.units);
+        }
         if p.units >= 8192 {
             let spu = gpu / p.units as f64;
             let slot = &mut self.seconds_per_unit[usize::from(p.kind == Kind::Indirect)];
@@ -984,7 +996,19 @@ pub(crate) struct Pending {
     submitted: Instant,
     units: u64,
     apply: bool,
+    hardware: bool,
 }
+
+#[derive(Clone, Copy, Debug, Default)]
+struct Trial {
+    seconds: f64,
+    units: u64,
+    batches: u32,
+}
+
+const TRIAL_UNITS: u64 = 8192;
+const TRIAL_SKIP: u32 = 1;
+const TRIAL_BATCHES: u32 = 6;
 
 pub(crate) struct Rq {
     tlas: wgpu::Tlas,

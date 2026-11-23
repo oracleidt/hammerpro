@@ -205,7 +205,7 @@ impl OptimizeWindow {
         ui.label(RichText::new(t!("optimize.intro")).weak().small());
         ui.horizontal_wrapped(|ui| {
             if state.runtime.optimize.running {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(t!("optimize.running"));
             } else if ui.button(t!("optimize.refresh")).on_hover_text(t!("optimize.refresh_tip")).clicked() {
                 state.request(Action::AnalyzeOptimization);

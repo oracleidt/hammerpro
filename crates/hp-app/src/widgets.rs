@@ -533,6 +533,18 @@ pub fn vsep(ui: &mut Ui) {
 
 pub const SPINNER_STEP: f64 = 1.0 / 12.0;
 
+pub const PROGRESS_REPAINT: std::time::Duration = std::time::Duration::from_millis(125);
+
+pub fn progress_waker(ctx: &egui::Context) -> impl Fn() + Send + Sync + 'static {
+    let ctx = ctx.clone();
+    move || ctx.request_repaint_after(PROGRESS_REPAINT)
+}
+
+pub fn spinner(ui: &mut Ui) -> Response {
+    let size = ui.spacing().interact_size.y;
+    paced_spinner(ui, size)
+}
+
 pub fn paced_spinner(ui: &mut Ui, size: f32) -> Response {
     spinner_with(ui, size, crate::runtime::render::animations_running())
 }
@@ -595,6 +607,52 @@ mod tests {
         let mid = spinner_repaint_delay(true, 10.0 + SPINNER_STEP * 0.5);
         assert!(mid < delay, "the next step is on the clock: {mid:?} {delay:?}");
         assert_eq!(spinner_repaint_delay(false, 10.0), std::time::Duration::MAX, "paused like the other animations");
+    }
+
+    fn settled_delay(ctx: &egui::Context, time: f64, add: impl Fn(&mut Ui)) -> std::time::Duration {
+        let mut delay = std::time::Duration::MAX;
+        for at in [time - 2.0, time - 1.0, time] {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 300.0))),
+                time: Some(at),
+                ..Default::default()
+            };
+            let out = ctx.run_ui(input, |ui| {
+                egui::CentralPanel::default().show(ui, |ui| add(ui));
+            });
+            delay = out.viewport_output.values().map(|v| v.repaint_delay).min().unwrap_or(std::time::Duration::MAX);
+        }
+        delay
+    }
+
+    #[test]
+    fn the_default_spinner_is_paced_too() {
+        let delay = settled_delay(&egui::Context::default(), 5.0, |ui| {
+            spinner(ui);
+        });
+        assert!(delay > std::time::Duration::from_millis(20), "not every frame: {delay:?}");
+        assert!(delay <= std::time::Duration::from_secs_f64(SPINNER_STEP), "{delay:?}");
+    }
+
+    #[test]
+    fn compile_progress_never_asks_for_an_immediate_frame() {
+        let ctx = egui::Context::default();
+        let delays = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = std::sync::Arc::clone(&delays);
+        ctx.set_request_repaint_callback(move |info| seen.lock().unwrap().push(info.delay));
+        assert_eq!(settled_delay(&ctx, 5.0, |_| {}), std::time::Duration::MAX, "an idle window asks for nothing");
+        delays.lock().unwrap().clear();
+        let wake = progress_waker(&ctx);
+        let worker = std::thread::spawn(move || {
+            for _ in 0..1000 {
+                wake();
+            }
+        });
+        worker.join().unwrap();
+        let delays = delays.lock().unwrap();
+        assert!(!delays.is_empty(), "the window still wakes up for new progress");
+        assert!(delays.iter().all(|d| *d >= PROGRESS_REPAINT), "{:?}", delays.iter().min());
+        assert!(delays.len() <= 2, "a burst of log lines schedules one frame, not one per line: {}", delays.len());
     }
 
     #[test]

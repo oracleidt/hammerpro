@@ -27,7 +27,7 @@ The release is built from the saved file: when the map has unsaved changes, the 
 | **Keep the built cubemaps of the previous BSP** | Copies the cubemaps already built into the new BSP. | on |
 | **Write the .gma** | Writes the addon file. | on |
 | **Ship content from Workshop items** | Off: the Workshop items are listed as Required Items instead (players subscribe to them). | on |
-| **Ship content from mounted games** | Content of games mounted through `mount.cfg` (CS:S, HL2 episodes...). Players without them see errors; redistributing it is your responsibility. | off |
+| **Ship content from mounted games** | Content of games and folders mounted through `mount.cfg` or as Steam games by AppID (CS:S, HL2 episodes, a props folder on another drive...), from their VPKs or loose files. Players without them see errors, so it is on by default (2.3.1 turns it on once for existing settings); files that base Garry's Mod already has are never shipped. The log gives one line per mounted game and one line per file with the mount it came from. Redistributing it is your responsibility. | on |
 | **Build cubemaps and navigation in game** | Starts Garry's Mod, after a confirmation, to build the cubemaps and generate the navigation mesh, then closes it. | off |
 | **Open the output folder when done** | | off |
 | **Protect your BSP** | Ships a protected copy and keeps the full map for your server. See [Protect your BSP](bsp-protection.md). | off |

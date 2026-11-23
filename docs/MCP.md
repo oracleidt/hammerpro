@@ -178,6 +178,14 @@ Hammer Pro window with MCP on       runs the tools on the map it shows
   `content.missing_as_errors` (`set_setting`) turns missing content into an
   error. `get_dependency_report` lists missing particle systems with the kind
   `particlesystem`.
+- Content of games and folders mounted through `mount.cfg` or by AppID is
+  packed like custom content (files base Garry's Mod has excepted): the
+  compile packing (`set_compile_options` `pack_custom_content`) always packs
+  it, `start_release` ships it while `content.pack_mounted` (`set_setting`,
+  on by default) is on. `get_compile_log` and `get_release_status` show one
+  line per mounted game and one line per file with the mount it came from
+  (`Packed from Mount: cstrike (cstrike_pak.vpk): models/...`), and the
+  compile log lists the files and particle systems found nowhere.
 - The UI automation tools (`ui_click`, `ui_key`, `ui_type`...) act inside
   the Hammer Pro window only, like your mouse and keyboard there; positions
   outside the window are refused.
@@ -384,7 +392,7 @@ none, box and gizmo (`X` with the Hammer++ keyboard preset); `get_tool_options` 
 
 <!-- BEGIN TOOL LIST: generated from the registry, see tools_help.rs -->
 
-446 tools. Arguments marked * are required. `get_capabilities` gives the same list with an example call for each tool.
+447 tools. Arguments marked * are required. `get_capabilities` gives the same list with an example call for each tool.
 
 ### Help
 
@@ -1115,6 +1123,7 @@ none, box and gizmo (`X` with the Hammer++ keyboard preset); `get_tool_options` 
 |---|---|---|
 | `combine_props` | Merge several prop_static (same or different models, any skins) into one new static model to cut draw calls, like Propper++. Each prop's mesh is read from its mdl/vvd/vtx (body group and skin of the prop: the material of the chosen skin is baked), moved into one local space (origin at the center or the bottom center of the selection), merged by material (one draw call per material instead of one per prop and material), its collision taken from the .phy convex pieces (or a convex hull when the model has none; props with solid 0 add none), capped at max_pieces (pieces of a prop, then nearby props, are merged into hulls). Levels of detail are rebuilt with the model LOD settings. The model is written as SMD and QC, compiled with the configured model compiler (compile.model_compiler, default the game's studiomdl, plus compile.model_compiler_args) and exported under models/ of the destination folder (default the game content folder). The props are replaced by one prop_static carrying their shared lighting flags (disableshadows, disablevertexlighting...), fade distances when equal, and solid 6 when one of them was solid; the originals go to the hidden visgroup Combined props (originals) (keep_originals, default the setting lab.combine_keep_originals) or are deleted. One undo step. Refused with a clear message for props that are not prop_static, models with bones or animations, props whose lighting flags differ, missing models or more than 150000 triangles. dry_run only plans (triangles, draw calls before and after, collision pieces) without writing anything. | `collision`: true or false; `destination`: text; `dry_run`: true or false; `ids`: list of integer; `keep_originals`: true or false; `max_pieces`: integer 1 to 128; `model`: text; `origin`: one of center, bottom |
 | `set_model_compiler` | Read or change the model compiler used by Propper, combine_props and Compile a QC (Settings > Compile > Model compiler, the settings compile.model_compiler and compile.model_compiler_args). Without arguments it answers the current choice and the program it resolves to. path is the program (an existing .exe, for example NekoMDL, a drop in studiomdl replacement); an empty path goes back to automatic (the game's studiomdl in bin/win64, else bin). args are extra arguments put after -game <folder> -nop4 -verbose and before the QC file. Changing path or args runs programs on this computer: needs confirm true, only when the user asked. | `args`: text; `confirm`: true or false; `path`: text |
+| `preview_prop_lods` | What the levels of detail of a prop made from brushes (Convert brushes to a prop, Propper) will be, made by the same simplifier as the export so the numbers are the ones that get compiled: per level its triangle count, the part of the full model it keeps and the part it was asked to keep (short_of_target when simplifying further would break the shape), its $lod switch value and about how far the game camera is when it switches to it (1080p, field of view 75). The brushes are ids or solid_ids (default the selection). enabled, levels, keep_percent and distances replace the saved settings lab.model_lod for this preview; apply true saves them into lab.model_lod (the next prop, the model import and an open creation window use them at once). The creation window (run_action brushes_to_prop) shows the level chosen with lod in its 3D preview, or with auto true the level the game would draw at the preview camera distance (setting lab.propper_lod_auto), camera_distance moving its camera; the answer tells what the window shows. With image (default true) the answer also holds a drawing of every level side by side, triangle edges included. | `apply`: true or false; `auto`: true or false; `camera_distance`: number 1.0 to 1000000.0; `distances`: list of number 0.0 to 1000000.0; `enabled`: true or false; `ids`: list of integer; `image`: true or false; `keep_percent`: number 20.0 to 90.0; `levels`: integer 3 to 6; `lod`: integer 0 to 8; `size`: integer 128 to 1024; `solid_ids`: list of integer |
 
 ### Tool options
 
@@ -1216,7 +1225,13 @@ Besides the semantic tools, the AI can reach everything you can:
   Hammer Pro makes (Propper and the FBX, OBJ, glTF import) are the settings
   `lab.model_lod.enabled`, `lab.model_lod.levels` (3 to 6, default 4) and
   `lab.model_lod.reduction` (0.2 to 0.9, default 0.5); `run_action
-  propper_options` opens their window. The model import also writes the
+  propper_options` opens their window. The creation window previews
+  every level of detail in its 3D view (buttons LOD 0, LOD 1... with their
+  triangle counts, updated a moment after the LOD settings change, or the
+  level the game draws at the camera distance with `lab.propper_lod_auto`);
+  `preview_prop_lods` gives the same per level triangle counts, switch
+  values and game distances with a drawing of each level, tries other LOD
+  settings (`apply` saves them) and chooses what the window shows. The model import also writes the
   normal map, phong, self illumination and texture tiling of the file into
   the VMTs while the setting `lab.model_keep_params` is on (the default;
   `run_action import_model` opens the import window, which lists the

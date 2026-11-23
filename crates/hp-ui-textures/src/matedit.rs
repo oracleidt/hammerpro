@@ -602,7 +602,7 @@ impl MaterialEditor {
             TargetState::Loaded(l) => l.as_ref().clone(),
             TargetState::Loading => {
                 ui.horizontal(|ui| {
-                    ui.spinner();
+                    hp_app::widgets::spinner(ui);
                     ui.label(t!("common.loading"));
                 });
                 return;
@@ -858,7 +858,7 @@ impl MaterialEditor {
                 self.start_apply(&ctx, state);
             }
             if busy {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(t!("tex.me.applying"));
             } else if let Some((sev, text)) = &self.last_report {
                 ui.colored_label(sev.color(), text);

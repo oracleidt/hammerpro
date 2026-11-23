@@ -435,12 +435,12 @@ impl ProblemsDialog {
         let rt = &state.runtime.health;
         if rt.busy() {
             ui.horizontal(|ui| {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(RichText::new(t!("problems.checking")).weak().italics());
             });
         } else if rt.leak_checking {
             ui.horizontal(|ui| {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(RichText::new(t!("problems.leak_checking")).weak().italics());
             });
         }

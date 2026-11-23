@@ -434,7 +434,7 @@ pub(crate) fn dialogs(app: &mut HammerProApp, ctx: &egui::Context) {
                         refresh = true;
                     }
                     if busy {
-                        ui.spinner();
+                        hp_app::widgets::spinner(ui);
                     }
                 });
             });
@@ -453,7 +453,7 @@ pub(crate) fn dialogs(app: &mut HammerProApp, ctx: &egui::Context) {
             } else if !has_sel && model.is_none() {
                 ui.label(egui::RichText::new(t!("placeops.preview_empty")).weak());
             } else {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
             }
         });
     let ops = &mut app.pkg.placement.ops;

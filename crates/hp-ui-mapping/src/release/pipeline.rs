@@ -512,24 +512,40 @@ fn resolve(ctx: &Ctx<'_>) -> Result<DependencyGraph, String> {
         LogSeverity::Info,
         tf!("release.graph_summary", graph.nodes.len(), n, fmt_bytes(bytes), graph.missing.len() - systems, systems),
     );
-    let mut mounted = 0;
     for w in &graph.warnings {
         let text = match w {
-            DepWarning::MountedContent { .. } => {
-                mounted += 1;
-                continue;
-            }
+            DepWarning::MountedContent { .. } => continue,
             DepWarning::ScriptNotLoaded { name, file } => tf!("release.warn_script", name, file),
             DepWarning::SoundscapeNotLoaded { name, file } => tf!("release.warn_soundscape", name, file),
             DepWarning::Unreadable { vpath, error } => tf!("release.warn_unreadable", vpath, error),
         };
         ctx.log(LogSeverity::Warning, text);
     }
+    let groups = mounted_groups(&graph);
+    let mounted: usize = groups.values().map(Vec::len).sum();
     if mounted > 0 {
-        let key = if input.settings.pack_mounted { "release.warn_mounted_shipped" } else { "release.warn_mounted" };
+        let shipped = input.settings.pack_mounted;
+        let key = if shipped { "release.warn_mounted_shipped" } else { "release.warn_mounted" };
         ctx.log(LogSeverity::Warning, tf!(key, mounted));
+        let group_key = if shipped { "release.mount_group_shipped" } else { "release.mount_group_left" };
+        for (source, files) in &groups {
+            ctx.log(LogSeverity::Warning, tf!(group_key, source, files.len()));
+            for file in files {
+                ctx.log(LogSeverity::Info, tf!("release.mount_file", source, file));
+            }
+        }
     }
     Ok(graph)
+}
+
+pub(crate) fn mounted_groups(graph: &DependencyGraph) -> BTreeMap<String, Vec<String>> {
+    let mut groups: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for n in &graph.nodes {
+        if n.origin.is_some_and(hp_fs::SourceOrigin::is_mounted_game) && !n.in_base && !skipped(&n.vpath) {
+            groups.entry(n.source_label.clone()).or_default().push(n.vpath.clone());
+        }
+    }
+    groups
 }
 
 fn compile(ctx: &Ctx<'_>, prep: &crate::compile::PrepInput, graph: &DependencyGraph) -> Result<PathBuf, String> {
@@ -1153,6 +1169,47 @@ pub(crate) fn fmt_bytes(n: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn node(vpath: &str, origin: hp_fs::SourceOrigin, label: &str, in_base: bool) -> DepNode {
+        DepNode {
+            vpath: vpath.to_owned(),
+            kind: DepKind::Model,
+            source: Some(1),
+            origin: Some(origin),
+            source_label: label.to_owned(),
+            workshop_id: None,
+            in_base,
+            size: 1,
+            reasons: Vec::new(),
+            reason_count: 0,
+            generated: None,
+        }
+    }
+
+    #[test]
+    fn mounted_files_are_grouped_by_the_mount_they_come_from() {
+        use hp_fs::SourceOrigin as O;
+        let graph = DependencyGraph {
+            nodes: vec![
+                node("models/a.mdl", O::Mounted, "Mount: cstrike (cstrike_pak.vpk)", false),
+                node("models/a.sw.vtx", O::Mounted, "Mount: cstrike (cstrike_pak.vpk)", false),
+                node("models/b.mdl", O::Extra, "Team Fortress 2 (tf2_misc.vpk)", false),
+                node("models/c.mdl", O::Mounted, "Mount: hl2", true),
+                node("models/d.mdl", O::Workshop, "123", false),
+            ],
+            ..DependencyGraph::default()
+        };
+        let groups = mounted_groups(&graph);
+        let flat: Vec<(&str, Vec<&str>)> =
+            groups.iter().map(|(k, v)| (k.as_str(), v.iter().map(String::as_str).collect())).collect();
+        assert_eq!(
+            flat,
+            [
+                ("Mount: cstrike (cstrike_pak.vpk)", vec!["models/a.mdl"]),
+                ("Team Fortress 2 (tf2_misc.vpk)", vec!["models/b.mdl"]),
+            ]
+        );
+    }
 
     #[test]
     fn byte_formatting() {

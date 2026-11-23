@@ -40,6 +40,7 @@ pub(super) struct Viewport {
     yaw: f32,
     pitch: f32,
     zoom: f32,
+    max_zoom: f32,
     pan: Vec3,
     bounds: Option<Aabb>,
     drag: Option<Drag>,
@@ -55,6 +56,7 @@ impl Default for Viewport {
             yaw: 135.0,
             pitch: 25.0,
             zoom: 1.0,
+            max_zoom: 50.0,
             pan: Vec3::ZERO,
             bounds: None,
             drag: None,
@@ -99,11 +101,30 @@ impl Viewport {
         self.overlay = None;
     }
 
+    fn framed_distance(&self) -> f32 {
+        let bounds = self.bounds.unwrap_or_else(|| Aabb::new(DVec3::splat(-16.0), DVec3::splat(16.0)));
+        (bounds.size().length() as f32 * 0.5).max(1.0) / (40.0f32.to_radians() * 0.5).sin()
+    }
+
+    pub fn distance(&self) -> f64 {
+        f64::from(self.framed_distance() * self.zoom)
+    }
+
+    pub fn reach(&mut self, distance: f64) {
+        let wanted = (distance as f32 / self.framed_distance()).clamp(50.0, 100_000.0);
+        self.max_zoom = if wanted.is_finite() { wanted } else { 50.0 };
+    }
+
+    pub fn set_distance(&mut self, distance: f64) {
+        self.reach(distance);
+        self.zoom = (distance as f32 / self.framed_distance()).clamp(0.05, self.max_zoom);
+    }
+
     fn view(&self, size: [u32; 2]) -> ViewParams {
         let bounds = self.bounds.unwrap_or_else(|| Aabb::new(DVec3::splat(-16.0), DVec3::splat(16.0)));
         let center = bounds.center().as_vec3() + self.pan;
         let radius = (bounds.size().length() as f32 * 0.5).max(1.0);
-        let distance = radius / (40.0f32.to_radians() * 0.5).sin() * self.zoom;
+        let distance = self.framed_distance() * self.zoom;
         let yaw = self.yaw.to_radians();
         let pitch = self.pitch.to_radians();
         let forward = Vec3::new(pitch.cos() * yaw.cos(), pitch.cos() * yaw.sin(), -pitch.sin());
@@ -180,7 +201,7 @@ impl Viewport {
         }
         if response.hovered() {
             let scroll = ui.input(|i| i.smooth_scroll_delta.y);
-            self.zoom = (self.zoom * (-scroll * 0.002).exp()).clamp(0.05, 50.0);
+            self.zoom = (self.zoom * (-scroll * 0.002).exp()).clamp(0.05, self.max_zoom);
         }
         let mut params = self.view(render_size);
         let screen_pixel = |position: Pos2| {

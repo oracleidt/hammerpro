@@ -509,3 +509,49 @@ fn system_on_battery() -> bool {
 fn system_on_battery() -> bool {
     false
 }
+
+pub(crate) const RATE_WINDOW: std::time::Duration = std::time::Duration::from_secs(1);
+
+#[derive(Default)]
+pub(crate) struct FrameRate {
+    frames: std::collections::VecDeque<std::time::Instant>,
+}
+
+impl FrameRate {
+    pub(crate) fn note(&mut self, now: std::time::Instant) -> (f32, Option<std::time::Duration>) {
+        while self.frames.front().is_some_and(|t| now.duration_since(*t) >= RATE_WINDOW) {
+            self.frames.pop_front();
+        }
+        self.frames.push_back(now);
+        let count = self.frames.len();
+        let settle = (count > 1).then_some(RATE_WINDOW + std::time::Duration::from_millis(20));
+        (count as f32 / RATE_WINDOW.as_secs_f32(), settle)
+    }
+}
+
+#[cfg(test)]
+mod rate_tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn the_frame_rate_counts_the_frames_really_drawn() {
+        let mut rate = FrameRate::default();
+        let start = Instant::now();
+        let mut fps = 0.0;
+        for i in 0..480 {
+            fps = rate.note(start + Duration::from_secs_f64(i as f64 / 480.0)).0;
+        }
+        assert!((fps - 480.0).abs() <= 1.0, "{fps}");
+        let base = start + Duration::from_secs(2);
+        let mut settle = None;
+        for i in 0..8 {
+            (fps, settle) = rate.note(base + Duration::from_millis(125 * i));
+        }
+        assert!((fps - 8.0).abs() <= 1.0, "a compile ticking 8 times a second reads about 8, not 480: {fps}");
+        assert!(settle.is_some());
+        let (fps, settle) = rate.note(base + Duration::from_secs(10));
+        assert_eq!(fps, 1.0, "an idle window reads 1");
+        assert_eq!(settle, None, "once settled the counter asks for no more frames");
+    }
+}

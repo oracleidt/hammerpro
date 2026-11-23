@@ -115,7 +115,7 @@ impl SettingsPage for BlenderPage {
         }
         if state.runtime.blender.pull_in_progress {
             ui.horizontal(|ui| {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(t!("shell.blender.pulling"));
             });
         }

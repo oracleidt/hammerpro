@@ -533,7 +533,7 @@ The **Build and save as content** window and the Map assets tab. See [Build and 
 | `compress_pakfile` | `false` | LZMA compress the pakfile (Garry's Mod prints a warning per entry). |
 | `lzma_level` | `6` | LZMA preset, 0 to 9. |
 | `pack_workshop` | `true` | Ship content from Workshop items (else listed as required items). |
-| `pack_mounted` | `false` | Ship content of `mount.cfg` games. |
+| `pack_mounted` | `true` | Ship content of games mounted through `mount.cfg` or by AppID (files base Garry's Mod has excepted). Turned on once by 2.3.1 (settings revision 3). |
 | `missing_as_errors` | `false` | Missing files and particle systems stop the build instead of asking to continue anyway. |
 | `keep_cubemaps` | `true` | Copy the built cubemaps of the previous BSP. |
 | `game_session` | `false` | Build cubemaps and the nav mesh in game. |
@@ -616,6 +616,7 @@ The **Build and save as content** window and the Map assets tab. See [Build and 
 | `propper_material_dir` | `""` | Last custom `$cdmaterials` folder. Empty: it follows the model path. |
 | `propper_reuse_materials` | `true` | Last state of **Reuse existing VertexLitGeneric materials**. |
 | `propper_surface` | `""` | Last `$surfaceprop`; empty is automatic. |
+| `propper_lod_auto` | `false` | **Auto by distance** of the level of detail preview of the creation window: the level shown follows the camera distance like in game. |
 | `combine_origin` | `"center"` | Origin of a model made by **Combine props**: `center` or `bottom` (bottom center) of the selection. |
 | `combine_keep_originals` | `true` | **Combine props** keeps the original props in the hidden visgroup `Combined props (originals)`; off deletes them. |
 | `combine_collision` | `true` | **Combine props** builds collision from the props' .phy pieces. |

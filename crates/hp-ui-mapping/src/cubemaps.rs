@@ -102,7 +102,7 @@ fn body(ui: &mut Ui, state: &mut AppState) {
         }
         let waiting = state.runtime.cubemaps.wait_vis || state.runtime.optimize.running;
         if waiting {
-            ui.spinner();
+            hp_app::widgets::spinner(ui);
             ui.label(RichText::new(t!("cubemaps.areas_running")).small());
         } else if ui.button(t!("cubemaps.areas")).on_hover_text(t!("cubemaps.areas_tip")).clicked() {
             state.runtime.cubemaps.wait_vis = true;

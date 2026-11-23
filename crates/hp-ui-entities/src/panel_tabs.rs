@@ -45,7 +45,7 @@ pub(crate) fn model_tab(
         ModelState::Ready(i) => i,
         ModelState::Loading => {
             ui.horizontal(|ui| {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(t!("common.loading"));
             });
             ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));

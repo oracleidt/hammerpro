@@ -205,7 +205,7 @@ impl Controller {
         let waiting = next.is_some();
         if self.session.is_some() {
             ui.horizontal(|ui| {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(tf!("team.reconnecting", attempt, super::reconnect::ATTEMPTS));
             });
             self.join_progress_ui(ui);

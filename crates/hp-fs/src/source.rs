@@ -91,6 +91,10 @@ impl SourceOrigin {
     pub fn needs_packing(self) -> bool {
         matches!(self, Self::Custom | Self::GameLoose | Self::Addon | Self::Workshop | Self::Download)
     }
+
+    pub fn is_mounted_game(self) -> bool {
+        matches!(self, Self::Mounted | Self::Extra)
+    }
 }
 
 #[derive(Clone, Debug)]

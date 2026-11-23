@@ -269,7 +269,7 @@ impl MapInfoDialog {
         state.runtime.lighting.budget_wanted = true;
         let Some(b) = &state.runtime.lighting.budget else {
             ui.horizontal(|ui| {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
                 ui.label(RichText::new(t!("mapinfo.lightmaps_waiting")).weak());
             });
             return;
@@ -359,7 +359,7 @@ impl MapInfoDialog {
                 }
             });
             if state.runtime.health.checking {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
             }
         });
         let rt = &state.runtime.health;
@@ -442,7 +442,7 @@ impl MapInfoDialog {
                 }
             }
             if self.texture_job.is_some() {
-                ui.spinner();
+                hp_app::widgets::spinner(ui);
             } else if ui
                 .add_enabled(ready, egui::Button::new(t!("mapinfo.compute")))
                 .on_hover_text(t!("mapinfo.compute_tip"))

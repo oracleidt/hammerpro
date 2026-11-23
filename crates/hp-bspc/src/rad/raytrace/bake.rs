@@ -19,6 +19,7 @@ pub(crate) struct Built {
     pub scene: rts::Scene,
     pub face_normals: Vec<usize>,
     pub exposure: f32,
+    pub light_tests: (f64, f64),
 }
 
 pub(crate) struct MaterialInfo {
@@ -340,7 +341,86 @@ pub(crate) fn build(
     } else {
         1.0
     };
-    Built { scene, face_normals, exposure }
+    let light_tests = trim_light_lists(&mut scene, faces);
+    Built { scene, face_normals, exposure, light_tests }
+}
+
+pub(crate) const LIGHT_CUTOFF: f32 = 0.05;
+
+pub(crate) fn visible_reach(l: &rts::Light) -> f32 {
+    if !matches!(l.kind, rts::LightKind::Point | rts::LightKind::Spot { .. }) {
+        return l.reach;
+    }
+    let peak = l.intensity.iter().map(|i| i[0].max(i[1]).max(i[2])).fold(0.0f32, f32::max);
+    if !(peak.is_finite() && peak > 0.0) {
+        return l.reach;
+    }
+    let to_light = -Vec3A::from_array(l.direction).normalize_or(Vec3A::NEG_Z);
+    let lit = |d: f32| peak * l.falloff(to_light, d) >= LIGHT_CUTOFF;
+    let limit = l.reach.min(1.0e6);
+    if limit.is_nan() || limit <= 1.0 || lit(limit) {
+        return l.reach;
+    }
+    if !lit(1.0) {
+        return (1.0 + l.size).min(l.reach);
+    }
+    let (mut lo, mut hi) = (1.0f32, limit);
+    for _ in 0..48 {
+        let mid = 0.5 * (lo + hi);
+        if lit(mid) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    (hi + l.size).min(l.reach)
+}
+
+pub(crate) fn trim_light_lists(scene: &mut rts::Scene, faces: &[LitFace]) -> (f64, f64) {
+    for l in &mut scene.lights {
+        l.reach = visible_reach(l);
+    }
+    let lights = &scene.lights;
+    let old = &scene.light_lists;
+    let kept: Vec<(Vec<u32>, f64, f64)> = scene
+        .surfaces
+        .par_iter()
+        .enumerate()
+        .map(|(i, s)| {
+            let list = &old[s.lights.0 as usize..(s.lights.0 + s.lights.1) as usize];
+            let lux = s.luxels() as f64;
+            let Some(f) = faces.get(i) else {
+                return (list.to_vec(), lux * list.len() as f64, lux * list.len() as f64);
+            };
+            let (lo, hi) = (f.bounds.0.as_vec3a() - 1.0, f.bounds.1.as_vec3a() + 1.0);
+            let keep: Vec<u32> = list
+                .iter()
+                .copied()
+                .filter(|&li| {
+                    let l = &lights[li as usize];
+                    if !matches!(l.kind, rts::LightKind::Point | rts::LightKind::Spot { .. } | rts::LightKind::Surface)
+                    {
+                        return true;
+                    }
+                    let at = Vec3A::from_array(l.position);
+                    at.clamp(lo, hi).distance(at) <= l.reach
+                })
+                .collect();
+            let n = keep.len() as f64;
+            (keep, lux * list.len() as f64, lux * n)
+        })
+        .collect();
+    let mut lists = Vec::with_capacity(old.len());
+    let (mut before, mut after) = (0.0f64, 0.0f64);
+    for (s, (keep, b, a)) in scene.surfaces.iter_mut().zip(kept) {
+        s.lights = (lists.len() as u32, keep.len() as u32);
+        lists.extend(keep);
+        before += b;
+        after += a;
+    }
+    scene.light_lists = lists;
+    let lux = scene.luxels.len().max(1) as f64;
+    (before / lux, after / lux)
 }
 
 const MATCH_LUXELS: usize = 16;

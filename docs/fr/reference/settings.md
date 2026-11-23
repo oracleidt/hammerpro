@@ -533,7 +533,7 @@ La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de l
 | `compress_pakfile` | `false` | Compresse le pakfile en LZMA (Garry's Mod affiche alors un avertissement par entrée). |
 | `lzma_level` | `6` | Niveau LZMA, de 0 à 9. |
 | `pack_workshop` | `true` | Livre le contenu venant d'éléments du Workshop (sinon ils sont listés comme éléments requis). |
-| `pack_mounted` | `false` | Livre le contenu des jeux de `mount.cfg`. |
+| `pack_mounted` | `true` | Livre le contenu des jeux montés par `mount.cfg` ou par AppID (sauf les fichiers de Garry's Mod de base). Activé une fois par la 2.3.1 (révision 3 des réglages). |
 | `missing_as_errors` | `false` | Les fichiers et systèmes de particules manquants arrêtent la construction au lieu de proposer de continuer quand même. |
 | `keep_cubemaps` | `true` | Recopie les cubemaps construites du BSP précédent. |
 | `game_session` | `false` | Construit les cubemaps et le nav mesh en jeu. |
@@ -616,6 +616,7 @@ La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de l
 | `propper_material_dir` | `""` | Dernier dossier `$cdmaterials` personnalisé. Vide : il suit le chemin du modèle. |
 | `propper_reuse_materials` | `true` | Dernier état de **Réutiliser les matériaux VertexLitGeneric**. |
 | `propper_surface` | `""` | Dernier `$surfaceprop` ; vide : automatique. |
+| `propper_lod_auto` | `false` | **Auto selon la distance** de l’aperçu des niveaux de détail de la fenêtre de création : le niveau affiché suit la distance de la caméra comme en jeu. |
 | `combine_origin` | `"center"` | Origine d'un modèle fait par **Combiner des props** : `center` (centre) ou `bottom` (centre du bas) de la sélection. |
 | `combine_keep_originals` | `true` | **Combiner des props** garde les props d'origine dans le visgroup caché `Combined props (originals)` ; désactivé : ils sont supprimés. |
 | `combine_collision` | `true` | **Combiner des props** construit la collision à partir des morceaux .phy des props. |
