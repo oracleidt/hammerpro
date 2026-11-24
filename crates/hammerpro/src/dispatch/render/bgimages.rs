@@ -247,7 +247,7 @@ impl BgImages {
                 write_entries(state, &entries, "add");
             }
         }
-        let key = (state.doc.revision(), self.loaded.len() + arrived);
+        let key = (state.doc.scene_revision(), self.loaded.len() + arrived);
         if self.synced == Some(key) {
             return;
         }

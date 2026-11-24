@@ -10,6 +10,7 @@ action_list! { startup_actions {
     RebuildContentIndex => "rebuild_content_index", Tools, ToolsContentIndex, None, Ready;
     CheckForUpdates => "check_for_updates", Help, HelpSupport, None, Ready;
     InstallUpdate => "install_update", Help, Hidden, None, Ready;
+    CopyPerformanceReport => "copy_performance_report", Help, HelpSupport, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];
@@ -42,4 +43,5 @@ pub(super) const TR: TrTable = &[
     ("action.check_for_updates", "Check for updates...", "Rechercher des mises à jour..."),
     ("action.install_update", "Install the available update", "Installer la mise à jour disponible"),
     ("action.rebuild_content_index", "Rebuild the content index", "Reconstruire l'index du contenu"),
+    ("action.copy_performance_report", "Copy the performance report", "Copier le rapport de performances"),
 ];

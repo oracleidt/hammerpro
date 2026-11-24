@@ -20,6 +20,8 @@ pub struct LabRuntime {
     pub propper_lod_levels: Vec<(usize, f64)>,
     pub propper_lod_camera: Option<f64>,
     pub propper_lod_camera_request: Option<f64>,
+    pub propper_collision_info: Option<PropperCollisionInfo>,
+    pub propper_collision_commands: Vec<PropperCollisionCommand>,
     pub combine_open: bool,
     pub combine_request: Option<Box<CombineRequest>>,
     pub combine_busy: bool,
@@ -29,6 +31,52 @@ pub struct LabRuntime {
     pub sniffer: SnifferRuntime,
     pub sound_color: super::soundcolor::SoundColorRuntime,
     pub soundscape: super::soundscape::SoundscapeRuntime,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PropperCollisionInfo {
+    pub mode: String,
+    pub pieces: Vec<PropperPieceInfo>,
+    pub piece: usize,
+    pub element: String,
+    pub selected: Option<usize>,
+    pub modelname: String,
+    pub cdmaterials: String,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PropperPieceInfo {
+    pub vertices: Vec<[f64; 3]>,
+    pub edges: Vec<[usize; 2]>,
+    pub faces: Vec<Vec<usize>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CollisionElement {
+    Vertex,
+    Edge,
+    Face,
+}
+
+impl CollisionElement {
+    pub fn id(self) -> &'static str {
+        match self {
+            CollisionElement::Vertex => "vertex",
+            CollisionElement::Edge => "edge",
+            CollisionElement::Face => "face",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum PropperCollisionCommand {
+    Mode(String),
+    Move { piece: usize, element: CollisionElement, index: usize, delta: glam::DVec3, snap: bool },
+    AddBox,
+    RemovePiece(usize),
+    ModelName(String),
+    CdMaterials(String),
 }
 
 #[derive(Clone, Debug)]

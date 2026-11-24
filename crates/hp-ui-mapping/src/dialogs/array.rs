@@ -157,11 +157,11 @@ impl ArrayDialog {
             ui.label(RichText::new(tf!("array.too_many", hp_editor::MAX_ARRAY_COPIES)).color(theme::warning()));
         } else if let Err(why) = self.plan(state)
             && any
-            && !state.doc.selected_objects().is_empty()
+            && !state.doc.selection().objects.is_empty()
         {
             ui.label(RichText::new(why).color(theme::warning()));
         }
-        if state.doc.selected_objects().is_empty() {
+        if state.doc.selection().objects.is_empty() {
             ui.label(RichText::new(t!("array.err_nothing")).color(theme::warning()));
         }
         if let Some(e) = &self.error {
@@ -174,7 +174,7 @@ impl ArrayDialog {
                 if ui.button(t!("common.cancel")).on_hover_text(key_label(egui::Key::Escape)).clicked() {
                     state.ui.show_array_duplicate = false;
                 }
-                let ready = any && !state.doc.selected_objects().is_empty();
+                let ready = any && !state.doc.selection().objects.is_empty();
                 let button = ui.add_enabled(ready, egui::Button::new(t!("array.apply")));
                 if button.on_hover_text(key_label(egui::Key::Enter)).clicked() {
                     apply = true;

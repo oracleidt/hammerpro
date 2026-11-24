@@ -93,10 +93,15 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 
 const MAIN_STACK: u64 = 8 << 20;
 
+const HIGH_PERFORMANCE_GPU_EXPORTS: [&str; 2] = ["NvOptimusEnablement", "AmdPowerXpressRequestHighPerformance"];
+
 fn main_stack() {
     let target = std::env::var("TARGET").unwrap_or_default();
     if target.contains("windows") && target.contains("msvc") {
         println!("cargo:rustc-link-arg-bins=/STACK:{MAIN_STACK}");
+        for symbol in HIGH_PERFORMANCE_GPU_EXPORTS {
+            println!("cargo:rustc-link-arg-bins=/EXPORT:{symbol},DATA");
+        }
     } else if target.contains("windows") {
         println!("cargo:rustc-link-arg-bins=-Wl,--stack,{MAIN_STACK}");
     }

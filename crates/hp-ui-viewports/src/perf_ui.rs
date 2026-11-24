@@ -7,6 +7,12 @@ use hp_app::{t, tf};
 use crate::paint;
 
 pub const TR: TrTable = &[
+    ("perf.hud_copy", "Copy report", "Copier le rapport"),
+    (
+        "perf.hud_copy_tip",
+        "Copy a short performance report (graphics card, frame cap, views, map size, frame times, memory) to paste in a bug report",
+        "Copier un court rapport de performances (carte graphique, limite d'images, vues, taille de la map, temps d'image, mémoire) à coller dans un signalement",
+    ),
     ("primitives.memory_error", "RAM measurement unavailable (error {0})", "Mesure RAM indisponible (erreur {0})"),
     ("primitives.title", "Map primitives (editor)", "Primitives de la map (éditeur)"),
     ("primitives.world", "World: {0} solids, {1} materials, RAM {2}", "World : {0} solides, {1} matériaux, RAM {2}"),
@@ -164,7 +170,20 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState, rect: Rect, top: f32, index
         let r = Align2::LEFT_TOP.anchor_size(Pos2::new(rect.left() + 6.0, top), galley.size() + vec2(10.0, 6.0));
         painter.rect_filled(r, 4, paint::PILL_BG);
         painter.galley(r.min + vec2(5.0, 3.0), galley, paint::TEXT);
-        taken = r;
+        let label = painter.layout_no_wrap(t!("perf.hud_copy").to_owned(), paint::small_font(), egui::Color32::WHITE);
+        let b = Rect::from_min_size(Pos2::new(r.left(), r.bottom() + 4.0), label.size() + vec2(12.0, 4.0));
+        let response = ui.interact(b, ui.scope_id().with(("hp_perf_copy", index)), Sense::CLICK);
+        let fill = if response.hovered() { hp_app::theme::ACCENT } else { hp_app::theme::ACCENT.gamma_multiply(0.7) };
+        painter.rect_filled(b, 3, fill);
+        painter.galley(b.min + vec2(6.0, 2.0), label, egui::Color32::WHITE);
+        let response = response.on_hover_text(t!("perf.hud_copy_tip"));
+        if response.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+        if response.clicked() {
+            state.request(hp_app::Action::CopyPerformanceReport);
+        }
+        taken = r.union(b);
     }
     if state.settings.render.primitive_stats {
         ui.ctx().request_repaint_after(std::time::Duration::from_secs(1));

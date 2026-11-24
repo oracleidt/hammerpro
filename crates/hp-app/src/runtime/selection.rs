@@ -28,6 +28,7 @@ pub struct SelectionRuntime {
     pub edges: Vec<EdgeRef>,
     pub vertices: Vec<(Id, DVec3)>,
     pub element_revision: u64,
+    pub resync_checked: u64,
     pub snapshots: Vec<PickSnapshot>,
     pub lifted_face: Option<LiftedFace>,
     pub filter: hp_editor::SelectFilter,
@@ -111,7 +112,10 @@ impl crate::AppState {
     pub fn sync_pick_elements(&mut self) {
         let revision = self.doc.revision();
         let sel = &self.runtime.selection;
-        if sel.element_revision == revision || (sel.edges.is_empty() && sel.vertices.is_empty()) {
+        if sel.element_revision == revision
+            || sel.resync_checked == revision
+            || (sel.edges.is_empty() && sel.vertices.is_empty())
+        {
             return;
         }
         let mut edges: Vec<EdgeRef> = Vec::new();
@@ -124,6 +128,7 @@ impl crate::AppState {
             }
         }
         let sel = &mut self.runtime.selection;
+        sel.resync_checked = revision;
         if edges.is_empty() && vertices.is_empty() {
             return;
         }

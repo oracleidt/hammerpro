@@ -70,6 +70,7 @@ const HANDLED: &[Action] = &[
     Action::ReportIssue,
     Action::CheckForUpdates,
     Action::InstallUpdate,
+    Action::CopyPerformanceReport,
 ];
 
 impl Package for Shell {
@@ -229,6 +230,9 @@ impl Package for Shell {
                 }
             }
             Action::InstallUpdate => app.state.runtime.update.install_requested = true,
+            Action::CopyPerformanceReport => {
+                app.copy_performance_report(ctx);
+            }
             _ => return false,
         }
         true
@@ -246,6 +250,13 @@ impl HammerProApp {
             }
             None => ctx.copy_text(text),
         }
+    }
+
+    pub(crate) fn copy_performance_report(&mut self, ctx: &egui::Context) -> String {
+        let text = crate::perf_report::report(self, ctx);
+        self.set_clipboard(ctx, text.clone());
+        self.state.notify(hp_app::Severity::Success, hp_app::t!("perf.report_copied"));
+        text
     }
 
     pub(crate) fn copy_selection(&mut self, ctx: &egui::Context) {

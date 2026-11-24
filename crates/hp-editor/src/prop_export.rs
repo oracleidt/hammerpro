@@ -7,7 +7,7 @@ use crate::{Document, Id, ObjRef};
 
 mod collision;
 mod combine;
-pub use collision::EditableCollision;
+pub use collision::{CollisionEditError, EditableCollision};
 pub use combine::{COMBINED_VISGROUP, FADE_KEYS, MergedKeys, SHARED_KEYS, merge_prop_keys};
 
 pub const DISP_THICKNESS: f64 = 8.0;
@@ -481,10 +481,12 @@ impl PropGeometry {
             (String::new(), String::new())
         } else {
             let mass = if options.physics { format!("\t$mass {}\n", options.mass) } else { String::new() };
-            let qc = format!(
-                "$collisionmodel \"{stem}_phys.smd\" {{\n\t$concave\n\t$maxconvexpieces {}\n{mass}}}\n",
-                self.pieces.len()
-            );
+            let concave = if self.pieces.len() > 1 {
+                format!("\t$concave\n\t$maxconvexpieces {}\n", self.pieces.len())
+            } else {
+                String::new()
+            };
+            let qc = format!("$collisionmodel \"{stem}_phys.smd\" {{\n{concave}{mass}}}\n");
             (phys_smd_text(&self.pieces), qc)
         };
         let mut lod_qc = String::new();
@@ -623,7 +625,20 @@ mod tests {
         assert!(export.qc.contains("$surfaceprop \"metal\""));
         assert!(export.qc.contains("test_0_ref.smd"));
         assert!(export.qc.contains("$collisionmodel \"test_0_phys.smd\""), "{}", export.qc);
-        assert!(export.qc.contains("$concave") && export.qc.contains("$maxconvexpieces 1"));
+        assert!(!export.qc.contains("$concave"), "one convex piece is not concave: {}", export.qc);
+        let mut two = collect_prop(&doc, &[b], &|_| (256, 256)).unwrap();
+        two.pieces.push(two.pieces[0].iter().map(|t| t.map(|p| p + DVec3::X * 100.0)).collect());
+        let both = two.files_with_options(
+            "props/custom/pair",
+            "metal",
+            &[],
+            PropOptions { physics: true, static_prop: false, collision: true, mass: 30.0 },
+        );
+        assert!(both.qc.contains("$modelname \"props/custom/pair.mdl\""));
+        assert!(both.qc.contains("$collisionmodel \"pair_phys.smd\""));
+        assert!(both.qc.contains("$concave") && both.qc.contains("$maxconvexpieces 2"), "{}", both.qc);
+        assert!(both.qc.contains("$mass 30"));
+        assert_eq!(both.pieces, 2);
         assert_eq!(export.phys_smd.matches("phys\n").count(), 12, "the box is one convex piece");
         let after = export.smd.split("triangles\n").nth(1).unwrap();
         let vline = after.lines().find(|l| l.starts_with("0 ")).unwrap();

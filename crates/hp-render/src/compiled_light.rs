@@ -904,6 +904,7 @@ impl Renderer {
             changed = true;
         }
         if changed {
+            cl.visible_for = None;
             self.bump_3d_content();
         }
     }
@@ -928,7 +929,11 @@ impl Renderer {
             cl.states_key = key;
         }
         let vp = view_proj.to_cols_array();
-        cl.visible = cl.blocks.iter().map(|b| b.moved || box_visible(view_proj, b.lo, b.hi)).collect();
+        if cl.visible_for == Some(vp) && cl.visible.len() == cl.blocks.len() {
+            return;
+        }
+        cl.visible.clear();
+        cl.visible.extend(cl.blocks.iter().map(|b| b.moved || box_visible(view_proj, b.lo, b.hi)));
         cl.visible_for = Some(vp);
     }
 

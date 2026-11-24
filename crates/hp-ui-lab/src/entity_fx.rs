@@ -637,6 +637,8 @@ pub struct EntityFxLayer {
     looked: HashSet<String>,
     dust: HashMap<Id, Dust>,
     fire_key: (bool, bool, Vec<(Id, bool)>),
+    pace: crate::particles::Pace,
+    visible_key: Vec<(usize, u32)>,
 }
 
 impl EntityFxLayer {
@@ -652,6 +654,8 @@ impl EntityFxLayer {
             looked: HashSet::new(),
             dust: HashMap::new(),
             fire_key: (true, false, Vec::new()),
+            pace: crate::particles::Pace::default(),
+            visible_key: Vec::new(),
         }
     }
 
@@ -704,14 +708,15 @@ impl EntityFxLayer {
             if s.fx_active != active {
                 s.fx_active = active;
             }
-            if !active {
+            if !active && (!s.fx_sprites.is_empty() || !s.fx_materials.is_empty()) {
                 s.fx_sprites.clear();
                 s.fx_materials.clear();
+                s.sprites_changed();
             }
         }
     }
 
-    fn build_sprites(&mut self, state: &AppState, eye: DVec3) {
+    fn build_sprites(&mut self, state: &AppState, eye: DVec3, dt: f32) {
         self.dust.retain(|id, _| self.visible.iter().any(|(index, _)| self.sources[*index].id == *id));
         let fs = state.assets.fs();
         let generation = state.assets.generation();
@@ -721,6 +726,7 @@ impl EntityFxLayer {
             self.looked.clear();
         }
         let Ok(mut shared) = self.handle.lock() else { return };
+        shared.sprites_changed();
         let crate::particles::ParticleShared { fx_sprites, fx_materials, looks, fx_active, .. } = &mut *shared;
         fx_sprites.clear();
         fx_materials.clear();
@@ -754,7 +760,7 @@ impl EntityFxLayer {
             pts.clear();
             if !fx.frozen && matches!(fx.kind, FxKind::Cloud | FxKind::Motes) {
                 self.dust.entry(fx.id).or_insert_with(|| Dust::new(fx)).draw(
-                    state.frame.dt,
+                    dt,
                     scale,
                     eye,
                     state.cameras.cam3d.forward(),
@@ -849,10 +855,18 @@ impl OverlayLayer for EntityFxLayer {
             self.visible.push((i, n as f32 / s.count.max(1) as f32));
         }
         if self.visible.is_empty() {
+            self.visible_key.clear();
             self.set_active(false);
-        } else {
-            self.build_sprites(state, cam);
+            return;
         }
+        let visible: Vec<(usize, u32)> = self.visible.iter().map(|(i, scale)| (*i, scale.to_bits())).collect();
+        let due = self.pace.due(state);
+        if due.is_none() && visible == self.visible_key {
+            return;
+        }
+        self.visible_key = visible;
+        let dt = due.unwrap_or(0.0).min(0.25) as f32;
+        self.build_sprites(state, cam, dt);
     }
 
     fn paint(&self, state: &AppState, view: &hp_app::ViewInfo, painter: &egui::Painter) {

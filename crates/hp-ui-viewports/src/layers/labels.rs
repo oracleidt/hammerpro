@@ -47,6 +47,7 @@ struct TextEntry {
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct NamesKey {
     stamp: (u64, u64, bool),
+    revision: u64,
     kind: u8,
     center: [u64; 2],
     zoom: u64,
@@ -57,9 +58,23 @@ struct NamesKey {
 
 type NamesCache = [Option<(NamesKey, Vec<egui::Shape>)>; 4];
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct TextsKey {
+    stamp: (u64, u64, bool),
+    kind: u8,
+    cam2d: [u64; 3],
+    cam3d: [u64; 6],
+    rect: [u32; 4],
+    pixels_per_point: u32,
+    label_px: u32,
+}
+
+type TextsCache = [Option<(TextsKey, Vec<egui::Shape>)>; 4];
+
 #[derive(Default)]
 struct LabelsLayer {
     names_cache: RefCell<NamesCache>,
+    texts_cache: RefCell<TextsCache>,
     stamp: Option<(u64, u64, bool)>,
     names: Vec<NameEntry>,
     texts: Vec<TextEntry>,
@@ -145,6 +160,7 @@ impl LabelsLayer {
         let r = view.rect;
         Some(NamesKey {
             stamp: self.stamp?,
+            revision: state.doc.revision(),
             kind: view.kind as u8,
             center: [view.cam2d.center.x.to_bits(), view.cam2d.center.y.to_bits()],
             zoom: view.cam2d.zoom.to_bits(),
@@ -229,7 +245,48 @@ impl LabelsLayer {
         Some(shapes)
     }
 
+    fn texts_key(&self, state: &AppState, view: &ViewInfo) -> Option<TextsKey> {
+        let r = view.rect;
+        let c = &view.cam3d;
+        Some(TextsKey {
+            stamp: self.stamp?,
+            kind: view.kind as u8,
+            cam2d: [view.cam2d.center.x.to_bits(), view.cam2d.center.y.to_bits(), view.cam2d.zoom.to_bits()],
+            cam3d: [
+                c.pos.x.to_bits(),
+                c.pos.y.to_bits(),
+                c.pos.z.to_bits(),
+                c.yaw_deg.to_bits(),
+                c.pitch_deg.to_bits(),
+                c.fov_y_deg.to_bits(),
+            ],
+            rect: [r.min.x.to_bits(), r.min.y.to_bits(), r.max.x.to_bits(), r.max.y.to_bits()],
+            pixels_per_point: view.pixels_per_point.to_bits(),
+            label_px: state.settings.view.label_px_2d(12.0, view.cam2d.zoom).unwrap_or(0.0).to_bits(),
+        })
+    }
+
     fn paint_texts(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
+        if self.texts.is_empty() {
+            return;
+        }
+        let key = self.texts_key(state, view);
+        let mut cache = self.texts_cache.borrow_mut();
+        if let (Some(key), Some(Some((cached, shapes)))) = (key, cache.get(view.index))
+            && *cached == key
+        {
+            painter.extend(shapes.iter().cloned());
+            return;
+        }
+        let shapes = self.layout_texts(state, view, painter);
+        painter.extend(shapes.iter().cloned());
+        if let (Some(key), Some(slot)) = (key, cache.get_mut(view.index)) {
+            *slot = Some((key, shapes));
+        }
+    }
+
+    fn layout_texts(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) -> Vec<egui::Shape> {
+        let mut shapes = Vec::new();
         let mut tested = 0;
         for t in &self.texts {
             let Some(p) = view.world_to_screen(t.pos) else { continue };
@@ -237,7 +294,7 @@ impl LabelsLayer {
                 continue;
             }
             let px = if view.is_2d() {
-                let Some(px) = state.settings.view.label_px_2d(12.0, view.cam2d.zoom) else { return };
+                let Some(px) = state.settings.view.label_px_2d(12.0, view.cam2d.zoom) else { return shapes };
                 px
             } else {
                 let world_px = pixel_world_size(view, t.pos);
@@ -256,8 +313,14 @@ impl LabelsLayer {
                 continue;
             }
             let font = FontId::proportional(px.min(MAX_TEXT_PX));
-            painter.text(p, Align2::CENTER_CENTER, &t.text, font, color32(t.color));
+            let color = color32(t.color);
+            let galley = painter.layout_no_wrap(t.text.clone(), font, color);
+            let rect = Align2::CENTER_CENTER.anchor_size(p, galley.size());
+            if !galley.is_empty() {
+                shapes.push(egui::Shape::galley(rect.min, galley, color));
+            }
         }
+        shapes
     }
 }
 
@@ -289,7 +352,7 @@ impl OverlayLayer for LabelsLayer {
             return;
         }
         let generation = state.assets.generation();
-        let stamp = (state.doc.revision(), generation, state.settings.render.object_colors_2d);
+        let stamp = (state.doc.scene_revision(), generation, state.settings.render.object_colors_2d);
         if self.stamp.is_some_and(|s| s.1 != generation) {
             self.worldtext.clear();
         }

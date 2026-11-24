@@ -27,6 +27,7 @@ Bug reports are very welcome. A good report lets the problem be reproduced quick
 - **Graphics problems.** Say whether forcing another API with `WGPU_BACKEND` changes anything, and include a screenshot.
 - **Compile problems.** Say which preset (Draft, Normal, Final) and target game you used, and whether the same map compiles with Valve's tools.
 - **Slow editor.** Include the frame rate (**Settings > General > Show frame rate**) and the 3D view information (`O`) at the place where it is slow.
+- **Performance report.** **Help > Copy the performance report** copies a short text with the version, the graphics card and its driver, the frame cap, the view sizes and render modes, the map size and the last frame times: paste it in any report about a slow editor or high CPU or GPU use (see [Editor performance](performance.md#measuring-first)).
 - **Translations.** A wrong or missing French text is a bug too: quote the text and where it appears.
 
 ## Contributing a fix

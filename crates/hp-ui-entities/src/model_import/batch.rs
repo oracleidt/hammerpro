@@ -65,6 +65,9 @@ pub struct ConvertOptions {
     pub surface_prop: String,
     pub mass: f64,
     pub collision: Collision,
+    pub limits: hp_meshio::collision::CollisionLimits,
+    pub own_collision: bool,
+    pub folder: String,
     pub lod: hp_meshio::lod::LodOptions,
     pub keep_params: bool,
 }
@@ -77,6 +80,9 @@ impl Default for ConvertOptions {
             surface_prop: "default".to_owned(),
             mass: 20.0,
             collision: Collision::Pieces,
+            limits: hp_meshio::collision::CollisionLimits::default(),
+            own_collision: false,
+            folder: IMPORT_FOLDER.to_owned(),
             lod: hp_meshio::lod::LodOptions::default(),
             keep_params: true,
         }
@@ -147,17 +153,20 @@ pub fn convert_model(model: &Model, name: &str, opts: &ConvertOptions, root: &Pa
     }
     let triangles = source.triangles.len();
     let size = source.bounds().map_or(DVec3::ZERO, |(lo, hi)| hi - lo);
+    let folder = clean_folder(&opts.folder);
     let studio = StudioOptions {
-        model: format!("{IMPORT_FOLDER}/{name}"),
-        cdmaterials: format!("models/{IMPORT_FOLDER}/{name}"),
+        model: join_folder(&folder, &name),
+        cdmaterials: format!("models/{}", join_folder(&folder, &name)),
         static_prop: opts.static_prop,
         surface_prop: opts.surface_prop.clone(),
         mass: opts.mass,
         collision: opts.collision,
+        limits: opts.limits.clamped(),
+        own_collision: opts.own_collision,
         lod: opts.lod,
     };
-    let Prepared { model, textures, pieces, body_parts, lod_triangles, bounds, mut warnings, report } =
-        prepare(&source, &studio, &name, root, opts.keep_params)?;
+    let Prepared { model, textures, pieces, body_parts, lod_triangles, bounds, mut warnings, report, .. } =
+        prepare(&source, &studio, root, opts.keep_params)?;
     let mut all = model_warnings(triangles, size);
     all.append(&mut warnings);
     Ok(Converted { model, triangles, size, textures, pieces, body_parts, lod_triangles, bounds, warnings: all, report })
@@ -263,8 +272,28 @@ pub struct BatchEntry {
     pub exists: bool,
 }
 
-pub fn model_exists(root: &Path, name: &str) -> bool {
-    root.join("models").join(IMPORT_FOLDER).join(format!("{name}.mdl")).is_file()
+pub fn clean_folder(folder: &str) -> String {
+    let folder = folder.trim().replace('\\', "/").to_ascii_lowercase();
+    let folder = folder.trim_matches('/');
+    let folder = folder.strip_prefix("models/").unwrap_or(folder);
+    let parts: Vec<String> = folder
+        .split('/')
+        .map(|part| {
+            part.chars()
+                .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '_' | '-') { c } else { '_' })
+                .collect::<String>()
+        })
+        .filter(|part| !part.is_empty() && part.chars().any(|c| c != '_'))
+        .collect();
+    parts.join("/")
+}
+
+pub fn join_folder(folder: &str, name: &str) -> String {
+    if folder.is_empty() { name.to_owned() } else { format!("{folder}/{name}") }
+}
+
+pub fn model_exists(root: &Path, folder: &str, name: &str) -> bool {
+    root.join("models").join(join_folder(&clean_folder(folder), name)).with_extension("mdl").is_file()
 }
 
 pub fn scan(
@@ -311,7 +340,7 @@ fn scan_one(path: &Path, name: &str, opts: &BatchOptions, root: Option<&Path>) -
     let mut entry = BatchEntry {
         path: path.to_path_buf(),
         name: name.to_owned(),
-        exists: root.is_some_and(|r| model_exists(r, name)),
+        exists: root.is_some_and(|r| model_exists(r, &opts.convert.folder, name)),
         ..BatchEntry::default()
     };
     match hp_meshio::read(path) {
@@ -469,7 +498,7 @@ fn convert_one(index: usize, path: &Path, name: &str, opts: &BatchOptions, root:
         warnings: Vec::new(),
         converted: None,
     };
-    if !opts.overwrite && model_exists(root, name) {
+    if !opts.overwrite && model_exists(root, &opts.convert.folder, name) {
         return FileResult { status: Status::Skipped, message: t!("entities.mb_exists").to_owned(), ..base };
     }
     let outcome =

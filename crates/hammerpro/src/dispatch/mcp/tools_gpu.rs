@@ -3,7 +3,7 @@ use hp_mcp::protocol::ToolResult;
 use serde_json::json;
 
 use super::semantic::*;
-use super::tools::{Args, R};
+use super::tools::{AppFn, Args, Outcome, R};
 
 domain! { "graphics memory";
     get_gpu_memory: Read, "Graphics memory",
@@ -51,6 +51,9 @@ domain! { "graphics memory";
         views in the last frame, the CPU time spent building its overlay (layers, grid, tool), drawing it (or reusing \
         its last image when nothing changed: rendered false) and painting its labels, with its overlay item count. scene_sync_stages_ms splits the scene sync of the last up to 120 frames by stage (average and slowest milliseconds). redraw_reasons counts, for each view since the start, why it was drawn again (first, size_or_camera, view_options, content, lighting, animation, retained_overlay, overlay, textures: the first difference found; a 2D view picks up texture changes at most every 750 ms). view_draws gives, for each view, the draw calls of its last render split into world, model and sprite draws, the triangles, model instances, material changes and the chunks in the frustum and occluded.         Startup and shaders: graphics_api (Vulkan or Dx12 in use), graphics_api_setting (render.graphics_backend:         Auto, Vulkan or Dx12, applied at the next start), dx12_shader_compiler (fxc or dxc on DirectX 12),         startup_ms (first_frame: the first frame of the window, views_ready: when the views could draw), and         pipelines: building_in_background, ready (msaa, no_msaa), sets (each set of render pipelines with its         sample count, build milliseconds and whether it was built on the background thread), main_thread_wait_ms,         created and create_ms_total (every render pipeline created so far), dx12_shaders (DirectX 12 only:         compiler, shaders compiled and their total milliseconds, disk_cache_hits and disk_cache_misses of the         shader cache kept between starts, disk_cache_dir).",
         {}, [];
+    get_performance_report: Read, "Performance report",
+        "The short text performance report of Help, Copy the performance report (also the Copy report button under the on-screen readout, render.perf_hud), to paste in a bug report: app version and build, graphics card (name, kind: dedicated, integrated, virtual or software, graphics API, driver) and the other graphics adapters seen, the adapter notice (software: a software renderer such as Microsoft Basic Render Driver, WARP or llvmpipe draws the editor; integrated_while_dedicated_exists), the card asked for in render.graphics_adapter, a graphics API fallback when the first one could not start, present mode, frame cap (the limit in force, vertical sync, screen refresh rate, render.max_fps, render.unfocused_fps, render.frame_cap_refresh), window size in pixels and scale, each view with its size and render mode, map stats (brushes, faces, entities, props, displacements, materials), FPS, the CPU time of the last frame by phase, the 3D render CPU time, GPU timings when the card supports timestamp queries, graphics memory, RAM and the quality level. With copy true the report is also copied to the clipboard and the user sees a confirmation, like the menu item.",
+        { "copy": boolean("Also copy the report to the clipboard.") }, [];
     run_benchmark: Editor, "Benchmark the 3D view",
         "Turn the 3D camera through a full circle around its position over a number of frames (the camera is         put back afterwards) and measure the frame time of the real window: average FPS, frame time average,         95th and 99th percentile and worst, CPU render time (average, median and 99th percentile), GPU time per stage when the card supports timestamp         queries (total, median, 99th percentile, and per pass like get_performance gpu_ms.passes and water_reflection_passes), and the working set RAM at the start, end and peak. It starts at once; call wait_frames, then         get_performance: its benchmark field is running while it runs, then holds the result. vsync caps the         FPS at the refresh rate, so compare the CPU and GPU milliseconds as well.",
         {
@@ -287,6 +290,11 @@ fn get_performance(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
         "vram_usage_mb": state.runtime.gpu.usage >> 20,
         "adapter": p.adapter,
         "integrated_gpu": p.integrated,
+        "adapter_details": adapter_json(),
+        "graphics_adapter_setting": r.graphics_adapter,
+        "present_mode": crate::perf_report::present_mode_name(),
+        "vsync": r.vsync,
+        "frame_cap_refresh": r.frame_cap_refresh,
         "graphics_api": p.graphics_api,
         "graphics_api_setting": r.graphics_backend.id(),
         "dx12_shader_compiler": p.dx12_shader_compiler,
@@ -371,6 +379,29 @@ fn get_performance(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
     p.phase_sum = hp_app::runtime::FramePhases::default();
     p.phase_frames = 0;
     Ok(ToolResult::json(out))
+}
+
+fn get_performance_report(_state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
+    let copy = a.opt_bool("copy")?.unwrap_or(false);
+    Ok(Outcome::AppFn(AppFn(Box::new(move |app, ctx| {
+        let report = if copy { app.copy_performance_report(ctx) } else { crate::perf_report::report(app, ctx) };
+        ToolResult::json(json!({ "report": report, "copied": copy }))
+    }))))
+}
+
+fn adapter_json() -> serde_json::Value {
+    let Some(c) = hp_app::runtime::adapter::choice() else { return serde_json::Value::Null };
+    json!({
+        "name": c.chosen.name,
+        "kind": c.chosen.kind.id(),
+        "backend": c.chosen.backend,
+        "driver": c.chosen.driver,
+        "notice": c.notice.as_ref().map(hp_app::runtime::adapter::AdapterNotice::id),
+        "asked_for": c.wanted,
+        "asked_for_found": c.wanted_found,
+        "fallback_from": c.fallback_from,
+        "all": c.all.iter().map(|a| json!({ "name": a.name, "kind": a.kind.id(), "backend": a.backend })).collect::<Vec<_>>(),
+    })
 }
 
 fn passes_json(p: &hp_app::runtime::GpuPasses) -> serde_json::Value {

@@ -8,6 +8,7 @@ authors.workspace = true
 
 [dependencies]
 glam.workspace = true
+hp-geom.workspace = true
 thiserror.workspace = true
 flate2 = "1"
 serde_json = "1"

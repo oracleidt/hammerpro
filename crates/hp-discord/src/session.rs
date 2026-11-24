@@ -45,7 +45,7 @@ impl Default for Options {
             retry_min: Duration::from_secs(5),
             retry_max: Duration::from_secs(20),
             handshake_timeout: Duration::from_secs(3),
-            poll: Duration::from_secs(5),
+            poll: Duration::from_secs(15),
         }
     }
 }

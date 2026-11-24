@@ -117,16 +117,6 @@ fn link_lines(view: &ViewInfo, links: &[ConnectionLink], arrow_px: Option<f64>, 
     }
 }
 
-fn selection_hash(doc: &Document) -> u64 {
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    let sel = &doc.selection().objects;
-    sel.len().hash(&mut h);
-    for o in sel {
-        o.hash(&mut h);
-    }
-    h.finish()
-}
-
 fn selected_entities(doc: &Document) -> Vec<Id> {
     let mut ids = doc.selected_entity_ids();
     ids.truncate(MAX_SELECTED);
@@ -140,7 +130,7 @@ fn visible_entities(doc: &Document) -> impl Iterator<Item = (Id, &hp_vmf::Entity
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Stamp {
     revision: u64,
-    selection: u64,
+    scene: u64,
     generation: u64,
 }
 
@@ -202,12 +192,12 @@ impl OverlayLayer for HelpersLayer {
             self.link_classes.clear();
             self.relevance_gen = generation;
         }
-        let stamp = Stamp { revision: doc.revision(), selection: selection_hash(doc), generation };
+        let stamp = Stamp { revision: doc.revision(), scene: doc.scene_revision(), generation };
         let fgd = state.assets.fgd();
         let needs_selected = self.selected_stamp != Some(stamp);
         let needs_all =
-            self.scope_all && self.all_stamp.map(|s| (s.revision, s.generation)) != Some((stamp.revision, generation));
-        let needs_links = !self.scope_all && self.links_stamp != Some((stamp.revision, generation));
+            self.scope_all && self.all_stamp.map(|s| (s.scene, s.generation)) != Some((stamp.scene, generation));
+        let needs_links = !self.scope_all && self.links_stamp != Some((stamp.scene, generation));
         if self.scope_all && self.links_stamp.is_some() {
             self.links.clear();
             self.links_stamp = None;
@@ -263,7 +253,7 @@ impl OverlayLayer for HelpersLayer {
             for id in ids {
                 path_links(&cx, id, &mut self.links);
             }
-            self.links_stamp = Some((stamp.revision, generation));
+            self.links_stamp = Some((stamp.scene, generation));
             self.all_version = self.all_version.wrapping_add(1);
         }
     }
@@ -354,10 +344,10 @@ impl OverlayLayer for ConnectionsLayer {
         }
         let doc = &state.doc;
         let generation = state.assets.generation();
-        let stamp = Stamp { revision: doc.revision(), selection: selection_hash(doc), generation };
+        let stamp = Stamp { revision: doc.revision(), scene: doc.scene_revision(), generation };
         let needs_selected = mode == ConnectionsMode::Selected && self.selected_stamp != Some(stamp);
         let needs_all = mode == ConnectionsMode::All
-            && self.all_stamp.map(|s| (s.revision, s.generation)) != Some((stamp.revision, generation));
+            && self.all_stamp.map(|s| (s.scene, s.generation)) != Some((stamp.scene, generation));
         if !needs_selected && !needs_all {
             return;
         }

@@ -30,14 +30,15 @@ The window first shows the file path and a summary: triangles, materials and siz
 
 | Option | What it does | Default |
 |---|---|---|
-| **Name** | `models/hammerpro/<name>.mdl`. Cleaned to lowercase letters, digits and `_` (48 characters at most). A warning says when a model of that name exists: it is replaced. | The file name |
+| **$modelname** | Path and name of the model like in a QC: `models/<folder>/<name>.mdl` (the `models/` prefix and the `.mdl` extension are added when you leave them out). Letters, digits, `_`, `-`, `.` and `/` only, no `..` nor spaces: a wrong path greys out **Import** with a message. A warning says when a model of that name exists: it is replaced. | `models/hammerpro/<file name>.mdl` |
+| **$cdmaterials** | Folder of the textures under `materials/`, like in a QC. Follows **$modelname** (`models/<folder>/<name>`) until you change it. | `models/hammerpro/<file name>` |
 | **Kind** | **prop_static**, or **Physics prop** (`prop_physics`). | prop_static |
 | **Scale** | Extra scale after the unit conversion (0.001 to 1000). | 1 |
 | **Convert the units** | Meters of the file become Source units (inches): 1 m = 39.37 units. Off: one unit of the file is one Source unit. | On |
 | **Up axis** | **From the file**, **Y** or **Z**. Y up models are turned so that Z is up and the front stays in front. | From the file |
 | **Origin** - **At the bottom center** | Puts the model origin at the center of its bottom. | On |
 | **Surface property** | Physics and sound material: `default`, `concrete`, `metal`, `solidmetal`, `metal_box`, `metalpanel`, `wood`, `wood_crate`, `wood_furniture`, `plastic`, `plastic_barrel`, `glass`, `rock`, `dirt`, `grass`, `gravel`, `brick`, `tile`, `carpet`, `cardboard`, `paper`, `rubber`, `flesh`, `ice`, `porcelain`, `computer`, `pottery`. | default |
-| **Collision** | **Pieces**: each separate piece of the model gets a convex hull. **Box**: the box of the model. **None**: no collision model. | Pieces |
+| **Collision** | **Pieces**: each separate piece of the model gets a convex hull. **Single convex hull**: one convex piece around the whole model. **Convex decomposition**: several convex pieces that follow the shape of the model (VHACD style), so a chair, an arch or an L shaped wall gets a collision that matches it without filling its holes. **Box**: the box of the model. **None**: no collision model. With hull and decomposition, **Max pieces** (1 to 40, decomposition only) and **Max vertices per piece** (8 to 128) keep every piece under the vphysics limits. **Use the model's own collision when present**: objects of the file named `UCX_`, `UBX_`, `UCP_`, `USP_`, `*_col`, `*_phys`, `collision`... become the physics model (one convex piece each, merged down to Max pieces when there are more) and are not drawn; without them the chosen mode is used. All of these are saved (`lab.model_collision`, `lab.collision_max_pieces`, `lab.collision_max_hull_vertices`, `lab.model_own_collision`). | Pieces, 16 pieces, 32 vertices, own collision on |
 | **Mass** (physics prop only) | 0.1 to 50000 kg. | 20 kg |
 | **Levels of detail (LOD)** | Simplified versions of the model that the game draws far away. Shared with [Propper](propper.md) and saved (`[lab.model_lod]`). | On |
 | **Levels** | Levels below the full model, 3 to 6 (big models get one or two more). | 4 |
@@ -47,19 +48,23 @@ The window first shows the file path and a summary: triangles, materials and siz
 
 A physics prop without collision gets a warning: it cannot move in game.
 
+### Collision preview
+
+Under the options a 3D preview shows the model with the collision that will be compiled drawn over it, each convex piece in its own color, and the piece count ("16 convex pieces", or "Collision of the file: 3 convex pieces"). **Show collision** turns the overlay off. Left or right drag turns the model, the wheel zooms. The pieces are computed in the background with the same code as the import, so what you see is what the `.phy` gets.
+
 **Materials** lists the materials the model uses with their texture: the file name, "texture in the file" (embedded), or "no texture (its color)".
 
-The options other than the name and the LOD settings stay as you left them until you close Hammer Pro. **Import** is greyed out while the name is empty.
+The options other than the paths, the collision and the LOD settings stay as you left them until you close Hammer Pro. **Import** is greyed out while **$modelname** or **$cdmaterials** is not a valid path.
 
 ## What is written
 
 The model goes into the game folder of the mounted content, its textures next to it:
 
-- `materials/models/hammerpro/<name>/`: one VTF (with mipmaps) and one `VertexLitGeneric` VMT per used material. A material without a texture (or whose texture cannot be read) gets a small texture of its color, with a warning in the console. Double sided materials get `$nocull`; alpha becomes `$alphatest` or `$translucent` (from the material's alpha mode, or from the texture's alpha when the file does not say); a tinted textured material gets `$color2`, a see-through color `$alpha`.
+- `materials/<$cdmaterials>/` (by default `materials/models/hammerpro/<name>/`): one VTF (with mipmaps) and one `VertexLitGeneric` VMT per used material. A material without a texture (or whose texture cannot be read) gets a small texture of its color, with a warning in the console. Double sided materials get `$nocull`; alpha becomes `$alphatest` or `$translucent` (from the material's alpha mode, or from the texture's alpha when the file does not say); a tinted textured material gets `$color2`, a see-through color `$alpha`.
 - With **Keep material parameters**: the extra files and keys described in "Material parameters" below.
-- `models/hammerpro/<name>.mdl` with its `.vvd`, `.dx90.vtx` and `.phy` (no `.phy` with collision **None**). Older `.dx80.vtx`, `.sw.vtx`, `.vtx` and `.ani` files of the same name are removed. The MDL is written last, so the game never sees half a model.
+- `models/<$modelname>` (by default `models/hammerpro/<name>.mdl`) with its `.vvd`, `.dx90.vtx` and `.phy` (no `.phy` with collision **None**). Older `.dx80.vtx`, `.sw.vtx`, `.vtx` and `.ani` files of the same name are removed. The MDL is written last, so the game never sees half a model.
 
-The built-in compiler makes what studiomdl makes of a static prop: one bone, one idle sequence, one mesh per material, levels of detail, and a shadow LOD for physics props. A model with more than 65536 vertices is split into several body parts (the console says how many). The collision hulls are shrunk by the collision margin like studiomdl's; flat pieces are thickened to one unit.
+The built-in compiler makes what studiomdl makes of a static prop: one bone, one idle sequence, one mesh per material, levels of detail, and a shadow LOD for physics props. A model with more than 65536 vertices is split into several body parts (the console says how many). The collision hulls are shrunk by the collision margin like studiomdl's; flat pieces are thickened to one unit. A collision of more than one piece is marked concave like studiomdl's `$concave`; a single convex hull is not.
 
 **Build and save as content** packs these files with the map (see [Build and save as content](build-content-release.md)).
 
@@ -90,8 +95,8 @@ The console lists, for every material, what was converted and what was ignored (
 1. **Add files...** picks several model files, **Add a folder...** picks folders. **Include subfolders** walks them (24 levels at most), and the **Formats** boxes (OBJ, FBX, glTF / GLB) filter what is taken from folders. Files picked by hand are kept whatever their format box says as long as the extension is supported. At most 5000 files are taken, in alphabetical order, duplicates removed.
 2. The **preview table** reads every file in the background and lists its triangles, its size in units, the model name it will get and its warnings (heavy model, too small or too large, a physics prop without collision, an unreadable file in red). A name in orange means a model of that name exists already. **Preview** reads the files again after you change the scale, units or axis.
 3. **Name template** builds each model name: `{name}` is the cleaned file name, `{folder}` the name of its folder, `{index}` its number (001, 002...). The **Prefix** goes in front. The result is cleaned like a single import name (lowercase letters, digits and `_`, 48 characters at most); two files that give the same name get `_2`, `_3`... so none overwrites another.
-4. The options are the ones of the single import: kind (`prop_static` or physics prop with its mass), scale, **Convert the units**, up axis, origin at the bottom center, surface property, collision, plus the saved **Levels of detail** and **Keep material parameters** settings.
-5. **Replace models that exist** is off by default: a model whose name exists in `models/hammerpro` is skipped and reported. **Parallel conversions** sets how many files are converted at once (1 to 16; the default is half the processor threads, between 1 and 4, because textures and meshes take memory).
+4. The options are the ones of the single import: kind (`prop_static` or physics prop with its mass), scale, **Convert the units**, up axis, origin at the bottom center, surface property, collision (with its limits and the model's own collision), plus the saved **Levels of detail** and **Keep material parameters** settings.
+5. **Replace models that exist** is off by default: a model whose name exists in its folder (`models/hammerpro` unless the MCP or command line `folder` changes it) is skipped and reported. **Parallel conversions** sets how many files are converted at once (1 to 16; the default is half the processor threads, between 1 and 4, because textures and meshes take memory).
 6. **Place one prop per model in a grid** puts one prop (`prop_static` or `prop_physics`) per converted model in front of the 3D camera: the grid starts where the camera looks, has the chosen number of **Columns**, and the **Gap** between cells (each cell is as big as the biggest model). The props rest on the floor level of that point and are selected, as one undo step ("Import models").
 7. **Convert N models** starts the run. A progress bar shows the files done; **Cancel** stops after the files being converted (the rest is reported as not run). The **Result** column and the console list every file: OK, Warning, Error or Skipped with the reason, then a summary line: files, ok, with warnings, errors, skipped, not run, and the time.
 
@@ -103,7 +108,7 @@ A file that cannot be read or compiled is an error for that file only; the run g
 hammerpro --import-models FILE_OR_DIR... --out DIR [options]
 ```
 
-It needs no window and no game: models go in `DIR/models/hammerpro/` and textures in `DIR/materials/models/hammerpro/<name>/`, a folder you can copy into the game or pack. See [Command line](../reference/command-line.md) for every option. Through MCP the tool is `import_models_batch`.
+It needs no window and no game: models go in `DIR/models/hammerpro/` and textures in `DIR/materials/models/hammerpro/<name>/`, a folder you can copy into the game or pack. See [Command line](../reference/command-line.md) for every option. Through MCP the tool is `import_models_batch` (its `collision`, `max_pieces`, `max_hull_vertices`, `own_collision` and `folder` arguments match the options above); `preview_collision` returns the pieces a file or brushes would get, with a drawing.
 
 ## Tips
 

@@ -17,6 +17,7 @@ mod soundcolor;
 pub use soundcolor::SoundColorRuntime;
 pub mod soundscape;
 pub use soundscape::SoundscapeRuntime;
+pub mod adapter;
 mod launch;
 mod lighting;
 mod livelink;
@@ -58,8 +59,9 @@ pub use health::{HealthRuntime, LeakResult};
 pub use helpers::HelpersRuntime;
 pub use instances::InstancesRuntime;
 pub use lab::{
-    CombineRequest, DEFAULT_CAMERA_DISTANCE, DEFAULT_PLAYER_MODEL, FlyTextureOp, FlyTextureRuntime, LabRuntime,
-    LightStyleReport, ParticlePreviewRuntime, PlayerPlace, PlayerState, PropCreationRequest, TrainReport,
+    CollisionElement, CombineRequest, DEFAULT_CAMERA_DISTANCE, DEFAULT_PLAYER_MODEL, FlyTextureOp, FlyTextureRuntime,
+    LabRuntime, LightStyleReport, ParticlePreviewRuntime, PlayerPlace, PlayerState, PropCreationRequest,
+    PropperCollisionCommand, PropperCollisionInfo, PropperPieceInfo, TrainReport,
 };
 pub use launch::{ContentUse, GameState, LaunchRuntime, MapLoadReport, content_use};
 pub use lighting::{

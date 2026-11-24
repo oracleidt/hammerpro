@@ -415,6 +415,8 @@ pub(crate) fn volume_model(vol: &ShaftVolume, name: &str, gain: f32) -> Option<V
         surface_prop: "default".to_owned(),
         mass: 1.0,
         collision: hp_meshio::smd::Collision::None,
+        limits: hp_meshio::collision::CollisionLimits::default(),
+        own_collision: false,
         lod: hp_meshio::lod::LodOptions { enabled: false, ..hp_meshio::lod::LodOptions::default() },
     };
     let studio = hp_meshio::studio::compile(&model, std::slice::from_ref(&material), &opts).ok()?;

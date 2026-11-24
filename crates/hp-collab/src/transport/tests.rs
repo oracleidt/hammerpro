@@ -769,3 +769,17 @@ fn large_maps_stream_in_compressed_parts_that_rebuild_the_map() {
     assert_eq!(map_of(&decoded), map);
     assert!(peer.frames().is_empty());
 }
+
+#[test]
+fn status_events_are_sent_only_when_they_change() {
+    let mut seen = Seen::default();
+    assert!(seen.changed((1u64, 2u64)));
+    assert!(!seen.changed((1, 2)), "an idle session does not wake the editor");
+    assert!(seen.changed((1, 3)));
+    use super::host::steady_latency;
+    assert_eq!(steady_latency(0, 37), 37);
+    assert_eq!(steady_latency(40, 42), 40, "small jitter keeps the shown latency");
+    assert_eq!(steady_latency(40, 50), 50);
+    assert_eq!(steady_latency(200, 230), 200);
+    assert_eq!(steady_latency(200, 250), 250);
+}

@@ -48,6 +48,50 @@ domain! { "props";
             "args": string("Extra arguments, for example -maxbones 128."),
             "confirm": boolean("The user asked for this (needed to change path or args)."),
         }, [];
+    preview_collision: Editor, "Preview a generated collision",
+        "Computes the collision model Hammer Pro would build, without writing anything: for brushes (ids or \
+        solid_ids, default the selection, like Convert brushes to a prop) or for a model file (file: OBJ, FBX, \
+        glTF, GLB, read like the model import with its default options). mode: brushes (one convex piece per \
+        brush, brushes only), pieces (one convex hull per connected part, files only), hull (one convex hull of at \
+        most max_hull_vertices vertices), decompose (several convex pieces following the shape, VHACD style, at \
+        most max_pieces pieces of at most max_hull_vertices vertices each), box or none. own_collision (files, \
+        default lab.model_own_collision) uses the collision meshes of the file (UCX_, UBX_, *_col, collision...) \
+        when it has some. Returns the piece count, per piece its vertex, face and edge counts and volume, whether \
+        the model needs $concave, and with image (default true) a drawing with the mesh and each piece in color.",
+        {
+            "ids": target_ids(),
+            "solid_ids": target_solid_ids(),
+            "file": string("Model file (OBJ, FBX, glTF, GLB) instead of brushes."),
+            "mode": choice("Collision mode (default decompose).", &["brushes", "pieces", "hull", "decompose", "box", "none"]),
+            "max_pieces": integer("Most convex pieces of decompose (default lab.collision_max_pieces).", 1, 40),
+            "max_hull_vertices": integer("Most vertices per convex piece (default lab.collision_max_hull_vertices).", 8, 128),
+            "own_collision": boolean("Files: use the collision meshes of the file when present (default lab.model_own_collision)."),
+            "image": boolean("Add a drawing (default true)."),
+            "size": integer("Width and height of the drawing in pixels (default 512).", 128, 1024),
+        }, [];
+    edit_prop_collision: Edit, "Edit the collision of the prop being created",
+        "Drives the collision of the open Create prop from brushes window (run_action brushes_to_prop) and its \
+        $modelname and $cdmaterials. mode chooses none, box, brushes, hull, decompose (limits: the settings \
+        lab.collision_max_pieces and lab.collision_max_hull_vertices) or manual (editable copy of the current \
+        pieces). move edits a manual piece: element vertex, edge (moves its two vertices) or face (moves all its \
+        vertices) number index of piece, by delta [x, y, z] (snap rounds delta to the editor grid). A move that \
+        would make the piece concave is refused with a message (the piece keeps its last convex shape). add_box \
+        adds a box piece, remove_piece removes one. modelname is the model path (models/<folder>/<name>.mdl), \
+        cdmaterials the material folder. The window applies the changes at its next frame: the answer shows the \
+        state before them, call again without arguments (or after wait_frames) to read the result: mode, pieces \
+        (vertices, edges as vertex index pairs, faces as vertex index lists), modelname, cdmaterials and error.",
+        {
+            "mode": choice("Collision mode of the window.", &["none", "box", "brushes", "hull", "decompose", "manual"]),
+            "piece": integer("Piece to move (from 0).", 0, 39),
+            "element": choice("What to move (default vertex).", &["vertex", "edge", "face"]),
+            "index": integer("Number of the vertex, edge or face in the piece (from 0).", 0, 100_000),
+            "delta": vec3("Move in units [x, y, z]."),
+            "snap": boolean("Round delta to the editor grid (default false)."),
+            "add_box": boolean("Add a box piece (switches to manual)."),
+            "remove_piece": integer("Remove this manual piece (from 0).", 0, 39),
+            "modelname": string("$modelname: models/<folder>/<name>.mdl."),
+            "cdmaterials": string("$cdmaterials: material folder under materials/."),
+        }, [];
     preview_prop_lods: Editor, "Preview the levels of detail of a prop",
         "What the levels of detail of a prop made from brushes (Convert brushes to a prop, Propper) will be, \
         made by the same simplifier as the export so the numbers are the ones that get compiled: per level \
@@ -381,6 +425,257 @@ fn preview_prop_lods(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
     }))
 }
 
+type Previewed = (Vec<[glam::DVec3; 3]>, Vec<Vec<glam::DVec3>>, bool, Value);
+
+fn piece_json(points: &[glam::DVec3]) -> Value {
+    let hull = hp_geom::convex_hull(points).ok();
+    let faces = hull.as_ref().map_or(0, |h| h.faces.len());
+    let edges = hull.as_ref().map_or(0, |h| h.faces.iter().map(|f| f.indices.len()).sum::<usize>() / 2);
+    let volume = hull.as_ref().map_or(0.0, hp_geom::ConvexHull::volume);
+    json!({ "vertices": points.len(), "faces": faces, "edges": edges, "volume": (volume * 10.0).round() / 10.0 })
+}
+
+fn collision_sheet(
+    triangles: &[[glam::DVec3; 3]],
+    pieces: &[Vec<glam::DVec3>],
+    size: u32,
+    title: String,
+) -> hp_shape::Image {
+    let mut mesh = hp_shape::TriMesh::new();
+    for tri in triangles {
+        let corners = tri.map(|p| mesh.add_vertex(p));
+        mesh.add_tri(corners, 0);
+    }
+    let colors = [[40, 240, 80], [255, 190, 30], [60, 180, 255], [255, 80, 200], [150, 255, 230], [255, 120, 60]];
+    let mut layers = vec![hp_shape::Layer { mesh, color: [150, 155, 165], wire: false }];
+    for (index, piece) in pieces.iter().enumerate() {
+        let mut hull = hp_shape::TriMesh::new();
+        for tri in hp_geom::hull_triangles(piece) {
+            let corners = tri.map(|p| hull.add_vertex(p));
+            hull.add_tri(corners, 0);
+        }
+        layers.push(hp_shape::Layer { mesh: hull, color: colors[index % colors.len()], wire: true });
+    }
+    hp_shape::render_sheet(
+        &layers,
+        &[],
+        &hp_shape::SheetOptions {
+            width: size,
+            height: size,
+            views: vec![hp_shape::ViewKind::Iso],
+            dimensions: false,
+            grid: false,
+            title,
+            ground: None,
+        },
+    )
+}
+
+fn brush_collision(
+    geometry: &hp_editor::prop_export::PropGeometry,
+    mode: &str,
+    limits: hp_meshio::collision::CollisionLimits,
+) -> R<Vec<Vec<glam::DVec3>>> {
+    let source: Vec<[glam::DVec3; 3]> = if geometry.pieces.is_empty() {
+        geometry.tris.iter().map(|t| t.pos).collect()
+    } else {
+        geometry.pieces.iter().flatten().copied().collect()
+    };
+    let points: Vec<glam::DVec3> = source.iter().flatten().copied().collect();
+    Ok(match mode {
+        "none" => Vec::new(),
+        "brushes" => geometry
+            .pieces
+            .iter()
+            .filter_map(|piece| {
+                let pts: Vec<glam::DVec3> = piece.iter().flatten().copied().collect();
+                hp_geom::convex_hull(&pts).ok().map(|h| h.points)
+            })
+            .collect(),
+        "hull" => hp_geom::limited_hull(&points, limits.max_hull_vertices).into_iter().collect(),
+        "decompose" => hp_geom::decompose(&source, limits.options()),
+        "box" => {
+            let b = hp_geom::Aabb::from_points(points.iter().copied());
+            vec![
+                (0..8)
+                    .map(|i| {
+                        glam::DVec3::new(
+                            if i & 1 == 0 { b.min.x } else { b.max.x },
+                            if i & 2 == 0 { b.min.y } else { b.max.y },
+                            if i & 4 == 0 { b.min.z } else { b.max.z },
+                        )
+                    })
+                    .collect(),
+            ]
+        }
+        "pieces" => return Err("pieces is for model files: brushes use brushes".to_owned()),
+        other => return Err(format!("unknown mode {other}")),
+    })
+}
+
+fn preview_collision(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
+    let mode = a
+        .opt_enum("mode", &["brushes", "pieces", "hull", "decompose", "box", "none"])?
+        .unwrap_or_else(|| "decompose".to_owned());
+    let lab = &state.settings.lab;
+    let mut limits = hp_ui_entities::model_import::collision_limits(lab);
+    if let Some(n) = a.opt_u64("max_pieces", 1, 40)? {
+        limits.max_pieces = n as usize;
+    }
+    if let Some(n) = a.opt_u64("max_hull_vertices", 8, 128)? {
+        limits.max_hull_vertices = n as usize;
+    }
+    let limits = limits.clamped();
+    let own = a.opt_bool("own_collision")?.unwrap_or(lab.model_own_collision);
+    let image = a.opt_bool("image")?.unwrap_or(true);
+    let size = a.opt_u64("size", 128, 1024)?.unwrap_or(512) as u32;
+    let file = a.opt_str("file", 1024)?.map(local_path).transpose()?;
+    let geometry = match &file {
+        Some(_) => None,
+        None => {
+            let solids = target_solids(state, a, "solid_ids")?;
+            Some((solids.len(), hp_ui_mapping::propper::prop_geometry(state, &solids)?))
+        }
+    };
+    Ok(Worker::spawn("preview_collision", move || {
+        let result: R<Previewed> = (|| match (&file, &geometry) {
+            (Some(path), _) => {
+                let kind = hp_meshio::smd::Collision::from_id(&mode).ok_or_else(|| {
+                    "brushes is for brushes: model files use pieces, hull, decompose, box or none".to_owned()
+                })?;
+                let model =
+                    hp_meshio::read(path).map_err(|e| e.to_string())?.to_source(&hp_meshio::ImportOptions::default());
+                let key = hp_meshio::studio::StudioOptions {
+                    model: String::new(),
+                    cdmaterials: String::new(),
+                    static_prop: true,
+                    surface_prop: String::new(),
+                    mass: 1.0,
+                    collision: kind,
+                    limits,
+                    own_collision: own,
+                    lod: hp_meshio::lod::LodOptions { enabled: false, ..hp_meshio::lod::LodOptions::default() },
+                };
+                let (pieces, used_own) = hp_meshio::studio::collision_preview(&model, &key);
+                let tris = model.triangles.iter().map(|t| t.pos).collect();
+                let source = json!({
+                    "file": path.display().to_string(),
+                    "triangles": model.triangles.len(),
+                    "own_collision_meshes": hp_meshio::collision::own_collision_count(&model),
+                });
+                Ok((tris, pieces, used_own, source))
+            }
+            (None, Some((solids, geometry))) => {
+                let pieces = brush_collision(geometry, &mode, limits)?;
+                let tris = geometry.tris.iter().map(|t| t.pos).collect();
+                Ok((tris, pieces, false, json!({ "solids": solids, "triangles": geometry.tris.len() })))
+            }
+            _ => Err("nothing to preview".to_owned()),
+        })();
+        let (tris, pieces, used_own, source) = match result {
+            Ok(r) => r,
+            Err(e) => return ToolResult::error(format!("preview_collision: {e}")),
+        };
+        let body = json!({
+            "mode": mode,
+            "source": source,
+            "used_own_collision": used_own,
+            "max_pieces": limits.max_pieces,
+            "max_hull_vertices": limits.max_hull_vertices,
+            "pieces": pieces.len(),
+            "concave": pieces.len() > 1,
+            "per_piece": pieces.iter().map(|p| piece_json(p)).collect::<Vec<_>>(),
+        });
+        let mut result = ToolResult::json(body.clone());
+        if image {
+            let sheet = collision_sheet(&tris, &pieces, size, format!("{} PIECES", pieces.len()));
+            match encode_png(sheet.width, sheet.height, sheet.rgba) {
+                Ok(png) => {
+                    result.content.extend(ToolResult::png(&png, "collision pieces in color over the mesh").content)
+                }
+                Err(e) => return ToolResult::error(format!("preview_collision: {e}")),
+            }
+        }
+        result.structured = Some(body);
+        result
+    }))
+}
+
+fn collision_info_json(state: &AppState) -> Value {
+    let lab = &state.runtime.lab;
+    match &lab.propper_collision_info {
+        Some(info) if lab.propper_create_open => json!({
+            "open": true,
+            "mode": info.mode,
+            "piece": info.piece,
+            "element": info.element,
+            "selected": info.selected,
+            "modelname": info.modelname,
+            "cdmaterials": info.cdmaterials,
+            "error": info.error,
+            "pieces": info.pieces.iter().map(|p| json!({
+                "vertices": p.vertices,
+                "edges": p.edges,
+                "faces": p.faces,
+            })).collect::<Vec<_>>(),
+            "pending_commands": lab.propper_collision_commands.len(),
+        }),
+        _ => json!({ "open": lab.propper_create_open, "pending_commands": lab.propper_collision_commands.len() }),
+    }
+}
+
+fn edit_prop_collision(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    use hp_app::runtime::{CollisionElement, PropperCollisionCommand as Command};
+    if !state.runtime.lab.propper_create_open {
+        return Err(
+            "the Create prop from brushes window is not open (run_action brushes_to_prop with brushes selected)"
+                .to_owned(),
+        );
+    }
+    let mut commands = Vec::new();
+    if let Some(mode) = a.opt_enum("mode", &["none", "box", "brushes", "hull", "decompose", "manual"])? {
+        commands.push(Command::Mode(mode));
+    }
+    if let Some(name) = a.opt_str("modelname", MAX_NAME)? {
+        commands.push(Command::ModelName(name.to_owned()));
+    }
+    if let Some(folder) = a.opt_str("cdmaterials", MAX_NAME)? {
+        commands.push(Command::CdMaterials(folder.to_owned()));
+    }
+    if a.opt_bool("add_box")?.unwrap_or(false) {
+        commands.push(Command::AddBox);
+    }
+    if let Some(piece) = a.opt_u64("remove_piece", 0, 39)? {
+        commands.push(Command::RemovePiece(piece as usize));
+    }
+    if let Some(delta) = a.opt_vec3("delta")? {
+        let element = match a.opt_enum("element", &["vertex", "edge", "face"])?.as_deref() {
+            Some("edge") => CollisionElement::Edge,
+            Some("face") => CollisionElement::Face,
+            _ => CollisionElement::Vertex,
+        };
+        if !delta.is_finite() || delta.abs().max_element() > 32768.0 {
+            return Err("delta must be finite numbers up to 32768".to_owned());
+        }
+        commands.push(Command::Move {
+            piece: a.opt_u64("piece", 0, 39)?.unwrap_or(0) as usize,
+            element,
+            index: a.opt_u64("index", 0, 100_000)?.unwrap_or(0) as usize,
+            delta,
+            snap: a.opt_bool("snap")?.unwrap_or(false),
+        });
+    }
+    let queued = commands.len();
+    state.runtime.lab.propper_collision_commands.extend(commands);
+    let mut body = collision_info_json(state);
+    body["queued"] = json!(queued);
+    if queued > 0 {
+        body["note"] =
+            json!("the window applies the changes at its next frame: call again without arguments to read them");
+    }
+    Ok(ToolResult::json(body))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -392,6 +687,68 @@ mod tests {
             Outcome::Worker(w) => w.wait(state, std::time::Duration::from_secs(60)),
             other => panic!("unexpected {other:?}"),
         }
+    }
+
+    #[test]
+    fn collision_preview_and_window_editing_are_reachable() {
+        let mut state = hp_app::testing::test_state();
+        let solids: Vec<u32> = state.doc.scene().solids().keys().copied().collect();
+        for (mode, most) in [("hull", 1), ("decompose", 3), ("box", 1), ("brushes", solids.len())] {
+            let r = call(
+                &mut state,
+                "preview_collision",
+                json!({ "solid_ids": solids, "mode": mode, "max_pieces": 3, "max_hull_vertices": 10, "image": mode == "decompose" }),
+            );
+            assert!(!r.is_error, "{mode}: {}", r.first_text());
+            let v: Value = serde_json::from_str(r.first_text()).unwrap();
+            let pieces = v["pieces"].as_u64().unwrap() as usize;
+            assert!(pieces >= 1 && pieces <= most, "{mode}: {pieces}");
+            if mode != "brushes" && mode != "box" {
+                assert!(v["per_piece"].as_array().unwrap().iter().all(|p| p["vertices"].as_u64().unwrap() <= 10));
+            }
+            assert_eq!(v["concave"], json!(pieces > 1));
+        }
+        let wrong = call(&mut state, "preview_collision", json!({ "solid_ids": solids, "mode": "pieces" }));
+        assert!(wrong.is_error);
+        let closed = call(&mut state, "edit_prop_collision", json!({ "mode": "hull" }));
+        assert!(closed.is_error && closed.first_text().contains("brushes_to_prop"));
+        state.runtime.lab.propper_create_open = true;
+        let queued = call(
+            &mut state,
+            "edit_prop_collision",
+            json!({ "mode": "manual", "element": "edge", "index": 2, "delta": [16, 0, 0], "snap": true, "modelname": "models/props/x.mdl" }),
+        );
+        assert!(!queued.is_error, "{}", queued.first_text());
+        let v: Value = serde_json::from_str(queued.first_text()).unwrap();
+        assert_eq!(v["queued"], json!(3));
+        let commands = &state.runtime.lab.propper_collision_commands;
+        assert_eq!(commands.len(), 3);
+        assert!(matches!(
+            commands[2],
+            hp_app::runtime::PropperCollisionCommand::Move {
+                element: hp_app::runtime::CollisionElement::Edge,
+                index: 2,
+                snap: true,
+                ..
+            }
+        ));
+        for (path, value) in [
+            ("lab.model_collision", json!("decompose")),
+            ("lab.collision_max_pieces", json!(24)),
+            ("lab.collision_max_hull_vertices", json!(64)),
+            ("lab.model_own_collision", json!(false)),
+            ("lab.propper_collision_mode", json!("hull")),
+            ("lab.propper_collision_snap", json!(false)),
+        ] {
+            let r = match run_tool(&mut state, "set_setting", &json!({ "path": path, "value": value })) {
+                Outcome::Done(r) => r,
+                Outcome::Ui(_) => ToolResult::text("ui"),
+                other => panic!("unexpected {other:?}"),
+            };
+            assert!(!r.is_error, "{path}: {}", r.first_text());
+        }
+        let bad = run_tool(&mut state, "set_setting", &json!({ "path": "lab.collision_max_pieces", "value": 41 }));
+        assert!(matches!(bad, Outcome::Done(r) if r.is_error));
     }
 
     #[test]

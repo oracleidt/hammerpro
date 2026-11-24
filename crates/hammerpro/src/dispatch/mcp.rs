@@ -259,12 +259,13 @@ impl HammerProApp {
         let focused = ctx.input(|i| i.viewport().focused).unwrap_or(false);
         let gained = focused && !self.pkg.mcp.focused;
         self.pkg.mcp.focused = focused;
-        let title = self.state.map_title();
         let Some(server) = self.pkg.mcp.server.as_mut() else { return };
-        let title_changed = server.record().map_title != title;
+        self.titles.refresh(&self.state);
+        let title = &self.titles.map_title;
+        let title_changed = server.record().map_title != *title;
         let due = self.pkg.mcp.record_written.is_none_or(|t| t.elapsed() >= RECORD_INTERVAL);
         if gained || (title_changed && due) {
-            if let Err(e) = server.update_record(&title, gained) {
+            if let Err(e) = server.update_record(title, gained) {
                 log::warn!("MCP instance record: {e}");
             }
             self.pkg.mcp.record_written = Some(Instant::now());

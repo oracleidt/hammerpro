@@ -240,8 +240,7 @@ impl EntityPanel {
                     .show_separator_line(true)
                     .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(0, 4)))
                     .show(ui, |ui| {
-                        let objs = cx.doc.selected_objects();
-                        crate::display_color::section(ui, cx.doc, cx.settings, cx.settings_dirty, &objs, &mut ops);
+                        crate::display_color::section(ui, cx.doc, cx.settings, cx.settings_dirty, &mut ops);
                         editor_info_ui(ui, smart, view);
                     });
             }
@@ -693,8 +692,7 @@ fn world_brushes_ui(
         }
     });
     ui.add_space(8.0);
-    let selected = cx.doc.selected_objects();
-    crate::display_color::section(ui, cx.doc, cx.settings, cx.settings_dirty, &selected, ops);
+    crate::display_color::section(ui, cx.doc, cx.settings, cx.settings_dirty, ops);
 }
 
 pub(crate) fn tie_classes(fgd: Option<&ResolvedFgd>) -> Vec<&str> {

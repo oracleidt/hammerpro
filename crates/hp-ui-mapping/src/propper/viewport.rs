@@ -23,6 +23,7 @@ pub(super) struct Scene<'a> {
 pub(super) struct Edit {
     pub key: usize,
     pub position: DVec3,
+    pub start: DVec3,
 }
 
 struct Drag {
@@ -295,7 +296,7 @@ impl Viewport {
                     .map(|point| drag.point + point - drag.initial),
             };
             if let Some(position) = position.filter(|p| p.is_finite()) {
-                edit = Some(Edit { key: drag.key, position });
+                edit = Some(Edit { key: drag.key, position, start: drag.point });
             }
         }
         if !ui.input(|i| i.pointer.button_down(PointerButton::Primary)) {

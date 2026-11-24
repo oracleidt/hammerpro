@@ -321,6 +321,24 @@ fn failure(error: anyhow::Error) -> Event {
     }
 }
 
+pub(crate) struct Seen<T>(Option<T>);
+
+impl<T> Default for Seen<T> {
+    fn default() -> Self {
+        Self(None)
+    }
+}
+
+impl<T: PartialEq> Seen<T> {
+    pub(crate) fn changed(&mut self, value: T) -> bool {
+        if self.0.as_ref() == Some(&value) {
+            return false;
+        }
+        self.0 = Some(value);
+        true
+    }
+}
+
 pub(crate) fn event(tx: &Editor, value: Event) -> Result<()> {
     let key = match &value {
         Event::Participants(_) => Some(0),

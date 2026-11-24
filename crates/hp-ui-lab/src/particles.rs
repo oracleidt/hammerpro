@@ -127,9 +127,13 @@ pub struct ParticleShared {
     pub fx_materials: Vec<String>,
     pub playing: Vec<(Id, String)>,
     pub particles: usize,
+    pub sprites_serial: u64,
 }
 
 impl ParticleShared {
+    pub fn sprites_changed(&mut self) {
+        self.sprites_serial = self.sprites_serial.wrapping_add(1);
+    }
     fn model_control_points(&self, name: &str, collisions: bool) -> Vec<i32> {
         let mut todo = vec![name.to_ascii_lowercase()];
         let mut seen = HashSet::new();
@@ -859,6 +863,42 @@ pub struct ParticleLayer {
     sources_key: Option<(SourcesKey, FireView)>,
     effects: HashMap<Id, Playing>,
     lighting: Option<LightingContext>,
+    pace: Pace,
+    structure: Option<Structure>,
+}
+
+#[derive(Debug, PartialEq)]
+struct Structure {
+    ids: Vec<Id>,
+    library: u64,
+    sprite_layer: bool,
+    worlds: [usize; 3],
+}
+
+#[derive(Debug, Default)]
+pub struct Pace {
+    key: Option<(i64, [u64; 5], u64)>,
+    pending: f64,
+}
+
+impl Pace {
+    pub fn due(&mut self, state: &AppState) -> Option<f64> {
+        let dt = f64::from(state.frame.dt);
+        if dt.is_finite() && dt > 0.0 {
+            self.pending += dt;
+        }
+        let fps = state.settings.render.animation_fps;
+        let time = state.frame.time.rem_euclid(3600.0);
+        let tick = if fps == 0 { state.frame.index as i64 } else { (time * f64::from(fps)).floor() as i64 };
+        let c = &state.cameras.cam3d;
+        let cam = [c.pos.x.to_bits(), c.pos.y.to_bits(), c.pos.z.to_bits(), c.yaw_deg.to_bits(), c.pitch_deg.to_bits()];
+        let key = (tick, cam, state.doc.revision());
+        if self.key == Some(key) {
+            return None;
+        }
+        self.key = Some(key);
+        Some(std::mem::take(&mut self.pending))
+    }
 }
 
 fn parse3(s: Option<&str>) -> Option<[f32; 3]> {
@@ -974,7 +1014,15 @@ fn sources_of<'a>(entities: impl Iterator<Item = (Id, &'a hp_vmf::Entity)> + Clo
 
 impl ParticleLayer {
     pub fn new(handle: ParticleHandle) -> Self {
-        Self { handle, sources: Vec::new(), sources_key: None, effects: HashMap::new(), lighting: None }
+        Self {
+            handle,
+            sources: Vec::new(),
+            sources_key: None,
+            effects: HashMap::new(),
+            lighting: None,
+            pace: Pace::default(),
+            structure: None,
+        }
     }
 
     pub fn particle_count(&self) -> usize {
@@ -992,7 +1040,7 @@ impl ParticleLayer {
     fn refresh_sources(&mut self, state: &AppState) {
         let key = match Self::compiled_world(state) {
             Some(w) => SourcesKey::Compiled(Arc::as_ptr(w) as usize),
-            None => SourcesKey::Document(state.sidecar.serial(), state.doc.revision()),
+            None => SourcesKey::Document(state.sidecar.serial(), state.doc.scene_revision()),
         };
         let fires = FireView::of(state);
         if self.sources_key.as_ref().is_some_and(|(k, f)| *k == key && *f == fires) {
@@ -1051,6 +1099,7 @@ impl ParticleLayer {
     }
 
     fn fill_sprites(&self, shared: &mut ParticleShared, eye: [f32; 3]) {
+        shared.sprites_changed();
         let ParticleShared { sprites, materials, model_draws, looks, .. } = shared;
         sprites.clear();
         materials.clear();
@@ -1060,7 +1109,28 @@ impl ParticleLayer {
         sort_far_first(sprites, eye);
     }
 
+    fn idle(&mut self) {
+        self.structure = None;
+        let busy = match self.handle.lock() {
+            Ok(mut s) => {
+                s.world_requirement = None;
+                s.model_requirement.clear();
+                s.ray_requirement = false;
+                s.active
+                    || s.particles > 0
+                    || !s.playing.is_empty()
+                    || !s.sprites.is_empty()
+                    || !s.model_draws.is_empty()
+            }
+            Err(_) => false,
+        };
+        if busy {
+            self.stop_all();
+        }
+    }
+
     fn stop_all(&mut self) {
+        self.structure = None;
         self.effects.clear();
         self.lighting = None;
         if let Ok(mut s) = self.handle.lock() {
@@ -1072,6 +1142,7 @@ impl ParticleLayer {
             s.particles = 0;
             s.sprites.clear();
             s.model_draws.clear();
+            s.sprites_changed();
         }
     }
 }
@@ -1111,6 +1182,11 @@ impl OverlayLayer for ParticleLayer {
             .collect();
         near.sort_by(|a, b| a.0.total_cmp(&b.0));
         near.truncate(MAX_EFFECTS);
+        if near.is_empty() && self.effects.is_empty() {
+            drop(near);
+            self.idle();
+            return;
+        }
         let Ok(mut shared) = self.handle.lock() else { return };
         let requirements: HashMap<_, _> = near
             .iter()
@@ -1148,6 +1224,22 @@ impl OverlayLayer for ParticleLayer {
             .map(|(_, source)| source.id)
             .collect();
         shared.ray_requirement = !ray_requirements.is_empty();
+        let structure = Structure {
+            ids: near.iter().map(|(_, s)| s.id).collect(),
+            library: shared.library_gen,
+            sprite_layer: shared.sprite_layer,
+            worlds: [
+                Arc::as_ptr(&shared.models) as usize,
+                Arc::as_ptr(&shared.rays) as usize,
+                Arc::as_ptr(&shared.physics) as usize,
+            ],
+        };
+        let due = self.pace.due(state);
+        if due.is_none() && self.structure.as_ref() == Some(&structure) {
+            return;
+        }
+        self.structure = Some(structure);
+        let elapsed = due.unwrap_or(0.0);
         let rays = Arc::clone(&shared.rays);
         let physics = Arc::clone(&shared.physics);
         let mut lighting = state.assets.particle_lighting();
@@ -1171,7 +1263,7 @@ impl OverlayLayer for ParticleLayer {
         };
         let keep: HashSet<Id> = near.iter().map(|(_, s)| s.id).collect();
         self.effects.retain(|id, _| keep.contains(id));
-        let dt = state.frame.dt.clamp(0.0, 0.1);
+        let dt = (elapsed as f32).clamp(0.0, 0.1);
         let particle_view = hp_pcf::screen_velocity::view(f3(cam.pos), f3(cam.right()), f3(cam.up()));
         let mut budget = MAX_PARTICLES;
         let mut starts = 0;
@@ -1983,6 +2075,8 @@ mod tests {
                 sources: Vec::new(),
                 sources_key: None,
                 effects: HashMap::from([(1, playing)]),
+                pace: Pace::default(),
+                structure: None,
             };
             let mut peak_sprites = 0;
             for _ in 0..20 {
@@ -2001,3 +2095,33 @@ mod tests {
 #[cfg(test)]
 #[path = "particles_native_tests.rs"]
 mod native_tests;
+
+#[cfg(test)]
+mod pace_tests {
+    use super::Pace;
+
+    #[test]
+    fn particles_step_at_the_animation_rate_not_on_every_mouse_move() {
+        let mut state = hp_app::testing::test_state();
+        state.settings.render.animation_fps = 30;
+        state.frame.time = 10.0;
+        state.frame.dt = 0.01;
+        let mut pace = Pace::default();
+        assert!(pace.due(&state).is_some(), "the first frame steps");
+        for i in 1..3 {
+            state.frame.time = 10.0 + f64::from(i) * 0.005;
+            assert_eq!(pace.due(&state), None, "a hover frame inside the same animation frame changes nothing");
+        }
+        state.frame.time = 10.04;
+        let dt = pace.due(&state).expect("the next animation frame steps");
+        assert!((dt - 0.03).abs() < 1e-6, "the skipped time is not lost: {dt}");
+        state.cameras.cam3d.pos.x += 16.0;
+        assert!(pace.due(&state).is_some(), "a camera move redraws the 3D view, so the particles follow");
+        state.doc.set_selection(&[hp_editor::ObjRef::Entity(5)]);
+        assert!(pace.due(&state).is_some(), "an edit or a selection steps at once");
+        assert_eq!(pace.due(&state), None);
+        state.settings.render.animation_fps = 0;
+        state.frame.index += 1;
+        assert!(pace.due(&state).is_some(), "unlimited animation steps every frame");
+    }
+}

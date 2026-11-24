@@ -135,7 +135,7 @@ impl OverlayLayer for SelectionTopLayer {
     }
 
     fn paint(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
-        if !view.is_2d() || state.doc.selected_objects().is_empty() {
+        if !view.is_2d() || state.doc.selection().objects.is_empty() {
             return;
         }
         let k = key(state, view);

@@ -54,6 +54,8 @@ fn options(static_prop: bool, collision: Collision) -> StudioOptions {
         surface_prop: "wood".to_owned(),
         mass: 25.0,
         collision,
+        limits: crate::collision::CollisionLimits::default(),
+        own_collision: false,
         lod: crate::lod::LodOptions::default(),
     }
 }
@@ -314,4 +316,54 @@ fn physics_props_get_a_shadow_lod() {
     assert_eq!(vtx_lods as usize, f.lods + 1);
     let vvd_lods = i32::from_le_bytes(f.vvd[12..16].try_into().unwrap());
     assert_eq!(vvd_lods as usize, f.lods + 1);
+}
+
+#[test]
+fn hull_and_decomposition_build_a_valid_physics_model_within_the_limits() {
+    let names = vec!["top".to_owned(), "legs".to_owned()];
+    let hull = compile(&table(), &names, &options(true, Collision::Hull)).expect("compile");
+    assert_eq!(hull.convex_pieces, 1);
+    let phy = hp_mdl::parse_phy(hull.phy.as_ref().expect("hull phy")).expect("hull phy reads");
+    assert_eq!(phy.solids.len(), 1);
+    let text = String::from_utf8_lossy(hull.phy.as_ref().unwrap()).into_owned();
+    assert!(!text.contains("\"concave\" \"1\""), "one convex piece is not concave");
+    for max_pieces in [2, 5, 16] {
+        let mut opts = options(false, Collision::Decompose);
+        opts.limits = crate::collision::CollisionLimits { max_pieces, max_hull_vertices: 12 };
+        let parts = compile(&table(), &names, &opts).expect("compile");
+        assert!(parts.convex_pieces >= 2 && parts.convex_pieces <= max_pieces, "{max_pieces}: {}", parts.convex_pieces);
+        let bytes = parts.phy.as_ref().expect("decomposed phy");
+        hp_mdl::parse_phy(bytes).expect("decomposed phy reads");
+        assert!(String::from_utf8_lossy(bytes).contains("\"concave\" \"1\""));
+        let (preview, own) = collision_preview(&table(), &opts);
+        assert!(!own);
+        assert_eq!(preview.len(), parts.convex_pieces, "the preview shows what gets compiled");
+        assert!(preview.iter().all(|p| p.len() <= 12));
+    }
+}
+
+#[test]
+fn the_models_own_collision_meshes_become_the_physics_model_and_leave_the_render_mesh() {
+    let mut m = table();
+    let render = m.triangles.len();
+    m.objects.push(crate::MeshObject { name: "Table".to_owned(), extras: None, first: 0, count: render });
+    let first = m.triangles.len();
+    m.triangles.extend(cuboid(DVec3::new(-24.0, -12.0, 0.0), DVec3::new(24.0, 12.0, 30.0), 0));
+    m.objects.push(crate::MeshObject {
+        name: "UCX_Table_00".to_owned(),
+        extras: None,
+        first,
+        count: m.triangles.len() - first,
+    });
+    let names = vec!["top".to_owned(), "legs".to_owned()];
+    let mut opts = options(true, Collision::Decompose);
+    opts.own_collision = true;
+    let f = compile(&m, &names, &opts).expect("compile");
+    assert!(f.own_collision);
+    assert_eq!(f.convex_pieces, 1);
+    assert_eq!(load(&f).triangle_count(), render, "the collision mesh is not drawn");
+    opts.own_collision = false;
+    let drawn = compile(&m, &names, &opts).expect("compile");
+    assert!(!drawn.own_collision);
+    assert_eq!(load(&drawn).triangle_count(), m.triangles.len());
 }

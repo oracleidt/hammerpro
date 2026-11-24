@@ -18,6 +18,11 @@ pub(crate) const TR: hp_app::i18n::TrTable = &[
         "Full quality restored, automatic reduction paused",
         "Qualité maximale rétablie, réduction automatique suspendue",
     ),
+    (
+        "perf.report_copied",
+        "Performance report copied to the clipboard: paste it in your message",
+        "Rapport de performances copié dans le presse-papiers : collez-le dans votre message",
+    ),
 ];
 
 #[derive(Default)]

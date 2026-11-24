@@ -439,7 +439,8 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `grid_highlight_64` | `false` | Lignes plus claires toutes les 64 unités. |
 | `grid_min_px` | `4.0` | Masque les niveaux de grille 2D plus serrés que ce nombre de pixels. |
 | `hide_nodraw`, `hide_clips`, `hide_triggers`, `hide_hints` | `false` | Groupes de textures outils masqués dans la vue 3D. |
-| `max_fps` | `0` | Limite d'images par seconde (0 : aucune). |
+| `max_fps` | `0` | Limite d'images par seconde (0 : la fréquence de l'écran, par la synchronisation verticale ou `frame_cap_refresh`). |
+| `frame_cap_refresh` | `true` | Avec `vsync` désactivé et `max_fps` à 0, dessiner au plus autant d'images par seconde que l'écran de la fenêtre en affiche (lu dans Windows, 60 si inconnu) au lieu d'aller aussi vite que possible. Les fichiers de réglages existants l'ont aussi. **Paramètres > Rendu > Images par seconde > Limiter à la fréquence de l'écran**. |
 | `unfocused_fps` | `30` | Images par seconde quand la fenêtre n'a pas le focus (0 : sans limite). |
 | `animation_fps` | `30` | Images par seconde des matériaux animés, des sprites de détail qui ondulent, des effets de particules et des lumières qui clignotent quand rien d'autre ne bouge (0 : chaque image, 240 au plus). |
 | `animation_idle_pause_s` | `10` | Secondes sans souris ni clavier après lesquelles les animations s'arrêtent jusqu'à la prochaine action (0 : jamais). |
@@ -453,6 +454,8 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `lit_quality` | `Auto` | Nombre de lumières que chaque partie de la vue 3D dessine en mode éclairé et dans l'aperçu calculé. `High` : jusqu'à 128 (le rendu complet, toujours). `Balanced` : seulement les 32 plus fortes de chaque partie, plus rapide sur les maps avec des centaines de lumières, quelques lumières faibles sont omises. `Auto` : `Balanced` seulement pendant que la caméra bouge, `High` dès qu'elle s'arrête, une image immobile est donc toujours complète. Pendant que la caméra bouge, `Auto` dessine aussi 3 faces d'ombres de lumières par image au lieu de 6 et, dans les vues éclairée, calculée, en lancer de rayons et joueur, baisse la résolution de la vue 3D (jusqu'à la moitié) quand la carte graphique passe plus de 10 ms sur ce qui en dépend (la vue elle-même, ses effets et son affichage, pas les cartes d'ombres) ; la pleine résolution revient à l'arrêt (MCP `get_performance` `lighting_motion_scale`). **Paramètres > Rendu > Performance > Qualité de l'aperçu d'éclairage**, `set_setting render.lit_quality`. Voir [Performances de l'éditeur](../troubleshooting/performance.md#aperçus-déclairage-à-pleine-vitesse). |
 | `render_scale` | `1.0` | Dessine la vue 3D à cette part de sa taille (0,25 à 1) puis l'étire sur la fenêtre. 1.0 est la qualité maximale. |
 | `graphics_backend` | `Auto` | API graphique, appliquée au prochain démarrage : `Auto` (la meilleure carte graphique, puis Vulkan ; DirectX 12 seulement sans pilote Vulkan), `Vulkan` ou `Dx12`. **Paramètres > Rendu > Performance > API graphique**, `set_setting render.graphics_backend`, ligne de commande `--backend`. Voir [Performances de l'éditeur](../troubleshooting/performance.md#premier-démarrage-lent-shaders). |
+| `graphics_adapter` | `""` | Carte graphique qui dessine l'éditeur, appliquée au prochain démarrage : vide pour automatique (toujours la carte dédiée quand il y en a une, aussi sur les portables, jamais un rendu logiciel), sinon une partie du nom de l'adaptateur, ou `integrated`, `dedicated`, `software`. `HP_ADAPTER` la remplace. Une carte introuvable revient au choix automatique avec un avis. **Paramètres > Rendu > Performance > Carte graphique**. |
+| `adapter_notice_seen` | `""` | L'avis de carte graphique déjà montré (rendu logiciel, ou puce intégrée alors qu'une carte dédiée existe), pour qu'il n'apparaisse qu'une fois par carte. |
 | `dx12_compiler` | `Fxc` | Compilateur de shaders DirectX 12, appliqué au prochain démarrage : `Fxc` (inclus dans Windows) ou `Dxc` (expérimental, demande `dxcompiler.dll` à côté de `hammerpro.exe`, FXC est utilisé sans elle). DXC n'est jamais utilisé de lui-même. **Paramètres > Rendu > Performance > Compilateur de shaders DirectX 12**, `set_setting render.dx12_compiler`. |
 | `perf_hud` | `false` | Affiche dans la vue 3D les images par seconde, le temps d'image, le temps CPU et GPU par étape, la mémoire et le niveau de qualité. |
 
@@ -609,6 +612,12 @@ La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de l
 | `propper_physics` | `false` | Crée un prop physique mobile depuis des brushes. |
 | `propper_static` | `true` | Compile `$staticprop` et crée un `prop_static` ; décoché, crée un `prop_dynamic`. Désactivé pour les props physiques. |
 | `propper_collision` | `true` | Génère la collision, obligatoire pour les props physiques. |
+| `propper_collision_mode` | `"brushes"` | Mode de collision précise au départ de la fenêtre de création : `brushes` (un morceau par brush), `hull` ou `decompose`. |
+| `propper_collision_snap` | `true` | Les sommets de collision déplacés tombent sur la grille ; arêtes et faces bougent par pas de grille. |
+| `model_collision` | `"pieces"` | Collision de l'import de modèle : `pieces`, `hull`, `decompose`, `box` ou `none`. |
+| `model_own_collision` | `true` | L'import de modèle utilise les maillages de collision du fichier (`UCX_`, `*_col`...) quand il en a. |
+| `collision_max_pieces` | `16` | Nombre maximal de morceaux d'une décomposition convexe, de 1 à 40. |
+| `collision_max_hull_vertices` | `32` | Nombre maximal de sommets de chaque morceau convexe généré, de 8 à 128. |
 | `propper_mass` | `10.0` | Masse physique en kg, de 0,1 à 50000. |
 | `propper_model_folder` | `""` | Dossier du dernier modèle fait par **Créer un prop à partir des brushes** (relatif à `models/`) ; le suivant y démarre avec un nom libre. Vide : un nom `hammerpro/` automatique. |
 | `propper_name_prefix` | `""` | Nom du dernier prop créé sans son numéro final ; le nom suivant est ce préfixe plus le premier numéro libre (`doorway01`, `doorway02`...). |

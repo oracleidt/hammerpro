@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use glam::{DVec2, DVec3};
 
 use crate::Model;
+use crate::collision::CollisionLimits;
 use crate::lod::{self, LodLevel, LodOptions, Wedge};
 use crate::smd::Collision;
 
@@ -25,6 +26,8 @@ pub struct StudioOptions {
     pub surface_prop: String,
     pub mass: f64,
     pub collision: Collision,
+    pub limits: CollisionLimits,
+    pub own_collision: bool,
     pub lod: LodOptions,
 }
 
@@ -38,6 +41,7 @@ pub struct StudioFiles {
     pub body_parts: usize,
     pub lods: usize,
     pub lod_triangles: Vec<usize>,
+    pub own_collision: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -207,7 +211,18 @@ fn stem(model: &str) -> String {
     if s.is_empty() { "model".to_owned() } else { s.to_owned() }
 }
 
+pub fn collision_preview(model: &Model, opts: &StudioOptions) -> (Vec<Vec<DVec3>>, bool) {
+    let plan = crate::collision::plan(model, opts.collision, opts.limits, opts.own_collision);
+    let render = plan.render.as_ref().unwrap_or(model);
+    if plan.pieces.is_none() && opts.collision == Collision::None {
+        return (Vec::new(), false);
+    }
+    (phy::preview(render, opts.collision, plan.pieces.as_deref()), plan.own)
+}
+
 pub fn compile(model: &Model, materials: &[String], opts: &StudioOptions) -> Result<StudioFiles, StudioError> {
+    let plan = crate::collision::plan(model, opts.collision, opts.limits, opts.own_collision);
+    let model = plan.render.as_ref().unwrap_or(model);
     let mut parts = build_parts(model)?;
     let mut used: Vec<usize> = parts.iter().flat_map(|p| p.meshes.iter().map(|m| m.material)).collect();
     used.sort_unstable();
@@ -247,7 +262,7 @@ pub fn compile(model: &Model, materials: &[String], opts: &StudioOptions) -> Res
                 .sum()
         })
         .collect();
-    let collision = phy::build(model, opts.collision);
+    let collision = phy::build(model, opts.collision, plan.pieces.as_deref());
     let (vvd_body, layout) = vtx::vvd_vertices(&parts);
     let checksum = buf::checksum(&[&vvd_body, opts.model.as_bytes(), names.concat().as_bytes()]);
     let (mut lo, mut hi) = part_bounds(&parts);
@@ -283,6 +298,7 @@ pub fn compile(model: &Model, materials: &[String], opts: &StudioOptions) -> Res
         body_parts: parts.len(),
         lods: levels.len() + 1,
         lod_triangles,
+        own_collision: plan.own,
     })
 }
 

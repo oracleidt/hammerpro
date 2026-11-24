@@ -27,6 +27,7 @@ Les rapports de bug sont les bienvenus. Un bon rapport permet de reproduire le p
 - **Problèmes graphiques.** Dites si forcer une autre API avec `WGPU_BACKEND` change quelque chose, et joignez une capture d'écran.
 - **Problèmes de compilation.** Indiquez le préréglage (Brouillon, Normal, Final) et le jeu cible utilisés, et si la même map se compile avec les outils de Valve.
 - **Éditeur lent.** Joignez les images par seconde (**Paramètres > Général > Afficher les images par seconde**) et les informations de la vue 3D (`O`) à l'endroit où ça rame.
+- **Rapport de performances.** **Aide > Copier le rapport de performances** copie un court texte avec la version, la carte graphique et son pilote, la limite d'images, la taille et le mode de rendu des vues, la taille de la map et les derniers temps d'image : collez-le dans tout signalement d'éditeur lent ou d'usage élevé du processeur ou de la carte graphique (voir [Performances de l'éditeur](performance.md#mesurer-dabord)).
 - **Traductions.** Un texte français faux ou manquant est aussi un bug : citez le texte et l'endroit où il apparaît.
 
 ## Proposer une correction

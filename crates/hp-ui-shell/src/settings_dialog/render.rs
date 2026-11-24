@@ -391,6 +391,12 @@ impl SettingsPage for RenderPage {
             t!("shell.render.animate_in_background_tip"),
         );
         changed |= check(ui, &mut r.vsync, t!("shell.render.vsync"), t!("shell.render.vsync_tip"));
+        changed |= check(
+            ui,
+            &mut r.frame_cap_refresh,
+            t!("shell.render.frame_cap_refresh"),
+            t!("shell.render.frame_cap_refresh_tip"),
+        );
 
         heading(ui, t!("shell.render.vram"));
         super::form_grid(ui, "hp_shell_render_vram").show(ui, |ui| {
@@ -498,6 +504,24 @@ impl SettingsPage for RenderPage {
                 .response
                 .on_hover_text(t!("shell.render.graphics_api_tip"));
             changed |= before != r.graphics_backend;
+            ui.end_row();
+            ui.label(t!("shell.render.graphics_adapter"));
+            let names = hp_app::runtime::adapter::choice().map(|c| c.names()).unwrap_or_default();
+            let auto = t!("shell.render.graphics_adapter_auto");
+            let before = r.graphics_adapter.clone();
+            let shown = if r.graphics_adapter.is_empty() { auto.to_owned() } else { r.graphics_adapter.clone() };
+            egui::ComboBox::from_id_salt("hp_shell_render_graphics_adapter")
+                .selected_text(shown)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut r.graphics_adapter, String::new(), auto);
+                    for name in names {
+                        let label = name.clone();
+                        ui.selectable_value(&mut r.graphics_adapter, name, label);
+                    }
+                })
+                .response
+                .on_hover_text(t!("shell.render.graphics_adapter_tip"));
+            changed |= before != r.graphics_adapter;
             ui.end_row();
             ui.label(t!("shell.render.dx12_compiler"));
             let before = r.dx12_compiler;
@@ -1136,8 +1160,8 @@ pub(crate) const TR: TrTable = &[
     ("shell.render.max_fps", "Frame rate limit", "Limite d'images par seconde"),
     (
         "shell.render.max_fps_tip",
-        "Most frames per second (0: no limit; with vertical sync the display limits it)",
-        "Nombre maximal d'images par seconde (0 : aucune limite ; avec la synchronisation verticale, l'écran la limite)",
+        "Most frames per second (0: the screen refresh rate, with vertical sync or Limit to the screen refresh rate)",
+        "Nombre maximal d'images par seconde (0 : la fréquence de l'écran, avec la synchronisation verticale ou Limiter à la fréquence de l'écran)",
     ),
     ("shell.render.unfocused_fps", "In the background", "En arrière-plan"),
     (
@@ -1165,6 +1189,19 @@ pub(crate) const TR: TrTable = &[
     ),
     ("shell.render.vsync", "Vertical sync", "Synchronisation verticale"),
     ("shell.render.graphics_api", "Graphics API", "API graphique"),
+    ("shell.render.graphics_adapter", "Graphics card", "Carte graphique"),
+    ("shell.render.graphics_adapter_auto", "Automatic (most powerful)", "Automatique (la plus puissante)"),
+    (
+        "shell.render.graphics_adapter_tip",
+        "Which graphics card draws the editor, applied at the next start. Automatic always takes the dedicated graphics card when there is one (also on laptops), never the software renderer. The HP_ADAPTER environment variable overrides it.",
+        "Quelle carte graphique dessine l'éditeur, appliquée au prochain démarrage. Automatique prend toujours la carte graphique dédiée quand il y en a une (aussi sur les portables), jamais le rendu logiciel. La variable d'environnement HP_ADAPTER la remplace.",
+    ),
+    ("shell.render.frame_cap_refresh", "Limit to the screen refresh rate", "Limiter à la fréquence de l'écran"),
+    (
+        "shell.render.frame_cap_refresh_tip",
+        "With vertical sync off and no frame rate limit, draw at most as many frames per second as the screen shows instead of as fast as possible (applies immediately)",
+        "Avec la synchronisation verticale désactivée et sans limite d'images par seconde, dessiner au plus autant d'images par seconde que l'écran en affiche au lieu d'aller aussi vite que possible (s'applique immédiatement)",
+    ),
     ("shell.render.graphics_api_auto", "Automatic", "Automatique"),
     (
         "shell.render.graphics_api_tip",

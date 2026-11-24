@@ -76,7 +76,7 @@ domain! { "blender";
         (its folder) and {index}, a prefix, the import options (scale, units, up axis, origin, kind, surface \
         property, mass, collision) and the saved model options (levels of detail, material parameters), \
         parallel conversion, skip or replace of models that exist, and optionally one prop per model placed in a \
-        grid in front of the camera (one undo step). Models go in models/hammerpro of the game content. With \
+        grid in front of the camera (one undo step). Models go in models/hammerpro of the game content (folder changes it). With \
         dry_run nothing is written: it returns the preview table (triangles, size, name, warnings). Returns a \
         per file result (ok, warning, error, skipped) and a summary.",
         {
@@ -92,7 +92,11 @@ domain! { "blender";
             "kind": choice("Class of the props: static (prop_static, default) or physics (prop_physics).", &["static", "physics"]),
             "surface_prop": string("Physics and sound material (default default)."),
             "mass": number("Mass in kg of physics props, 0.1 to 50000 (default 20).", 0.1, 50000.0),
-            "collision": choice("Collision model (default pieces).", &["pieces", "box", "none"]),
+            "collision": choice("Collision model (default the setting lab.model_collision, pieces): pieces (one convex piece per connected part), hull (one convex hull), decompose (several convex pieces, VHACD style, $concave), box or none.", &["pieces", "hull", "decompose", "box", "none"]),
+            "max_pieces": integer("Most convex pieces of decompose, 1 to 40 (default lab.collision_max_pieces, 16).", 1, 40),
+            "max_hull_vertices": integer("Most vertices of each convex piece of hull and decompose, 8 to 128 (default lab.collision_max_hull_vertices, 32).", 8, 128),
+            "own_collision": boolean("Use the collision meshes of the file (objects named UCX_, UBX_, *_col, collision...) as the physics model and leave them out of the drawn mesh (default lab.model_own_collision, true)."),
+            "folder": string("Folder under models/ the models go to (default hammerpro); materials go to materials/models/<folder>/<name>."),
             "lod": boolean("Make levels of detail (default the saved lab.model_lod.enabled)."),
             "lod_levels": integer("Number of levels of detail, 3 to 6 (default the saved lab.model_lod.levels).", 3, 6),
             "lod_keep": number("Percent of the triangles each level keeps from the previous one, 20 to 90.", 20.0, 90.0),
@@ -275,8 +279,24 @@ fn spec_from(state: &AppState, a: &Args<'_>) -> R<Spec> {
     if let Some(m) = a.opt_f64("mass", 0.1, 50000.0)? {
         o.convert.mass = m;
     }
-    if let Some(c) = a.opt_enum("collision", &["pieces", "box", "none"])? {
+    if let Some(c) = a.opt_enum("collision", &["pieces", "hull", "decompose", "box", "none"])? {
         o.convert.collision = parse_collision(&c)?;
+    }
+    if let Some(n) = a.opt_u64("max_pieces", 1, 40)? {
+        o.convert.limits.max_pieces = n as usize;
+    }
+    if let Some(n) = a.opt_u64("max_hull_vertices", 8, 128)? {
+        o.convert.limits.max_hull_vertices = n as usize;
+    }
+    if let Some(own) = a.opt_bool("own_collision")? {
+        o.convert.own_collision = own;
+    }
+    if let Some(folder) = a.opt_str("folder", 200)? {
+        let folder = hp_ui_entities::model_import::batch::clean_folder(folder);
+        if folder.is_empty() {
+            return Err("folder must be a folder under models/, for example props/chairs".to_owned());
+        }
+        o.convert.folder = folder;
     }
     if let Some(b) = a.opt_bool("lod")? {
         o.convert.lod.enabled = b;

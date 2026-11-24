@@ -1662,7 +1662,7 @@ impl DisplacementTool {
             {
                 state.request(hp_app::Action::DispConformMesh);
             }
-            let tileable = !state.doc.selected_objects().is_empty() || !state.doc.selected_faces().is_empty();
+            let tileable = !state.doc.selection().objects.is_empty() || !state.doc.selected_faces().is_empty();
             if ui
                 .add_enabled(tileable, Button::new(t!("disp.tile_selection")))
                 .on_hover_text(t!("disp.tile_selection_tip"))

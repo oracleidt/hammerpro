@@ -398,7 +398,7 @@ fn isolate_button(ui: &mut Ui, state: &mut AppState, size: egui::Vec2) -> egui::
         }
     };
     let action = if isolated { Action::UnhideAll } else { Action::HideUnselected };
-    let enabled = isolated || !state.doc.selected_objects().is_empty();
+    let enabled = isolated || !state.doc.selection().objects.is_empty();
     let tip = if isolated { t!("shell.toolbar.isolate_off") } else { t!("shell.toolbar.isolate_on") };
     let r = strip_button(ui, size, isolated, enabled, tip, icon(crate::icons::Icon::Eye));
     let r = r.on_hover_ui(|ui| {

@@ -381,7 +381,7 @@ impl HammerProApp {
             return;
         }
         let s = self.state.settings.brush.detail.clone();
-        let within = (s.in_selection && !self.state.doc.selected_objects().is_empty())
+        let within = (s.in_selection && !self.state.doc.selection().objects.is_empty())
             .then(|| selection_world_solids(&self.state));
         let filter = filter_from(&s, within);
         let (job, revision) = candidate_job(&mut self.state, &filter);
@@ -464,7 +464,7 @@ impl HammerProApp {
         let mut start = false;
         let mut make = false;
         let running = self.pkg.brush.detail.candidates.is_some();
-        let has_selection = !self.state.doc.selected_objects().is_empty();
+        let has_selection = !self.state.doc.selection().objects.is_empty();
         let picked = self.pkg.brush.detail.picked.clone();
         let mut changed = false;
         let s = &mut self.state.settings.brush.detail;

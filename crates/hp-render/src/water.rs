@@ -202,6 +202,7 @@ struct WaterViewGpu {
     copy_view: wgpu::TextureView,
     uniform: wgpu::Buffer,
     bind: wgpu::BindGroup,
+    target: Option<Option<wgpu::TextureView>>,
 }
 
 pub(crate) struct WaterState {
@@ -525,11 +526,14 @@ impl Renderer {
                 &view.depth_view,
                 &water.blank,
             );
-            water.views.insert(view_id, WaterViewGpu { generation: gen_now, copy, copy_view, uniform, bind });
+            water
+                .views
+                .insert(view_id, WaterViewGpu { generation: gen_now, copy, copy_view, uniform, bind, target: None });
         }
         let reflect = self.water_reflect.clone();
+        let wanted_target = reflect.as_ref().map(|(_, t)| t.clone());
         let fresh_bind = match (water.views.get(&view_id), self.views.get(&view_id)) {
-            (Some(v), Some(view)) => {
+            (Some(v), Some(view)) if v.target.as_ref() != Some(&wanted_target) => {
                 let target = reflect.as_ref().map_or(&water.blank, |(_, t)| t);
                 Some(water_view_bind(
                     &self.device,
@@ -545,6 +549,7 @@ impl Renderer {
         };
         if let (Some(bind), Some(v)) = (fresh_bind, water.views.get_mut(&view_id)) {
             v.bind = bind;
+            v.target = Some(wanted_target);
         }
         let (n, f) = (f64::from(cam.near.max(1e-3)), f64::from(cam.far.max(cam.near + 1.0)));
         let a = (n / (f - n)) as f32;

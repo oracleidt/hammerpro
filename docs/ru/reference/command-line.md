@@ -79,7 +79,11 @@ hammerpro --import-models FILE_OR_DIR... --out DIR [options]
 | `--kind static\|physics` | `prop_static` или `prop_physics`. | `static` |
 | `--surface NAME` | Свойство поверхности. | `default` |
 | `--mass KG` | Масса физических объектов: от 0,1 до 50 000. | `20` |
-| `--collision pieces\|box\|none` | Модель столкновения. | `pieces` |
+| `--collision pieces\|hull\|decompose\|box\|none` | Модель столкновения: оболочка на каждую связную часть, одна выпуклая оболочка, выпуклая декомпозиция (несколько частей), коробка или нет. | `lab.model_collision` (`pieces`) |
+| `--max-pieces N` | Наибольшее число выпуклых частей `decompose`, от 1 до 40. | `lab.collision_max_pieces` (16) |
+| `--max-hull-vertices N` | Наибольшее число вершин части для `hull` и `decompose`, от 8 до 128. | `lab.collision_max_hull_vertices` (32) |
+| `--own-collision`, `--no-own-collision` | Использовать меши коллизии файлов (`UCX_`, `*_col`...), если они есть. | `lab.model_own_collision` (вкл.) |
+| `--folder F` | Папка внутри `models/` для моделей (материалы идут в `materials/models/F/<имя>/`). | `hammerpro` |
 | `--no-lod`, `--lod-levels N`, `--lod-keep PCT` | Уровни детализации: выключено, от 3 до 6 уровней, сохраняется от 20 до 90 % на уровень. | сохраненные настройки |
 | `--no-material-params` | Цвет, альфа и двусторонняя только в VMTs. | сохраненная настройка |
 | `--overwrite` | Заменить существующие модели (по умолчанию они пропускаются). | выкл. |

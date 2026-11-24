@@ -435,7 +435,7 @@ impl TextureBrowser {
         if self.category != Category::Used {
             return;
         }
-        let rev = state.doc.revision();
+        let rev = state.doc.scene_revision();
         if self.used.0 != Some(rev) {
             self.used = (Some(rev), crate::search::used_materials(&state.doc));
         }

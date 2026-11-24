@@ -26,6 +26,18 @@ pub fn main_window_state() -> Option<(bool, bool)> {
     }
 }
 
+pub fn main_monitor_refresh_hz() -> Option<u32> {
+    #[cfg(windows)]
+    {
+        let handle = MAIN_WINDOW.load(Ordering::Relaxed);
+        (handle != 0).then(|| win::refresh_hz(handle)).flatten()
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
 pub fn place_cursor(point: egui::Pos2, pixels_per_point: f32) -> bool {
     #[cfg(windows)]
     {
@@ -404,6 +416,30 @@ mod win {
 
     fn hwnd(handle: isize) -> HWND {
         handle as HWND
+    }
+
+    pub(super) fn refresh_hz(window: isize) -> Option<u32> {
+        use windows_sys::Win32::Graphics::Gdi::{DEVMODEW, ENUM_CURRENT_SETTINGS, EnumDisplaySettingsW};
+        unsafe {
+            if IsWindow(hwnd(window)) == 0 {
+                return None;
+            }
+            let monitor = MonitorFromWindow(hwnd(window), MONITOR_DEFAULTTONEAREST);
+            if monitor.is_null() {
+                return None;
+            }
+            let mut info: MONITORINFOEXW = std::mem::zeroed();
+            info.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
+            if GetMonitorInfoW(monitor, &raw mut info as *mut MONITORINFO) == 0 {
+                return None;
+            }
+            let mut mode: DEVMODEW = std::mem::zeroed();
+            mode.dmSize = std::mem::size_of::<DEVMODEW>() as u16;
+            if EnumDisplaySettingsW(info.szDevice.as_ptr(), ENUM_CURRENT_SETTINGS, &raw mut mode) == 0 {
+                return None;
+            }
+            (mode.dmDisplayFrequency > 1).then_some(mode.dmDisplayFrequency)
+        }
     }
 
     pub(super) fn place_cursor(window: isize, point: egui::Pos2, pixels_per_point: f32) -> bool {

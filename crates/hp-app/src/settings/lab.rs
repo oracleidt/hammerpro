@@ -27,6 +27,12 @@ pub struct LabSettings {
     pub propper_surface: String,
     pub propper_lod_auto: bool,
     pub model_keep_params: bool,
+    pub model_collision: ModelCollision,
+    pub model_own_collision: bool,
+    pub collision_max_pieces: u32,
+    pub collision_max_hull_vertices: u32,
+    pub propper_collision_mode: PropperCollisionMode,
+    pub propper_collision_snap: bool,
     pub color_correction_preview: bool,
     pub combine_origin: CombineOrigin,
     pub combine_keep_originals: bool,
@@ -88,6 +94,26 @@ pub enum CombineOrigin {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum ModelCollision {
+    #[default]
+    Pieces,
+    Hull,
+    Decompose,
+    Box,
+    None,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PropperCollisionMode {
+    #[default]
+    Brushes,
+    Hull,
+    Decompose,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum UnpropShape {
     #[default]
     Auto,
@@ -122,6 +148,12 @@ impl Default for LabSettings {
             propper_surface: String::new(),
             propper_lod_auto: false,
             model_keep_params: true,
+            model_collision: ModelCollision::Pieces,
+            model_own_collision: true,
+            collision_max_pieces: 16,
+            collision_max_hull_vertices: 32,
+            propper_collision_mode: PropperCollisionMode::Brushes,
+            propper_collision_snap: true,
             color_correction_preview: false,
             combine_origin: CombineOrigin::Center,
             combine_keep_originals: true,
@@ -137,6 +169,16 @@ impl Default for LabSettings {
 impl LabSettings {
     pub const MAX_COMBINE_PIECES: u32 = 128;
     pub const MAX_RECENT_FOLDERS: usize = 8;
+    pub const MAX_COLLISION_PIECES: u32 = 40;
+    pub const MIN_HULL_VERTICES: u32 = 8;
+    pub const MAX_HULL_VERTICES: u32 = 128;
+
+    pub fn collision_limits(&self) -> (usize, usize) {
+        (
+            self.collision_max_pieces.clamp(1, Self::MAX_COLLISION_PIECES) as usize,
+            self.collision_max_hull_vertices.clamp(Self::MIN_HULL_VERTICES, Self::MAX_HULL_VERTICES) as usize,
+        )
+    }
 
     pub fn remember_propper_folder(&mut self, folder: &str) {
         let folder = folder.trim().trim_matches('/').to_owned();

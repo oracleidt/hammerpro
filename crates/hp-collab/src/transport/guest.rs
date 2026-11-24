@@ -12,7 +12,7 @@ use zeroize::Zeroizing;
 use super::frame::{FAST, Frame, decode, read_body, read_header, write_frame};
 use super::handshake::{ClientHandshake, PEER_FRAME_LIMIT};
 use super::{
-    APPROVAL_DEADLINE, Command, Commands, DEADLINE, Editor, Event, JoinOptions, MAX_FRAME, WRITE_STALL, event,
+    APPROVAL_DEADLINE, Command, Commands, DEADLINE, Editor, Event, JoinOptions, MAX_FRAME, Seen, WRITE_STALL, event,
 };
 use crate::document::{ID_STRIDE, MAX_MAP_BYTES, MAX_UNITS, Snapshot, ValidatedSnapshot};
 use crate::protocol::{
@@ -412,6 +412,8 @@ async fn session(
     let (presence, presence_frames) = watch::channel(None);
     let mut writer = tokio::spawn(write_loop(send, frames, presence_frames, sent.clone(), start));
     let mut tick = tokio::time::interval(PING_INTERVAL);
+    let mut seen_traffic = Seen::default();
+    let mut seen_privacy = Seen::default();
     let (incoming_tx, mut incoming) = channel::channel(64);
     let budget = Arc::new(Semaphore::new(GUEST_QUEUE_BYTES));
     let reader = tokio::spawn(async move {
@@ -477,16 +479,22 @@ async fn session(
                     bail!("Session send stopped");
                 }
                 _ = tick.tick() => {
-                    event(editor, Event::Traffic { sent: sent.load(Ordering::Relaxed), received: core.received })?;
+                    let traffic = (sent.load(Ordering::Relaxed), core.received);
+                    if seen_traffic.changed(traffic) {
+                        event(editor, Event::Traffic { sent: traffic.0, received: traffic.1 })?;
+                    }
                     let direct_path_count = connection.paths().iter().filter(|path| path.remote_addr().is_ip()).count();
                     if invitation.mode == ConnectionMode::Relay {
                         ensure!(direct_path_count == 0 && endpoint.addr().ip_addrs().next().is_none(), "Direct path detected in relay-only session");
                     }
-                    event(editor, Event::NetworkPrivacy {
-                        relay_only: invitation.mode == ConnectionMode::Relay,
-                        published_ip_count: endpoint.addr().ip_addrs().count(),
-                        direct_path_count,
-                    })?;
+                    let privacy = (invitation.mode == ConnectionMode::Relay, endpoint.addr().ip_addrs().count(), direct_path_count);
+                    if seen_privacy.changed(privacy) {
+                        event(editor, Event::NetworkPrivacy {
+                            relay_only: privacy.0,
+                            published_ip_count: privacy.1,
+                            direct_path_count: privacy.2,
+                        })?;
+                    }
                 }
             }
         }

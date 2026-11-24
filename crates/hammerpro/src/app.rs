@@ -98,6 +98,7 @@ pub struct HammerProApp {
     frame_rate: crate::perf::FrameRate,
     worst_frame: f32,
     title: String,
+    pub(crate) titles: TitleCache,
     native_frames_at_start: bool,
     startup_maximized: Option<bool>,
     pub(crate) central_size: egui::Vec2,
@@ -253,6 +254,45 @@ pub(crate) fn install_pipeline_cache(rs: &egui_wgpu::RenderState, gfx: Option<&m
     gfx.renderer.prewarm_pipelines(msaa);
 }
 
+type TitleKey = (u64, Option<std::path::PathBuf>, bool, hp_app::i18n::Lang);
+
+#[derive(Default)]
+pub(crate) struct TitleCache {
+    key: Option<TitleKey>,
+    pub(crate) dirty: bool,
+    pub(crate) chrome: String,
+    pub(crate) tooltip: String,
+    pub(crate) os: String,
+    pub(crate) map_title: String,
+}
+
+impl TitleCache {
+    pub(crate) fn refresh(&mut self, state: &AppState) {
+        let revision = state.doc.revision();
+        let dirty = state.doc.is_dirty();
+        let lang = hp_app::i18n::lang();
+        let path = state.doc.path();
+        if self
+            .key
+            .as_ref()
+            .is_some_and(|(r, p, d, l)| *r == revision && p.as_deref() == path && *d == dirty && *l == lang)
+        {
+            return;
+        }
+        self.key = Some((revision, path.map(std::path::Path::to_path_buf), dirty, lang));
+        let name = files::map_display_name(state);
+        self.map_title = state.map_title();
+        self.dirty = dirty;
+        self.chrome = format!("{name} - Hammer Pro");
+        self.os = format!("{name}{} - Hammer Pro", if dirty { "*" } else { "" });
+        let file = match path {
+            Some(p) => p.display().to_string(),
+            None => t!("shell.menu.not_saved_yet").to_owned(),
+        };
+        self.tooltip = if dirty { format!("{file}\n{}", t!("shell.menu.unsaved_changes")) } else { file };
+    }
+}
+
 impl HammerProApp {
     pub fn new(cc: &eframe::CreationContext<'_>, cli: Cli, log_rx: Receiver<(Severity, String)>) -> Self {
         let startup = crate::timing::StartupReport::new();
@@ -373,6 +413,7 @@ impl HammerProApp {
             frame_rate: crate::perf::FrameRate::default(),
             worst_frame: 0.0,
             title: String::new(),
+            titles: TitleCache::default(),
             native_frames_at_start,
             startup_maximized,
             central_size: egui::vec2(1200.0, 800.0),
@@ -733,15 +774,10 @@ impl HammerProApp {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(true));
         }
         self.state.ui.fullscreen = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
-        let dirty = self.state.doc.is_dirty();
-        let mut spec =
-            hp_app::chrome::ChromeSpec::main(format!("{} - Hammer Pro", files::map_display_name(&self.state)), native);
-        spec.dirty = dirty;
-        let file = match self.state.doc.path() {
-            Some(p) => p.display().to_string(),
-            None => t!("shell.menu.not_saved_yet").to_owned(),
-        };
-        spec.title_tooltip = Some(if dirty { format!("{file}\n{}", t!("shell.menu.unsaved_changes")) } else { file });
+        self.titles.refresh(&self.state);
+        let mut spec = hp_app::chrome::ChromeSpec::main(self.titles.chrome.clone(), native);
+        spec.dirty = self.titles.dirty;
+        spec.title_tooltip = Some(self.titles.tooltip.clone());
         let mut chrome = hp_app::chrome::Chrome::begin(ui, spec);
         let menus_end = chrome.title_bar(ui, |ui| self.shell.title_menus(ui, &mut self.state));
         if let Some(x) = menus_end {
@@ -1213,14 +1249,10 @@ impl HammerProApp {
             crate::dispatch::map_loaded(self);
         }
 
-        let title = format!(
-            "{}{} - Hammer Pro",
-            files::map_display_name(&self.state),
-            if self.state.doc.is_dirty() { "*" } else { "" }
-        );
-        if title != self.title {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
-            self.title = title;
+        self.titles.refresh(&self.state);
+        if self.titles.os != self.title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(self.titles.os.clone()));
+            self.title.clone_from(&self.titles.os);
         }
 
         {
@@ -1281,6 +1313,10 @@ impl HammerProApp {
 
     pub(crate) fn make_assets(&self) -> Box<dyn hp_app::AssetsApi> {
         make_assets(&self.state.settings, self.automated)
+    }
+
+    pub(crate) fn is_automated(&self) -> bool {
+        self.automated
     }
 
     pub(crate) fn gpu_lost_exit(&mut self, reason: &str) {
@@ -1811,6 +1847,7 @@ impl eframe::App for HammerProApp {
                 frame.set_wgpu_surface_config(config);
                 log::info!("Presentation mode: {present_mode:?}");
             }
+            crate::perf_report::note_present_mode(present_mode);
         }
         self.watch_native_failures();
         self.update_crash_context();

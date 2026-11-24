@@ -5,6 +5,7 @@ type Key = (u64, u64, u64, usize);
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Models {
     key: Option<Key>,
+    requirement: std::collections::HashSet<hp_editor::Id>,
     pub data: hp_app::state::ParticleModelSnapshot,
 }
 
@@ -29,6 +30,13 @@ impl Models {
 pub(super) fn prepare(state: &mut AppState, handle: &ParticleHandle, ctx: &egui::Context) {
     let Ok(mut shared) = handle.lock() else { return };
     if shared.model_requirement.is_empty() || !state.settings.lab.show_particles {
+        return;
+    }
+    let current = key(state);
+    if shared.models.key == Some(current)
+        && shared.models.data.pending.is_empty()
+        && shared.models.requirement == shared.model_requirement
+    {
         return;
     }
     let compiled = state.runtime.lab.player.active && !state.runtime.lab.player.editor_world;
@@ -61,7 +69,8 @@ pub(super) fn prepare(state: &mut AppState, handle: &ParticleHandle, ctx: &egui:
     if !data.pending.is_empty() {
         ctx.request_repaint_after(std::time::Duration::from_millis(16));
     }
-    shared.models = Arc::new(Models { key: Some(key(state)), data });
+    let requirement = shared.model_requirement.clone();
+    shared.models = Arc::new(Models { key: Some(current), requirement, data });
 }
 
 #[cfg(test)]
@@ -119,7 +128,9 @@ mod tests {
         assert_eq!(handle.lock().unwrap().particles, 0);
         let mut data = hp_app::state::ParticleModelSnapshot::default();
         data.pending.insert(6);
-        handle.lock().unwrap().models = Arc::new(Models { key: Some(key(&state)), data });
+        handle.lock().unwrap().models =
+            Arc::new(Models { key: Some(key(&state)), requirement: Default::default(), data });
+        state.frame.time += 0.1;
         layer.prepare(&state);
         assert_eq!(handle.lock().unwrap().particles, 0);
         let boxes: Arc<[hp_pcf::environment::ModelHitbox]> = vec![hp_pcf::environment::ModelHitbox {
@@ -130,7 +141,9 @@ mod tests {
         .into();
         let mut data = hp_app::state::ParticleModelSnapshot::default();
         data.models.insert(6, HashMap::from([("effects".into(), boxes)]));
-        handle.lock().unwrap().models = Arc::new(Models { key: Some(key(&state)), data });
+        handle.lock().unwrap().models =
+            Arc::new(Models { key: Some(key(&state)), requirement: Default::default(), data });
+        state.frame.time += 0.1;
         layer.prepare(&state);
         let shared = handle.lock().unwrap();
         assert_eq!(shared.particles, 1);

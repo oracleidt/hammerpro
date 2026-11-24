@@ -32,33 +32,47 @@ fn swatch(ui: &mut Ui, c: [u8; 3], current: bool) -> egui::Response {
     resp.on_hover_text(hex(c))
 }
 
+type Selected = (u64, std::rc::Rc<Vec<ObjRef>>, DisplayColorState);
+
+thread_local! {
+    static SELECTED: std::cell::RefCell<Option<Selected>> = const { std::cell::RefCell::new(None) };
+}
+
+fn selected(doc: &Document) -> (std::rc::Rc<Vec<ObjRef>>, DisplayColorState) {
+    let revision = doc.revision();
+    SELECTED.with(|cell| {
+        let mut cell = cell.borrow_mut();
+        if let Some((at, objs, state)) = cell.as_ref()
+            && *at == revision
+        {
+            return (objs.clone(), *state);
+        }
+        let objs = std::rc::Rc::new(doc.selected_objects());
+        let state = doc.display_color_state(&objs);
+        *cell = Some((revision, objs.clone(), state));
+        (objs, state)
+    })
+}
+
 pub(crate) fn section(
     ui: &mut Ui,
     doc: &Document,
     settings: &mut Settings,
     settings_dirty: &mut bool,
-    objs: &[ObjRef],
     ops: &mut Vec<Op>,
 ) {
     egui::CollapsingHeader::new(t!("entities.display_color"))
         .id_salt("hp_ui_entities.display_color")
         .default_open(true)
-        .show(ui, |ui| body(ui, doc, settings, settings_dirty, objs, ops));
+        .show(ui, |ui| body(ui, doc, settings, settings_dirty, ops));
 }
 
-pub(crate) fn body(
-    ui: &mut Ui,
-    doc: &Document,
-    settings: &mut Settings,
-    settings_dirty: &mut bool,
-    objs: &[ObjRef],
-    ops: &mut Vec<Op>,
-) {
+pub(crate) fn body(ui: &mut Ui, doc: &Document, settings: &mut Settings, settings_dirty: &mut bool, ops: &mut Vec<Op>) {
+    let (objs, state) = selected(doc);
     if objs.is_empty() {
         ui.label(RichText::new(t!("entities.display_color_none")).weak());
         return;
     }
-    let state = doc.display_color_state(objs);
     let current = match state {
         DisplayColorState::Custom(c) => Some(c),
         _ => None,
@@ -119,7 +133,7 @@ impl DisplayColorWindow {
         }
         let mut open = true;
         let mut ops = Vec::new();
-        let objs = state.doc.selected_objects();
+        let count = state.doc.selection().objects.len();
         let AppState { doc, settings, settings_dirty, .. } = state;
         let center = ctx.content_rect().center() - vec2(110.0, 90.0);
         let pos = ctx.input(|i| i.pointer.latest_pos()).map_or(center, |p| p + vec2(16.0, 16.0));
@@ -131,10 +145,10 @@ impl DisplayColorWindow {
             .default_width(220.0)
             .default_pos(pos)
             .show(ctx, |ui| {
-                if !objs.is_empty() {
-                    ui.label(RichText::new(tf!("entities.display_color_count", objs.len())).weak());
+                if count > 0 {
+                    ui.label(RichText::new(tf!("entities.display_color_count", count)).weak());
                 }
-                body(ui, doc, settings, settings_dirty, &objs, &mut ops);
+                body(ui, doc, settings, settings_dirty, &mut ops);
             });
         if crate::dialogs::escape_closes(ctx, resp.as_ref().map(|r| r.response.layer_id), false) {
             open = false;

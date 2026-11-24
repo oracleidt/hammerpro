@@ -65,6 +65,7 @@ mod opening;
 mod panel_layout;
 mod particle_exit;
 mod perf;
+mod perf_report;
 mod primitive_memory;
 mod primitive_stats;
 mod prompts;
@@ -83,6 +84,22 @@ use std::sync::Arc;
 #[global_allocator]
 static ALLOCATOR: native_crash::GuardedAlloc = native_crash::GuardedAlloc;
 
+#[cfg(windows)]
+#[allow(non_upper_case_globals)]
+#[unsafe(no_mangle)]
+#[used]
+pub static NvOptimusEnablement: u32 = 1;
+
+#[cfg(windows)]
+#[allow(non_upper_case_globals)]
+#[unsafe(no_mangle)]
+#[used]
+pub static AmdPowerXpressRequestHighPerformance: u32 = 1;
+
+const GRAPHICS_FALLBACK_ARG: &str = "--graphics-fallback";
+
+static WINDOW_STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 #[derive(Clone, Debug, Default)]
 pub struct Cli {
     pub open: Option<PathBuf>,
@@ -98,6 +115,7 @@ pub struct Cli {
     pub restore: Option<PathBuf>,
     pub no_save_settings: bool,
     pub backend: Option<hp_app::settings::GraphicsBackend>,
+    pub graphics_fallback: Option<String>,
 }
 
 impl Cli {
@@ -127,6 +145,7 @@ fn parse_cli() -> Cli {
                 Some(Some(b)) => cli.backend = Some(b),
                 _ => eprintln!("--backend takes auto, vulkan or dx12"),
             },
+            GRAPHICS_FALLBACK_ARG => cli.graphics_fallback = args.next().filter(|v| !v.trim().is_empty()),
             restart::RESTORE_ARG => cli.restore = args.next().map(PathBuf::from),
             "--frames" => cli.frames = args.next().and_then(|v| v.parse().ok()).unwrap_or(90),
             "--maximize-view" => cli.maximize_view = args.next().and_then(|v| v.parse().ok()),
@@ -178,12 +197,8 @@ fn vulkan_wins_alone(vulkan: Option<&[wgpu::DeviceType]>, adapter_named: bool) -
     !adapter_named && vulkan.is_some_and(|types| types.contains(&wgpu::DeviceType::DiscreteGpu))
 }
 
-fn automatic_backends() -> wgpu::Backends {
-    if !cfg!(windows) {
-        return wgpu::Backends::PRIMARY;
-    }
-    let named = std::env::var("HP_ADAPTER").is_ok_and(|v| !v.trim().is_empty());
-    if named {
+fn automatic_backends(named: bool) -> wgpu::Backends {
+    if !cfg!(windows) || named {
         return wgpu::Backends::PRIMARY;
     }
     let started = std::time::Instant::now();
@@ -198,7 +213,7 @@ fn automatic_backends() -> wgpu::Backends {
     wgpu::Backends::PRIMARY
 }
 
-fn instance_backends(forced: Option<wgpu::Backend>) -> (wgpu::Backends, Option<wgpu::Backend>) {
+fn instance_backends(forced: Option<wgpu::Backend>, named: bool) -> (wgpu::Backends, Option<wgpu::Backend>) {
     if let Some(env) = wgpu::Backends::from_env() {
         return (env, None);
     }
@@ -208,10 +223,18 @@ fn instance_backends(forced: Option<wgpu::Backend>) -> (wgpu::Backends, Option<w
             log::warn!(
                 "graphics API {b:?} was asked for but no graphics adapter offers it, the automatic choice is used"
             );
-            (automatic_backends(), None)
+            (automatic_backends(named), None)
         }
-        None => (automatic_backends(), None),
+        None => (automatic_backends(named), None),
     }
+}
+
+fn wanted_adapter(setting: Option<&str>) -> Option<String> {
+    std::env::var("HP_ADAPTER")
+        .ok()
+        .or_else(|| setting.map(str::to_owned))
+        .map(|v| v.trim().to_owned())
+        .filter(|v| !v.is_empty())
 }
 
 fn dx12_shader_compiler(choice: hp_app::settings::Dx12Compiler) -> wgpu::Dx12Compiler {
@@ -225,19 +248,25 @@ fn wgpu_options(
     transparent: bool,
     forced: Option<wgpu::Backend>,
     compiler: hp_app::settings::Dx12Compiler,
+    wanted: Option<String>,
+    fallback_from: Option<String>,
 ) -> egui_wgpu::WgpuConfiguration {
     let mut setup = egui_wgpu::WgpuSetupCreateNew::without_display_handle();
     if std::env::var_os("WGPU_DX12_COMPILER").is_none() {
         setup.instance_descriptor.backend_options.dx12.shader_compiler = dx12_shader_compiler(compiler);
     }
-    let (backends, forced) = instance_backends(forced);
+    let (backends, forced) = instance_backends(forced, wanted.is_some());
     setup.instance_descriptor.backends = backends;
     if transparent {
         setup.instance_descriptor.backend_options.dx12.presentation_system = wgpu::Dx12SwapchainKind::DxgiFromVisual;
     }
     setup.native_adapter_selector =
         Some(Arc::new(move |adapters: &[wgpu::Adapter], surface: Option<&wgpu::Surface<'_>>| {
-            pick_adapter(adapters, surface, transparent, forced)
+            let picked = pick_adapter(adapters, surface, transparent, forced, wanted.as_deref());
+            if let Ok(adapter) = &picked {
+                record_choice(adapters, adapter, wanted.as_deref(), fallback_from.clone());
+            }
+            picked
         }));
     setup.device_descriptor = Arc::new(|adapter: &wgpu::Adapter| wgpu::DeviceDescriptor {
         label: Some("hammerpro device"),
@@ -261,6 +290,7 @@ fn pick_adapter(
     surface: Option<&wgpu::Surface<'_>>,
     want_transparent: bool,
     forced: Option<wgpu::Backend>,
+    wanted: Option<&str>,
 ) -> Result<wgpu::Adapter, String> {
     let compiler = hp_render::pipeline_cache::dx12_compiler();
     let transparent = |a: &wgpu::Adapter| {
@@ -273,13 +303,7 @@ fn pick_adapter(
     };
     let rank = |a: &wgpu::Adapter| {
         let info = a.get_info();
-        let kind = match info.device_type {
-            wgpu::DeviceType::DiscreteGpu => 0,
-            wgpu::DeviceType::IntegratedGpu => 1,
-            wgpu::DeviceType::VirtualGpu => 2,
-            wgpu::DeviceType::Other => 3,
-            wgpu::DeviceType::Cpu => 4,
-        };
+        let kind = adapter_rank(adapter_kind(&info));
         let api = match info.backend {
             wgpu::Backend::Vulkan | wgpu::Backend::Metal => 0,
             wgpu::Backend::Dx12 => 1,
@@ -289,15 +313,7 @@ fn pick_adapter(
         let other_api = forced.is_some_and(|f| f != info.backend);
         (other_api, kind, slow_dx12(info.backend), !transparent(a), api)
     };
-    let wanted = std::env::var("HP_ADAPTER").ok().map(|v| v.to_ascii_lowercase()).filter(|v| !v.is_empty());
-    let named = |a: &wgpu::Adapter| {
-        wanted.as_deref().is_some_and(|w| {
-            let info = a.get_info();
-            info.name.to_ascii_lowercase().contains(w)
-                || (w == "integrated" && info.device_type == wgpu::DeviceType::IntegratedGpu)
-                || (w == "cpu" && info.device_type == wgpu::DeviceType::Cpu)
-        })
-    };
+    let named = |a: &wgpu::Adapter| wanted.is_some_and(|w| adapter_matches(w, &a.get_info()));
     let best = adapters
         .iter()
         .filter(|a| surface.is_none_or(|s| a.is_surface_supported(s)))
@@ -310,14 +326,19 @@ fn pick_adapter(
         (wgpu::Backend::Dx12, Some(c)) => format!(", shader compiler: {c}"),
         _ => String::new(),
     };
+    let reason = if named(best) {
+        "the graphics card asked for in the settings or HP_ADAPTER"
+    } else {
+        "the most powerful card that can draw to the window (dedicated before integrated, software last)"
+    };
     log::info!(
-        "graphics adapter: {} ({:?}, {:?}), transparent windows: {}{}{}",
+        "graphics adapter: {} ({:?}, {:?}), transparent windows: {}{}{}, reason: {reason}",
         info.name,
         info.backend,
         info.device_type,
         if can { "yes" } else { "no (square window corners)" },
         shader_compiler,
-        if forced.is_some() { ", chosen in the settings or on the command line" } else { "" }
+        if forced.is_some() { ", graphics API chosen in the settings or on the command line" } else { "" }
     );
     if slow_dx12(info.backend) && compiler.as_deref() == Some("fxc") {
         log::info!(
@@ -325,6 +346,69 @@ fn pick_adapter(
         );
     }
     Ok(best.clone())
+}
+
+fn adapter_kind(info: &wgpu::AdapterInfo) -> hp_app::runtime::adapter::AdapterKind {
+    use hp_app::runtime::adapter::{AdapterKind, kind_of};
+    let kind = match info.device_type {
+        wgpu::DeviceType::DiscreteGpu => AdapterKind::Dedicated,
+        wgpu::DeviceType::IntegratedGpu => AdapterKind::Integrated,
+        wgpu::DeviceType::VirtualGpu => AdapterKind::Virtual,
+        wgpu::DeviceType::Cpu => AdapterKind::Software,
+        wgpu::DeviceType::Other => AdapterKind::Other,
+    };
+    kind_of(&info.name, kind)
+}
+
+fn adapter_rank(kind: hp_app::runtime::adapter::AdapterKind) -> u8 {
+    use hp_app::runtime::adapter::AdapterKind;
+    match kind {
+        AdapterKind::Dedicated => 0,
+        AdapterKind::Integrated => 1,
+        AdapterKind::Virtual => 2,
+        AdapterKind::Other => 3,
+        AdapterKind::Software => 4,
+    }
+}
+
+fn adapter_matches(wanted: &str, info: &wgpu::AdapterInfo) -> bool {
+    hp_app::runtime::adapter::name_matches(wanted, &info.name, adapter_kind(info))
+}
+
+fn adapter_entry(info: &wgpu::AdapterInfo) -> hp_app::runtime::adapter::AdapterEntry {
+    let driver = [info.driver.trim(), info.driver_info.trim()]
+        .into_iter()
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    hp_app::runtime::adapter::AdapterEntry {
+        name: info.name.clone(),
+        kind: adapter_kind(info),
+        backend: format!("{:?}", info.backend),
+        driver,
+    }
+}
+
+fn record_choice(adapters: &[wgpu::Adapter], chosen: &wgpu::Adapter, wanted: Option<&str>, fallback: Option<String>) {
+    let info = chosen.get_info();
+    let all: Vec<_> = adapters.iter().map(|a| adapter_entry(&a.get_info())).collect();
+    let wanted_found = wanted.is_some_and(|w| adapter_matches(w, &info));
+    let chosen = adapter_entry(&info);
+    let notice = hp_app::runtime::adapter::notice_for(&chosen, &all, wanted_found);
+    if let Some(w) = wanted.filter(|_| !wanted_found) {
+        log::warn!("graphics: no graphics adapter matches \"{w}\", {} is used", chosen.name);
+    }
+    for a in &all {
+        log::info!("graphics adapter seen: {} ({}, {}, driver {})", a.name, a.kind.id(), a.backend, a.driver);
+    }
+    hp_app::runtime::adapter::set_choice(hp_app::runtime::adapter::AdapterChoice {
+        chosen,
+        notice,
+        all,
+        wanted: wanted.map(str::to_owned),
+        wanted_found,
+        fallback_from: fallback,
+    });
 }
 
 fn compile_step_name(arg: &str) -> Option<&'static str> {
@@ -393,6 +477,8 @@ fn main() -> eframe::Result<()> {
         .then(|| hp_app::settings::Settings::load_or_default(&hp_app::settings::Settings::default_path()));
     let native_frames = saved.as_ref().is_some_and(|s| s.ui.native_frames);
     let backend = cli.backend.or(saved.as_ref().map(|s| s.render.graphics_backend)).unwrap_or_default();
+    let wanted = wanted_adapter(saved.as_ref().map(|s| s.render.graphics_adapter.as_str()));
+    let fallback_from = cli.graphics_fallback.clone();
     let dx12_compiler = saved.as_ref().map(|s| s.render.dx12_compiler).unwrap_or_default();
     hp_render::pipeline_cache::set_dx12_shader_cache(Some(
         hp_app::settings::Settings::cache_dir().join(hp_render::pipeline_cache::DX12_SHADER_DIR),
@@ -411,17 +497,121 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport,
         renderer: eframe::Renderer::Wgpu,
-        wgpu_options: wgpu_options(true, forced_backend(backend), dx12_compiler),
+        wgpu_options: wgpu_options(true, forced_backend(backend), dx12_compiler, wanted, fallback_from.clone()),
         system_font_fallback: false,
         ..Default::default()
     };
 
-    eframe::run_native("HammerPro", options, Box::new(move |cc| Ok(Box::new(app::HammerProApp::new(cc, cli, log_rx)))))
+    let result = eframe::run_native(
+        "HammerPro",
+        options,
+        Box::new(move |cc| {
+            WINDOW_STARTED.store(true, std::sync::atomic::Ordering::Release);
+            Ok(Box::new(app::HammerProApp::new(cc, cli, log_rx)))
+        }),
+    );
+    if let Err(e) = &result
+        && !WINDOW_STARTED.load(std::sync::atomic::Ordering::Acquire)
+        && fallback_from.is_none()
+        && cfg!(windows)
+    {
+        let used = hp_app::runtime::adapter::choice().map(|c| c.chosen.backend);
+        let other = fallback_backend(used.as_deref(), backend);
+        let from = used.unwrap_or_else(|| forced_backend(backend).map_or("Vulkan".to_owned(), |b| format!("{b:?}")));
+        log::error!("graphics: the window could not start with {from} ({e}), starting again with {}", other.id());
+        if relaunch_with_backend(other, &from) {
+            return Ok(());
+        }
+    }
+    result
+}
+
+fn fallback_backend(used: Option<&str>, asked: hp_app::settings::GraphicsBackend) -> hp_app::settings::GraphicsBackend {
+    use hp_app::settings::GraphicsBackend;
+    match used {
+        Some(b) if b.eq_ignore_ascii_case("dx12") => GraphicsBackend::Vulkan,
+        Some(_) => GraphicsBackend::Dx12,
+        None if asked == GraphicsBackend::Dx12 => GraphicsBackend::Vulkan,
+        None => GraphicsBackend::Dx12,
+    }
+}
+
+fn args_with_backend(
+    mut args: impl Iterator<Item = String>,
+    backend: hp_app::settings::GraphicsBackend,
+    from: &str,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    while let Some(arg) = args.next() {
+        if arg == "--backend" || arg == GRAPHICS_FALLBACK_ARG {
+            args.next();
+            continue;
+        }
+        out.push(arg);
+    }
+    out.extend([
+        "--backend".to_owned(),
+        backend.id().to_ascii_lowercase(),
+        GRAPHICS_FALLBACK_ARG.to_owned(),
+        from.to_owned(),
+    ]);
+    out
+}
+
+fn relaunch_with_backend(backend: hp_app::settings::GraphicsBackend, from: &str) -> bool {
+    let Ok(exe) = std::env::current_exe() else { return false };
+    let args = args_with_backend(std::env::args().skip(1), backend, from);
+    match std::process::Command::new(exe).args(args).spawn() {
+        Ok(_) => true,
+        Err(e) => {
+            log::error!("graphics: cannot start Hammer Pro again with {}: {e}", backend.id());
+            false
+        }
+    }
 }
 
 #[cfg(test)]
 mod backend_tests {
     use super::*;
+
+    #[test]
+    fn a_failed_graphics_start_tries_the_other_api_once() {
+        use hp_app::settings::GraphicsBackend;
+        assert_eq!(fallback_backend(Some("Vulkan"), GraphicsBackend::Auto), GraphicsBackend::Dx12);
+        assert_eq!(fallback_backend(Some("Dx12"), GraphicsBackend::Auto), GraphicsBackend::Vulkan);
+        assert_eq!(fallback_backend(None, GraphicsBackend::Dx12), GraphicsBackend::Vulkan);
+        assert_eq!(fallback_backend(None, GraphicsBackend::Auto), GraphicsBackend::Dx12);
+        let args = ["map.vmf", "--backend", "vulkan", "--lang", "fr"].map(str::to_owned);
+        assert_eq!(
+            args_with_backend(args.into_iter(), GraphicsBackend::Dx12, "Vulkan"),
+            ["map.vmf", "--lang", "fr", "--backend", "dx12", GRAPHICS_FALLBACK_ARG, "Vulkan"].map(str::to_owned)
+        );
+    }
+
+    #[test]
+    fn the_automatic_choice_never_takes_a_software_adapter_when_a_real_card_exists() {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: automatic_backends(false),
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        });
+        let adapters = pollster::block_on(instance.enumerate_adapters(automatic_backends(false)));
+        let Ok(chosen) = pick_adapter(&adapters, None, false, None, None) else { return };
+        let kinds: Vec<_> = adapters.iter().map(|a| adapter_entry(&a.get_info())).collect();
+        let chosen = adapter_entry(&chosen.get_info());
+        eprintln!("adapters: {kinds:?}, automatic choice: {chosen:?}");
+        let best = kinds.iter().map(|a| adapter_rank(a.kind)).min().unwrap_or(u8::MAX);
+        assert_eq!(adapter_rank(chosen.kind), best, "the most powerful kind of card is chosen");
+        if kinds.iter().any(|a| a.kind != hp_app::runtime::adapter::AdapterKind::Software) {
+            assert_ne!(chosen.kind, hp_app::runtime::adapter::AdapterKind::Software);
+        }
+    }
+
+    #[test]
+    fn software_adapters_rank_last() {
+        use hp_app::runtime::adapter::AdapterKind;
+        assert!(adapter_rank(AdapterKind::Dedicated) < adapter_rank(AdapterKind::Integrated));
+        assert!(adapter_rank(AdapterKind::Other) < adapter_rank(AdapterKind::Software));
+    }
 
     #[test]
     fn vulkan_alone_only_with_a_dedicated_gpu_and_no_named_adapter() {

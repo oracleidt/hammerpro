@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use glam::{DMat4, DVec2, DVec3};
 
+pub mod collision;
 pub mod export;
 mod extras;
 mod fbx;

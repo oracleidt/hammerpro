@@ -439,7 +439,8 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `grid_highlight_64` | `false` | Brighter lines every 64 units. |
 | `grid_min_px` | `4.0` | Hide 2D grid levels denser than this many pixels. |
 | `hide_nodraw`, `hide_clips`, `hide_triggers`, `hide_hints` | `false` | Tool texture groups hidden in the 3D view. |
-| `max_fps` | `0` | Frame rate cap (0: none). |
+| `max_fps` | `0` | Frame rate cap (0: the screen refresh rate, through vertical sync or `frame_cap_refresh`). |
+| `frame_cap_refresh` | `true` | With `vsync` off and `max_fps` 0, draw at most as many frames per second as the screen of the window shows (read from Windows, 60 when unknown) instead of as fast as possible. Existing settings files get it on too. **Settings > Rendering > Frame rate > Limit to the screen refresh rate**. |
 | `unfocused_fps` | `30` | Frame rate when the window is not focused (0: no cap). |
 | `animation_fps` | `30` | Frames per second of animated materials, swaying detail sprites, particle effects and flickering lights while nothing else moves (0: every frame, at most 240). |
 | `animation_idle_pause_s` | `10` | Seconds without mouse or keyboard input after which animations stop until the next input (0: never). |
@@ -453,6 +454,8 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `lit_quality` | `Auto` | How many lights each part of the 3D view draws in the Lit mode and the baked preview. `High`: up to 128 (the full look, always). `Balanced`: only the 32 strongest of each part, faster on maps with hundreds of lights, a few faint lights are left out. `Auto`: `Balanced` only while the camera moves, `High` again as soon as it stops, so a still picture is always the full one. While the camera moves, `Auto` also draws 3 light shadow faces per frame instead of 6 and, in the Lit, Baked, Ray traced and player views, lowers the 3D view resolution (down to half) when the graphics card needs more than 10 ms for the passes that depend on it (the view itself, its effects and display, not the shadow maps); the full resolution comes back at rest (MCP `get_performance` `lighting_motion_scale`). **Settings > Rendering > Performance > Lighting preview quality**, `set_setting render.lit_quality`. See [Editor performance](../troubleshooting/performance.md#lighting-previews-at-full-speed). |
 | `render_scale` | `1.0` | Draws the 3D view at this share of its size (0.25 to 1) and stretches it over the window. 1.0 is full quality. |
 | `graphics_backend` | `Auto` | Graphics API, applied at the next start: `Auto` (the best graphics card, then Vulkan; DirectX 12 only without a Vulkan driver), `Vulkan` or `Dx12`. **Settings > Rendering > Performance > Graphics API**, `set_setting render.graphics_backend`, command line `--backend`. See [Editor performance](../troubleshooting/performance.md#slow-first-start-shaders). |
+| `graphics_adapter` | `""` | Graphics card that draws the editor, applied at the next start: empty is automatic (always the dedicated card when there is one, also on laptops, never a software renderer), else a part of the adapter name, or `integrated`, `dedicated`, `software`. `HP_ADAPTER` overrides it. A card that is not found falls back to the automatic choice with a notice. **Settings > Rendering > Performance > Graphics card**. |
+| `adapter_notice_seen` | `""` | The graphics card notice already shown (software renderer, or integrated graphics while a dedicated card exists), so it appears once per card. |
 | `dx12_compiler` | `Fxc` | DirectX 12 shader compiler, applied at the next start: `Fxc` (built into Windows) or `Dxc` (experimental, needs `dxcompiler.dll` next to `hammerpro.exe`, FXC is used without it). DXC is never picked up on its own. **Settings > Rendering > Performance > DirectX 12 shader compiler**, `set_setting render.dx12_compiler`. |
 | `perf_hud` | `false` | Shows FPS, frame time, CPU and GPU time per stage, memory and the quality level in the 3D view. |
 
@@ -609,6 +612,12 @@ The **Build and save as content** window and the Map assets tab. See [Build and 
 | `propper_physics` | `false` | Create a movable physics prop from brushes. |
 | `propper_static` | `true` | Compile `$staticprop` and create `prop_static`; off creates `prop_dynamic`. Disabled for physics props. |
 | `propper_collision` | `true` | Generate collision; required for physics props. |
+| `propper_collision_mode` | `"brushes"` | Precise collision mode the creation window starts with: `brushes` (one piece per brush), `hull` or `decompose`. |
+| `propper_collision_snap` | `true` | Dragged collision vertices land on the grid; edges and faces move by grid steps. |
+| `model_collision` | `"pieces"` | Collision of the model import: `pieces`, `hull`, `decompose`, `box` or `none`. |
+| `model_own_collision` | `true` | The model import uses the collision meshes of the file (`UCX_`, `*_col`...) when present. |
+| `collision_max_pieces` | `16` | Most convex pieces of a convex decomposition, 1 to 40. |
+| `collision_max_hull_vertices` | `32` | Most vertices of each generated convex piece, 8 to 128. |
 | `propper_mass` | `10.0` | Physics prop mass in kg, 0.1 to 50000. |
 | `propper_model_folder` | `""` | Model folder of the last prop made by **Create prop from brushes** (relative to `models/`); the next one starts there with a free name. Empty: an automatic `hammerpro/` name. |
 | `propper_name_prefix` | `""` | Name of the last created prop without its trailing number; the next name is this prefix plus the first free number (`doorway01`, `doorway02`...). |

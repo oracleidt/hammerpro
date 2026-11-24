@@ -237,6 +237,9 @@ pub const ANIMATION_IDLE_PAUSE_S: u32 = 10;
 const OLD_ANIMATION_IDLE_PAUSE_S: u32 = 120;
 pub const PERF_REVISION: u32 = 1;
 pub const MAX_VRAM_BUDGET_MB: u32 = 262_144;
+pub const FALLBACK_REFRESH_HZ: u32 = 60;
+const MIN_REFRESH_HZ: u32 = 24;
+const MAX_REFRESH_HZ: u32 = 1000;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -340,6 +343,9 @@ pub struct RenderSettings {
     pub primitive_stats: bool,
     pub graphics_backend: GraphicsBackend,
     pub dx12_compiler: Dx12Compiler,
+    pub graphics_adapter: String,
+    pub frame_cap_refresh: bool,
+    pub adapter_notice_seen: String,
 }
 
 impl Default for RenderSettings {
@@ -441,6 +447,9 @@ impl Default for RenderSettings {
             primitive_stats: false,
             graphics_backend: GraphicsBackend::Auto,
             dx12_compiler: Dx12Compiler::Fxc,
+            graphics_adapter: String::new(),
+            frame_cap_refresh: true,
+            adapter_notice_seen: String::new(),
         }
     }
 }
@@ -519,6 +528,17 @@ impl RenderSettings {
         if self.render_scale.is_finite() { self.render_scale.clamp(MIN_RENDER_SCALE, 1.0) } else { 1.0 }
     }
 
+    pub fn frame_cap(&self, focused: bool, vsync_caps: bool, refresh_hz: Option<u32>) -> u32 {
+        let user = if focused { self.max_fps } else { self.unfocused_fps };
+        if user > 0 {
+            return user;
+        }
+        if !self.frame_cap_refresh || vsync_caps {
+            return 0;
+        }
+        refresh_hz.filter(|hz| *hz >= MIN_REFRESH_HZ).unwrap_or(FALLBACK_REFRESH_HZ).min(MAX_REFRESH_HZ)
+    }
+
     pub fn near(&self) -> f32 {
         if self.near_plane.is_finite() { self.near_plane.clamp(0.5, 16.0) } else { 1.0 }
     }
@@ -545,6 +565,32 @@ perf_revision = {PERF_REVISION}"
         .expect("parse");
         chosen.migrate();
         assert!(chosen.occlusion_culling, "turning it on again later is kept");
+    }
+
+    #[test]
+    fn frame_cap_follows_the_screen_unless_the_user_sets_one() {
+        let r = RenderSettings::default();
+        assert!(r.frame_cap_refresh && r.graphics_adapter.is_empty() && r.adapter_notice_seen.is_empty());
+        assert_eq!(r.frame_cap(true, true, Some(144)), 0, "vertical sync already waits for the screen");
+        assert_eq!(r.frame_cap(true, false, Some(144)), 144);
+        assert_eq!(r.frame_cap(true, false, None), FALLBACK_REFRESH_HZ);
+        assert_eq!(r.frame_cap(true, false, Some(1)), FALLBACK_REFRESH_HZ);
+        assert_eq!(r.frame_cap(false, true, Some(144)), 30, "the background limit stays");
+        let old: RenderSettings = toml::from_str(
+            "vsync = false
+max_fps = 0",
+        )
+        .expect("parse");
+        assert!(old.frame_cap_refresh, "existing settings get the screen limit too");
+        assert_eq!(old.frame_cap(true, false, Some(75)), 75);
+        let set: RenderSettings = toml::from_str(
+            "max_fps = 300
+frame_cap_refresh = false",
+        )
+        .expect("parse");
+        assert_eq!(set.frame_cap(true, false, Some(60)), 300);
+        let uncapped: RenderSettings = toml::from_str("frame_cap_refresh = false").expect("parse");
+        assert_eq!(uncapped.frame_cap(true, false, Some(60)), 0);
     }
 
     #[test]

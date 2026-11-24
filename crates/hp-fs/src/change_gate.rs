@@ -108,7 +108,20 @@ impl ChangeGate {
         if unique.is_empty() || unique.len() > MAX_WATCHED_ROOTS {
             return None;
         }
-        Self::open(unique)
+        Self::open(unique, true)
+    }
+
+    pub fn watch_folders(folders: &[PathBuf]) -> Option<Self> {
+        let mut unique: Vec<PathBuf> = Vec::new();
+        for folder in folders {
+            if !unique.contains(folder) {
+                unique.push(folder.clone());
+            }
+        }
+        if unique.is_empty() || unique.len() > MAX_WATCHED_ROOTS {
+            return None;
+        }
+        Self::open(unique, false)
     }
 
     pub fn roots(&self) -> &[PathBuf] {
@@ -116,7 +129,7 @@ impl ChangeGate {
     }
 
     #[cfg(windows)]
-    fn open(roots: Vec<PathBuf>) -> Option<Self> {
+    fn open(roots: Vec<PathBuf>, subtree: bool) -> Option<Self> {
         use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
         use windows_sys::Win32::Storage::FileSystem::{
             FILE_NOTIFY_CHANGE_DIR_NAME, FILE_NOTIFY_CHANGE_FILE_NAME, FILE_NOTIFY_CHANGE_LAST_WRITE,
@@ -129,7 +142,7 @@ impl ChangeGate {
             | FILE_NOTIFY_CHANGE_LAST_WRITE;
         for root in roots {
             let wide = wide(&root);
-            let handle = unsafe { FindFirstChangeNotificationW(wide.as_ptr(), 1, filter) };
+            let handle = unsafe { FindFirstChangeNotificationW(wide.as_ptr(), i32::from(subtree), filter) };
             if handle.is_null() || handle == INVALID_HANDLE_VALUE {
                 return None;
             }
@@ -140,7 +153,7 @@ impl ChangeGate {
     }
 
     #[cfg(not(windows))]
-    fn open(_roots: Vec<PathBuf>) -> Option<Self> {
+    fn open(_roots: Vec<PathBuf>, _subtree: bool) -> Option<Self> {
         None
     }
 

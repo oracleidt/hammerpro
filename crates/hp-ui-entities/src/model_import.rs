@@ -3,7 +3,9 @@ use std::sync::mpsc::{Receiver, TryRecvError, channel};
 
 use egui::{RichText, Ui};
 use glam::DVec3;
+use hp_app::settings::{LabSettings, ModelCollision};
 use hp_app::{AppState, Severity, t, tf, theme};
+use hp_meshio::collision::CollisionLimits;
 use hp_meshio::smd::Collision;
 use hp_meshio::studio::{StudioError, StudioOptions};
 use hp_meshio::{Alpha, ImportOptions, Model, UpAxis};
@@ -12,6 +14,7 @@ pub mod batch;
 mod batch_ui;
 pub use batch_ui::{ModelBatchDialog, Placement};
 mod params;
+mod preview;
 
 pub const IMPORT_FOLDER: &str = "hammerpro";
 
@@ -35,6 +38,7 @@ struct Prepared {
     bounds: (DVec3, DVec3),
     warnings: Vec<String>,
     report: Vec<String>,
+    own_collision: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -55,7 +59,9 @@ enum Stage {
 
 pub struct ModelImportDialog {
     stage: Stage,
-    name: String,
+    modelname: String,
+    cdmaterials: String,
+    cd_follows: bool,
     up: Up,
     scale: f64,
     convert_units: bool,
@@ -63,10 +69,10 @@ pub struct ModelImportDialog {
     static_prop: bool,
     surface_prop: String,
     mass: f64,
-    collision: Collision,
     place: bool,
     error: Option<String>,
     preview: Option<(ImportOptions, Model)>,
+    collision_view: preview::CollisionPreview,
     writing_static: bool,
     imported: Option<Imported>,
     confirm: bool,
@@ -76,7 +82,9 @@ impl Default for ModelImportDialog {
     fn default() -> Self {
         Self {
             stage: Stage::Idle,
-            name: String::new(),
+            modelname: String::new(),
+            cdmaterials: String::new(),
+            cd_follows: true,
             up: Up::Auto,
             scale: 1.0,
             convert_units: true,
@@ -84,10 +92,10 @@ impl Default for ModelImportDialog {
             static_prop: true,
             surface_prop: "default".to_owned(),
             mass: 20.0,
-            collision: Collision::Pieces,
             place: true,
             error: None,
             preview: None,
+            collision_view: preview::CollisionPreview::default(),
             writing_static: true,
             imported: None,
             confirm: false,
@@ -105,6 +113,122 @@ pub fn clean_name(stem: &str) -> String {
         .take(48)
         .collect();
     if s.is_empty() { "model".to_owned() } else { s }
+}
+
+pub fn model_name(input: &str) -> Option<String> {
+    let normalized = input.trim().replace('\\', "/").to_ascii_lowercase();
+    let normalized = normalized.trim_start_matches('/');
+    let normalized = normalized.strip_prefix("models/").unwrap_or(normalized);
+    let normalized = normalized.strip_suffix(".mdl").unwrap_or(normalized);
+    let valid = !normalized.is_empty()
+        && normalized.len() <= 120
+        && normalized.split('/').all(|part| {
+            !part.is_empty()
+                && part != "."
+                && part != ".."
+                && part.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+        });
+    valid.then(|| normalized.to_owned())
+}
+
+pub fn material_dir(input: &str) -> Option<String> {
+    let normalized = input.trim().replace('\\', "/").to_ascii_lowercase();
+    let normalized = normalized.trim_matches('/');
+    let normalized = normalized.strip_prefix("materials/").unwrap_or(normalized);
+    let valid = !normalized.is_empty()
+        && normalized.split('/').all(|part| {
+            !part.is_empty()
+                && part != "."
+                && part != ".."
+                && part.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+        });
+    valid.then(|| normalized.to_owned())
+}
+
+pub fn default_modelname(stem: &str) -> String {
+    format!("models/{IMPORT_FOLDER}/{}.mdl", clean_name(stem))
+}
+
+pub fn collision_kind(c: ModelCollision) -> Collision {
+    match c {
+        ModelCollision::Pieces => Collision::Pieces,
+        ModelCollision::Hull => Collision::Hull,
+        ModelCollision::Decompose => Collision::Decompose,
+        ModelCollision::Box => Collision::Box,
+        ModelCollision::None => Collision::None,
+    }
+}
+
+pub fn model_collision(c: Collision) -> ModelCollision {
+    match c {
+        Collision::Pieces => ModelCollision::Pieces,
+        Collision::Hull => ModelCollision::Hull,
+        Collision::Decompose => ModelCollision::Decompose,
+        Collision::Box => ModelCollision::Box,
+        Collision::None => ModelCollision::None,
+    }
+}
+
+pub fn collision_limits(lab: &LabSettings) -> CollisionLimits {
+    let (max_pieces, max_hull_vertices) = lab.collision_limits();
+    CollisionLimits { max_pieces, max_hull_vertices }
+}
+
+pub fn limits_ui(ui: &mut Ui, lab: &mut LabSettings, pieces: bool) -> bool {
+    let mut changed = false;
+    if pieces {
+        ui.horizontal(|ui| {
+            ui.label(t!("entities.mi_max_pieces"));
+            changed |= ui
+                .add(egui::DragValue::new(&mut lab.collision_max_pieces).range(1..=LabSettings::MAX_COLLISION_PIECES))
+                .on_hover_text(t!("entities.mi_max_pieces_tip"))
+                .changed();
+        });
+    }
+    ui.horizontal(|ui| {
+        ui.label(t!("entities.mi_max_vertices"));
+        changed |= ui
+            .add(
+                egui::DragValue::new(&mut lab.collision_max_hull_vertices)
+                    .range(LabSettings::MIN_HULL_VERTICES..=LabSettings::MAX_HULL_VERTICES),
+            )
+            .on_hover_text(t!("entities.mi_max_vertices_tip"))
+            .changed();
+    });
+    changed
+}
+
+pub fn collision_ui(ui: &mut Ui, lab: &mut LabSettings, own_found: Option<usize>) -> bool {
+    let mut changed = false;
+    ui.vertical(|ui| {
+        ui.horizontal_wrapped(|ui| {
+            for (mode, key, tip) in [
+                (ModelCollision::Pieces, "entities.mi_coll_pieces", "entities.mi_coll_pieces_tip"),
+                (ModelCollision::Hull, "entities.mi_coll_hull", "entities.mi_coll_hull_tip"),
+                (ModelCollision::Decompose, "entities.mi_coll_decompose", "entities.mi_coll_decompose_tip"),
+                (ModelCollision::Box, "entities.mi_coll_box", "entities.mi_coll_box_tip"),
+                (ModelCollision::None, "entities.mi_coll_none", "entities.mi_coll_none_tip"),
+            ] {
+                changed |= ui.radio_value(&mut lab.model_collision, mode, t!(key)).on_hover_text(t!(tip)).changed();
+            }
+        });
+        if matches!(lab.model_collision, ModelCollision::Hull | ModelCollision::Decompose) {
+            let pieces = lab.model_collision == ModelCollision::Decompose;
+            changed |= limits_ui(ui, lab, pieces);
+        }
+        changed |= ui
+            .checkbox(&mut lab.model_own_collision, t!("entities.mi_own_collision"))
+            .on_hover_text(t!("entities.mi_own_collision_tip"))
+            .changed();
+        if lab.model_own_collision
+            && let Some(found) = own_found
+        {
+            let text =
+                if found > 0 { tf!("entities.mi_own_found", found) } else { t!("entities.mi_own_missing").to_owned() };
+            ui.label(RichText::new(text).small().weak());
+        }
+    });
+    changed
 }
 
 pub fn sandbox_content_dir() -> PathBuf {
@@ -136,7 +260,11 @@ impl ModelImportDialog {
         if self.busy() {
             return;
         }
-        self.name = clean_name(&path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default());
+        let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        self.modelname = default_modelname(&stem);
+        self.cdmaterials = model_name(&self.modelname).map(|m| format!("models/{m}")).unwrap_or_default();
+        self.cd_follows = true;
+        self.collision_view.reset();
         let (tx, rx) = channel();
         let (repaint, p) = (ctx.clone(), path.clone());
         std::thread::spawn(move || {
@@ -189,7 +317,7 @@ impl ModelImportDialog {
             Stage::Reading(path, _) => {
                 Some(tf!("entities.mi_reading", path.file_name().map(|f| f.to_string_lossy()).unwrap_or_default()))
             }
-            Stage::Writing(name, _) => Some(tf!("entities.mi_writing", format!("models/{IMPORT_FOLDER}/{name}.mdl"))),
+            Stage::Writing(name, _) => Some(tf!("entities.mi_writing", format!("models/{name}.mdl"))),
             _ => None,
         };
         if let Some(text) = busy_text {
@@ -223,8 +351,15 @@ impl ModelImportDialog {
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
-            .default_width(460.0)
-            .show(ctx, |ui| start = self.ui(ui, state, &path, &model));
+            .default_width(520.0)
+            .show(ctx, |ui| {
+                let height = (ctx.content_rect().height() - 90.0).max(240.0);
+                egui::ScrollArea::vertical()
+                    .id_salt("hp_model_import_scroll")
+                    .max_height(height)
+                    .min_scrolled_height(height)
+                    .show(ui, |ui| start = self.ui(ui, state, &path, &model));
+            });
         if crate::dialogs::escape_closes(ctx, response.as_ref().map(|r| r.response.layer_id), false) {
             open = false;
         }
@@ -256,13 +391,20 @@ impl ModelImportDialog {
         } else if size.max_element() > HUGE {
             ui.colored_label(theme::warning(), t!("entities.mi_huge"));
         }
+        let own_found = hp_meshio::collision::own_collision_count(model);
         egui::Grid::new("hp_mi_grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
-            ui.label(t!("entities.mi_name"));
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(format!("models/{IMPORT_FOLDER}/")).weak());
-                ui.add(egui::TextEdit::singleline(&mut self.name).desired_width(180.0));
-                ui.label(RichText::new(".mdl").weak());
-            });
+            ui.label("$modelname").on_hover_text(t!("entities.mi_modelname_tip"));
+            if ui.add(egui::TextEdit::singleline(&mut self.modelname).desired_width(300.0)).changed()
+                && self.cd_follows
+                && let Some(m) = model_name(&self.modelname)
+            {
+                self.cdmaterials = format!("models/{m}");
+            }
+            ui.end_row();
+            ui.label("$cdmaterials").on_hover_text(t!("entities.mi_cdmaterials_tip"));
+            if ui.add(egui::TextEdit::singleline(&mut self.cdmaterials).desired_width(300.0)).changed() {
+                self.cd_follows = false;
+            }
             ui.end_row();
             ui.label(t!("entities.mi_kind"));
             ui.horizontal(|ui| {
@@ -298,12 +440,9 @@ impl ModelImportDialog {
             );
             ui.end_row();
             ui.label(t!("entities.mi_collision"));
-            ui.horizontal(|ui| {
-                ui.radio_value(&mut self.collision, Collision::Pieces, t!("entities.mi_coll_pieces"))
-                    .on_hover_text(t!("entities.mi_coll_pieces_tip"));
-                ui.radio_value(&mut self.collision, Collision::Box, t!("entities.mi_coll_box"));
-                ui.radio_value(&mut self.collision, Collision::None, t!("entities.mi_coll_none"));
-            });
+            if collision_ui(ui, &mut state.settings.lab, Some(own_found)) {
+                state.settings_dirty = true;
+            }
             ui.end_row();
             if !self.static_prop {
                 ui.label(t!("entities.mass"));
@@ -311,9 +450,24 @@ impl ModelImportDialog {
                 ui.end_row();
             }
         });
-        if !self.static_prop && self.collision == Collision::None {
+        let kind = collision_kind(state.settings.lab.model_collision);
+        let own = state.settings.lab.model_own_collision && own_found > 0;
+        if !self.static_prop && kind == Collision::None && !own {
             ui.colored_label(theme::warning(), t!("entities.mi_physics_needs_collision"));
         }
+        let opts = self.options();
+        let key = preview::Key {
+            import: opts,
+            collision: kind,
+            limits: collision_limits(&state.settings.lab),
+            own: state.settings.lab.model_own_collision,
+        };
+        if let Some((o, source)) = &self.preview
+            && *o == opts
+        {
+            self.collision_view.update(ui.ctx(), source, key);
+        }
+        self.collision_view.ui(ui, state, key);
         if hp_app::widgets::model_lod_ui(ui, &mut state.settings.lab.model_lod) {
             state.settings_dirty = true;
         }
@@ -346,14 +500,22 @@ impl ModelImportDialog {
             ui.colored_label(theme::error(), e);
         }
         ui.separator();
-        let exists = content_root(state).is_some_and(|g| {
-            g.join("models").join(IMPORT_FOLDER).join(format!("{}.mdl", clean_name(&self.name))).is_file()
-        });
+        let parsed = model_name(&self.modelname);
+        let materials = material_dir(&self.cdmaterials);
+        if parsed.is_none() {
+            ui.colored_label(theme::warning(), t!("entities.mi_bad_modelname"));
+        }
+        if materials.is_none() {
+            ui.colored_label(theme::warning(), t!("entities.mi_bad_cdmaterials"));
+        }
+        let exists = parsed
+            .as_ref()
+            .is_some_and(|m| content_root(state).is_some_and(|g| g.join("models").join(format!("{m}.mdl")).is_file()));
         if exists {
             ui.colored_label(theme::warning(), t!("entities.mi_exists"));
         }
         ui.label(RichText::new(t!("entities.mi_where")).small().weak());
-        let enabled = !self.name.trim().is_empty();
+        let enabled = parsed.is_some() && materials.is_some();
         let clicked =
             ui.add_enabled(enabled, egui::Button::new(RichText::new(t!("entities.mi_import")).strong())).clicked();
         clicked || (enabled && std::mem::take(&mut self.confirm))
@@ -367,29 +529,34 @@ impl ModelImportDialog {
         if hp_compile::sandbox::is_sandboxed() {
             state.log(Severity::Info, tf!("entities.mi_sandboxed", root.display()));
         }
-        let name = clean_name(&self.name);
-        self.name.clone_from(&name);
+        let (Some(name), Some(cdmaterials)) = (model_name(&self.modelname), material_dir(&self.cdmaterials)) else {
+            self.error = Some(t!("entities.mi_bad_modelname").to_owned());
+            return false;
+        };
+        self.modelname = format!("models/{name}.mdl");
         let mut source = self.source(model).clone();
         let keep = state.settings.lab.model_keep_params;
         if !keep {
             source.bake_uv_transforms();
         }
+        let lab = &state.settings.lab;
         let opts = StudioOptions {
-            model: format!("{IMPORT_FOLDER}/{name}"),
-            cdmaterials: format!("models/{IMPORT_FOLDER}/{name}"),
+            model: name.clone(),
+            cdmaterials,
             static_prop: self.static_prop,
             surface_prop: self.surface_prop.clone(),
             mass: self.mass,
-            collision: self.collision,
-            lod: lod_options(state.settings.lab.model_lod),
+            collision: collision_kind(lab.model_collision),
+            limits: collision_limits(lab),
+            own_collision: lab.model_own_collision,
+            lod: lod_options(lab.model_lod),
         };
         self.writing_static = self.static_prop;
         self.error = None;
         let (tx, rx) = channel();
         let repaint = ctx.clone();
-        let worker_name = name.clone();
         std::thread::spawn(move || {
-            let _ = tx.send(prepare(&source, &opts, &worker_name, &root, keep));
+            let _ = tx.send(prepare(&source, &opts, &root, keep));
             repaint.request_repaint();
         });
         self.stage = Stage::Writing(name, rx);
@@ -433,6 +600,9 @@ impl ModelImportDialog {
         state.current_entity_class = class.to_owned();
         if p.body_parts > 1 {
             state.log(Severity::Info, tf!("entities.mi_split", p.body_parts));
+        }
+        if p.own_collision {
+            state.log(Severity::Info, tf!("entities.mi_used_own", p.pieces));
         }
         if p.lod_triangles.len() > 1 {
             let counts: Vec<String> = p.lod_triangles.iter().map(ToString::to_string).collect();
@@ -548,9 +718,12 @@ fn vector(c: &[f64]) -> String {
     format!("[{:.3} {:.3} {:.3}]", c[0], c[1], c[2])
 }
 
-fn prepare(model: &Model, opts: &StudioOptions, name: &str, root: &Path, keep: bool) -> Result<Prepared, String> {
-    let mat_dir = root.join("materials").join("models").join(IMPORT_FOLDER).join(name);
-    let model_dir = root.join("models").join(IMPORT_FOLDER);
+fn prepare(model: &Model, opts: &StudioOptions, root: &Path, keep: bool) -> Result<Prepared, String> {
+    let model_rel = opts.model.trim_matches('/').to_owned();
+    let cdmaterials = opts.cdmaterials.trim_matches('/').to_owned();
+    let mat_dir = root.join("materials").join(&cdmaterials);
+    let base = root.join("models").join(&model_rel);
+    let model_dir = base.parent().map_or_else(|| root.join("models"), Path::to_path_buf);
     for d in [&mat_dir, &model_dir] {
         std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
     }
@@ -564,7 +737,7 @@ fn prepare(model: &Model, opts: &StudioOptions, name: &str, root: &Path, keep: b
             file.push('_');
         }
         if model.triangles.iter().any(|t| t.material == i) {
-            let tex_path = format!("models/{IMPORT_FOLDER}/{name}/{file}");
+            let tex_path = format!("{cdmaterials}/{file}");
             let image = material_image(m, &mut warnings);
             if image.is_none() && m.texture.is_none() && m.embedded.is_none() {
                 warnings.push(tf!("entities.mi_material_untextured", m.name));
@@ -625,9 +798,9 @@ fn prepare(model: &Model, opts: &StudioOptions, name: &str, root: &Path, keep: b
         StudioError::TooManyMaterials(n) => tf!("entities.mi_err_materials", n),
         StudioError::TooLarge => t!("entities.mi_err_large").to_owned(),
     })?;
-    let base = model_dir.join(name);
+    let file_name = base.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
     let write = |ext: &str, data: &[u8]| {
-        let p = base.with_extension(ext);
+        let p = model_dir.join(format!("{file_name}.{ext}"));
         std::fs::write(&p, data).map_err(|e| format!("{}: {e}", p.display()))
     };
     write("vvd", &files.vvd)?;
@@ -635,16 +808,16 @@ fn prepare(model: &Model, opts: &StudioOptions, name: &str, root: &Path, keep: b
     match &files.phy {
         Some(phy) => write("phy", phy)?,
         None => {
-            let _ = std::fs::remove_file(base.with_extension("phy"));
+            let _ = std::fs::remove_file(model_dir.join(format!("{file_name}.phy")));
         }
     }
     for ext in ["dx80.vtx", "sw.vtx", "vtx", "ani"] {
-        let _ = std::fs::remove_file(base.with_extension(ext));
+        let _ = std::fs::remove_file(model_dir.join(format!("{file_name}.{ext}")));
     }
     write("mdl", &files.mdl)?;
     let bounds = model.bounds().unwrap_or((DVec3::ZERO, DVec3::ZERO));
     Ok(Prepared {
-        model: format!("models/{IMPORT_FOLDER}/{name}.mdl"),
+        model: format!("models/{model_rel}.mdl"),
         textures,
         pieces: files.convex_pieces,
         body_parts: files.body_parts,
@@ -652,6 +825,7 @@ fn prepare(model: &Model, opts: &StudioOptions, name: &str, root: &Path, keep: b
         bounds,
         warnings,
         report,
+        own_collision: files.own_collision,
     })
 }
 
@@ -670,7 +844,8 @@ mod tests {
         let mut d = ModelImportDialog::default();
         let ctx = egui::Context::default();
         d.open_file(&ctx, obj);
-        assert_eq!(d.name, "small_crate");
+        assert_eq!(d.modelname, "models/hammerpro/small_crate.mdl");
+        assert_eq!(d.cdmaterials, "models/hammerpro/small_crate");
         for _ in 0..200 {
             hp_app::testing::run_ctx(&mut state, |ctx, state| d.show(ctx, state));
             if matches!(d.stage, Stage::Ready(..)) {
@@ -714,9 +889,11 @@ mod tests {
             surface_prop: "wood".to_owned(),
             mass: 10.0,
             collision: Collision::Box,
+            limits: hp_meshio::collision::CollisionLimits::default(),
+            own_collision: false,
             lod: hp_meshio::lod::LodOptions::default(),
         };
-        let p = prepare(&model, &opts, "tri", &game, true).expect("prepare");
+        let p = prepare(&model, &opts, &game, true).expect("prepare");
         assert_eq!(p.model, "models/hammerpro/tri.mdl");
         assert_eq!(p.textures, 1);
         assert_eq!(p.pieces, 1);
@@ -742,6 +919,70 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    #[test]
+    fn modelname_and_cdmaterials_choose_the_paths_and_decomposition_writes_the_physics_model() {
+        crate::register_translations();
+        assert_eq!(model_name("Models\\Props/Chairs/Seat01.MDL").as_deref(), Some("props/chairs/seat01"));
+        assert_eq!(model_name("props/seat").as_deref(), Some("props/seat"));
+        for bad in ["", "models/", "../x", "a b", "a//b", "models/x?.mdl"] {
+            assert!(model_name(bad).is_none(), "{bad}");
+        }
+        assert_eq!(material_dir("materials/Custom/Mats/").as_deref(), Some("custom/mats"));
+        assert!(material_dir("../up").is_none());
+        assert_eq!(default_modelname("My Chair"), "models/hammerpro/my_chair.mdl");
+        for c in [
+            ModelCollision::Pieces,
+            ModelCollision::Hull,
+            ModelCollision::Decompose,
+            ModelCollision::Box,
+            ModelCollision::None,
+        ] {
+            assert_eq!(model_collision(collision_kind(c)), c);
+        }
+        let root = std::env::temp_dir().join(format!("hp_model_import_paths_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let mut obj = String::new();
+        let mut faces = String::new();
+        for (block, (x, y)) in [(0.0, 0.0), (40.0, 0.0), (0.0, 40.0)].into_iter().enumerate() {
+            for i in 0..8 {
+                obj.push_str(&format!(
+                    "v {} {} {}\n",
+                    x + if i & 1 == 0 { 0.0 } else { 10.0 },
+                    y + if i & 2 == 0 { 0.0 } else { 10.0 },
+                    if i & 4 == 0 { 0.0 } else { 10.0 }
+                ));
+            }
+            let o = block * 8 + 1;
+            for q in [[0, 2, 3, 1], [4, 5, 7, 6], [0, 1, 5, 4], [2, 6, 7, 3], [0, 4, 6, 2], [1, 3, 7, 5]] {
+                faces.push_str(&format!("f {} {} {} {}\n", o + q[0], o + q[1], o + q[2], o + q[3]));
+            }
+        }
+        std::fs::write(root.join("blocks.obj"), format!("{obj}{faces}")).unwrap();
+        let model = hp_meshio::read(&root.join("blocks.obj"))
+            .expect("read")
+            .to_source(&ImportOptions { convert_units: false, ..ImportOptions::default() });
+        let game = root.join("game");
+        let opts = StudioOptions {
+            model: "props/chairs/seat01".to_owned(),
+            cdmaterials: "custom/seatmats".to_owned(),
+            collision: Collision::Decompose,
+            limits: CollisionLimits { max_pieces: 8, max_hull_vertices: 16 },
+            ..opts_for("unused")
+        };
+        let p = prepare(&model, &opts, &game, false).expect("prepare");
+        assert_eq!(p.model, "models/props/chairs/seat01.mdl");
+        assert!(p.pieces >= 3 && p.pieces <= 8, "three separate blocks: {}", p.pieces);
+        let dir = game.join("models/props/chairs");
+        for ext in ["mdl", "vvd", "dx90.vtx", "phy"] {
+            assert!(dir.join(format!("seat01.{ext}")).is_file(), "{ext}");
+        }
+        let phy = hp_mdl::parse_phy(&std::fs::read(dir.join("seat01.phy")).unwrap()).expect("phy");
+        assert_eq!(phy.solids.len(), 1);
+        assert!(game.join("materials/custom/seatmats").read_dir().unwrap().next().is_some());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     fn opts_for(name: &str) -> StudioOptions {
         StudioOptions {
             model: format!("hammerpro/{name}"),
@@ -750,6 +991,8 @@ mod tests {
             surface_prop: "default".to_owned(),
             mass: 10.0,
             collision: Collision::Box,
+            limits: hp_meshio::collision::CollisionLimits::default(),
+            own_collision: false,
             lod: hp_meshio::lod::LodOptions::default(),
         }
     }
@@ -776,7 +1019,7 @@ mod tests {
         std::fs::write(root.join("in.obj"), "mtllib in.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl shiny\nf 1 2 3\n")
             .unwrap();
         let model = hp_meshio::read(&root.join("in.obj")).expect("read").to_source(&ImportOptions::default());
-        let p = prepare(&model, &opts_for("o"), "o", &game, true).expect("prepare");
+        let p = prepare(&model, &opts_for("o"), &game, true).expect("prepare");
         let mats = game.join("materials/models/hammerpro/o");
         let vmt = std::fs::read_to_string(mats.join("shiny.vmt")).unwrap();
         for key in [
@@ -796,7 +1039,7 @@ mod tests {
         }
         assert_eq!(p.report.len(), 1);
         assert!(p.report[0].contains("shiny") && p.report[0].contains("$phong"), "{:?}", p.report);
-        let off = prepare(&model, &opts_for("o2"), "o2", &game, false).expect("prepare");
+        let off = prepare(&model, &opts_for("o2"), &game, false).expect("prepare");
         let plain = std::fs::read_to_string(game.join("materials/models/hammerpro/o2/shiny.vmt")).unwrap();
         assert!(!plain.contains("$bumpmap") && !plain.contains("$phong") && !plain.contains("transform"), "{plain}");
         assert!(off.report.is_empty());
@@ -831,7 +1074,7 @@ mod tests {
               "emissiveFactor":[0.2,0.4,0.6]}]}"#;
         std::fs::write(root.join("m.gltf"), json).unwrap();
         let model = hp_meshio::read(&root.join("m.gltf")).expect("read").to_source(&ImportOptions::default());
-        prepare(&model, &opts_for("g"), "g", &game, true).expect("prepare");
+        prepare(&model, &opts_for("g"), &game, true).expect("prepare");
         let vmt = std::fs::read_to_string(game.join("materials/models/hammerpro/g/metal.vmt")).unwrap();
         for key in ["$bumpmap", "\"$phong\" \"1\"", "$envmap", "$selfillumtint", "scale 4.0000 4.0000"] {
             assert!(vmt.contains(key), "{key} in {vmt}");

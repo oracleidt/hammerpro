@@ -64,7 +64,7 @@ pub(crate) fn window(dialog: &mut CreatePrefabDialog, ctx: &egui::Context, state
     if !open {
         return;
     }
-    let count = state.doc.selected_objects().len();
+    let count = state.doc.selection().objects.len();
     let mut keep_open = true;
     let mut submit = false;
     let mut cancel = false;

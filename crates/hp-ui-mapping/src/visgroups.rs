@@ -804,7 +804,7 @@ impl MoveToVisgroupDialog {
     }
 
     fn window_ui(&mut self, ui: &mut Ui, state: &mut AppState) -> bool {
-        let n = state.doc.selected_objects().len();
+        let n = state.doc.selection().objects.len();
         ui.label(tf!(plural(n, "visgroups.move_prompt_one", "visgroups.move_prompt"), n));
         egui::ScrollArea::vertical().id_salt("hp_move_visgroup_list").max_height(240.0).show(ui, |ui| {
             if ui.selectable_label(self.target.is_none(), t!("visgroups.move_new")).clicked() {

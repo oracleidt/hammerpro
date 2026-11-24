@@ -435,6 +435,9 @@ impl Renderer {
         }
         let uniform = self.view_uniform(&cam, &params, &opts, None, None, false, 1.0);
         self.ensure_view_bind_group(view_id);
+        if let Some(v) = self.views.get_mut(&view_id) {
+            v.uniform_cache = None;
+        }
         let mut counter = FrameCounter::default();
         let mut enc = self
             .device

@@ -116,7 +116,7 @@ fn select_detail_candidates(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
         s.small = parsed.contains(&DetailKind::Small);
         s.complex = parsed.contains(&DetailKind::Complex);
     }
-    let has_selection = !state.doc.selected_objects().is_empty();
+    let has_selection = !state.doc.selection().objects.is_empty();
     let within = if a.get("within").is_some() {
         Some(a.ids("within")?)
     } else if a.opt_bool("within_selection")?.unwrap_or(s.in_selection && has_selection) {

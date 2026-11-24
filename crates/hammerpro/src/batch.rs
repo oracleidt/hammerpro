@@ -29,6 +29,9 @@ impl Spec {
         let mut opts = BatchOptions::default();
         opts.convert.lod = lod_options(settings.lab.model_lod);
         opts.convert.keep_params = settings.lab.model_keep_params;
+        opts.convert.collision = hp_ui_entities::model_import::collision_kind(settings.lab.model_collision);
+        opts.convert.limits = hp_ui_entities::model_import::collision_limits(&settings.lab);
+        opts.convert.own_collision = settings.lab.model_own_collision;
         Self {
             inputs: Vec::new(),
             recursive: false,
@@ -42,12 +45,7 @@ impl Spec {
 }
 
 pub fn parse_collision(word: &str) -> Result<Collision, String> {
-    match word.to_ascii_lowercase().as_str() {
-        "pieces" => Ok(Collision::Pieces),
-        "box" => Ok(Collision::Box),
-        "none" => Ok(Collision::None),
-        other => Err(format!("unknown collision {other}: pieces, box or none")),
-    }
+    Collision::from_id(word).ok_or_else(|| format!("unknown collision {word}: pieces, hull, decompose, box or none"))
 }
 
 pub fn parse_up(word: &str) -> Result<Option<UpAxis>, String> {
@@ -91,6 +89,23 @@ pub fn parse_cli(args: &[String], settings: &Settings) -> Result<Spec, String> {
             "--surface" => spec.opts.convert.surface_prop = value("--surface")?,
             "--mass" => spec.opts.convert.mass = number(Some(&value("--mass")?), "--mass", 0.1, 50000.0)?,
             "--collision" => spec.opts.convert.collision = parse_collision(&value("--collision")?)?,
+            "--max-pieces" => {
+                spec.opts.convert.limits.max_pieces =
+                    number(Some(&value("--max-pieces")?), "--max-pieces", 1.0, 40.0)? as usize;
+            }
+            "--max-hull-vertices" => {
+                spec.opts.convert.limits.max_hull_vertices =
+                    number(Some(&value("--max-hull-vertices")?), "--max-hull-vertices", 8.0, 128.0)? as usize;
+            }
+            "--own-collision" => spec.opts.convert.own_collision = true,
+            "--no-own-collision" => spec.opts.convert.own_collision = false,
+            "--folder" => {
+                let folder = hp_ui_entities::model_import::batch::clean_folder(&value("--folder")?);
+                if folder.is_empty() {
+                    return Err("--folder needs a folder under models/".to_owned());
+                }
+                spec.opts.convert.folder = folder;
+            }
             "--no-lod" => spec.opts.convert.lod.enabled = false,
             "--lod-levels" => {
                 spec.opts.convert.lod.levels =
@@ -123,7 +138,8 @@ pub fn parse_cli(args: &[String], settings: &Settings) -> Result<Spec, String> {
 pub fn usage() -> &'static str {
     "usage: hammerpro --import-models FILE_OR_DIR... --out DIR [--recursive] [--formats obj,fbx,gltf]\n\
      \x20      [--template T] [--prefix P] [--scale S] [--no-units] [--up auto|y|z] [--no-center]\n\
-     \x20      [--kind static|physics] [--surface NAME] [--mass KG] [--collision pieces|box|none]\n\
+     \x20      [--kind static|physics] [--surface NAME] [--mass KG] [--collision pieces|hull|decompose|box|none]\n\
+     \x20      [--max-pieces N] [--max-hull-vertices N] [--own-collision|--no-own-collision] [--folder F]\n\
      \x20      [--no-lod] [--lod-levels N] [--lod-keep PCT] [--no-material-params]\n\
      \x20      [--overwrite] [--threads N] [--dry-run] [--quiet]"
 }
@@ -290,6 +306,31 @@ mod tests {
         assert_eq!(spec.opts.convert.import.up, Some(UpAxis::Z));
         assert!(!spec.opts.convert.static_prop);
         assert_eq!(spec.opts.convert.collision, Collision::Box);
+        let more = parse_cli(
+            &args(&[
+                "a.obj",
+                "--out",
+                "out",
+                "--collision",
+                "decompose",
+                "--max-pieces",
+                "12",
+                "--max-hull-vertices",
+                "24",
+                "--no-own-collision",
+                "--folder",
+                "Models/Props/Chairs",
+            ]),
+            &s,
+        )
+        .expect("parse");
+        assert_eq!(more.opts.convert.collision, Collision::Decompose);
+        assert_eq!(more.opts.convert.limits.max_pieces, 12);
+        assert_eq!(more.opts.convert.limits.max_hull_vertices, 24);
+        assert!(!more.opts.convert.own_collision);
+        assert_eq!(more.opts.convert.folder, "props/chairs");
+        assert!(parse_cli(&args(&["a.obj", "--out", "o", "--max-pieces", "41"]), &s).is_err());
+        assert_eq!(parse_collision("HULL"), Ok(Collision::Hull));
         assert!(!spec.opts.convert.lod.enabled);
         assert_eq!(spec.opts.convert.lod.levels, 5);
         assert!((spec.opts.convert.lod.reduction - 0.4).abs() < 1e-9);

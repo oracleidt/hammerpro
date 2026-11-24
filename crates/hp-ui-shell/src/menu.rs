@@ -1201,6 +1201,7 @@ mod tests {
                 "|",
                 A::ReportIssue.id(),
                 A::CheckForUpdates.id(),
+                A::CopyPerformanceReport.id(),
                 "FirstRun",
                 "|",
                 A::About.id(),

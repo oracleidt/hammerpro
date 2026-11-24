@@ -7,7 +7,7 @@ use hp_compile::launch::process::{self, GameProcess};
 
 use super::bridge::{self, GameProp};
 
-const WATCH_INTERVAL: Duration = Duration::from_secs(2);
+const WATCH_INTERVAL: Duration = Duration::from_secs(5);
 const WAIT_INTERVAL: Duration = Duration::from_millis(250);
 const WINDOW_TIMEOUT: Duration = Duration::from_secs(180);
 const LOAD_TIMEOUT: Duration = Duration::from_secs(900);

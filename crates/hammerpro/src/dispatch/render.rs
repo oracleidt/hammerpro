@@ -18,13 +18,39 @@ pub(crate) struct Render;
 pub(crate) struct State {
     last_frame: Option<Instant>,
     bg: bgimages::BgImages,
+    refresh: Option<(Instant, Option<u32>)>,
+    frame_cap: u32,
+    pub(crate) adapter_notice: Option<AdapterNoticeWindow>,
+    adapter_notice_checked: bool,
+}
+
+pub(crate) struct AdapterNoticeWindow {
+    key: String,
+    text: String,
 }
 
 impl State {
     pub(crate) fn forget_gpu(&mut self) {
         self.bg.forget_gpu();
     }
+
+    pub(crate) fn refresh_hz(&self) -> Option<u32> {
+        self.refresh.and_then(|(_, hz)| hz)
+    }
+
+    pub(crate) fn frame_cap(&self) -> u32 {
+        self.frame_cap
+    }
+
+    fn refresh_now(&mut self, now: Instant) -> Option<u32> {
+        if self.refresh.is_none_or(|(at, _)| now.saturating_duration_since(at) >= REFRESH_EVERY) {
+            self.refresh = Some((now, hp_app::native_window::main_monitor_refresh_hz()));
+        }
+        self.refresh_hz()
+    }
 }
+
+const REFRESH_EVERY: Duration = Duration::from_secs(2);
 
 const FAR_STEP: f32 = 1.5;
 const FAR_RANGE: (f32, f32) = (256.0, 1.0e6);
@@ -178,17 +204,21 @@ impl Package for Render {
 
     fn dialogs(&self, app: &mut HammerProApp, ctx: &egui::Context) {
         app.pkg.render.bg.window(ctx, &mut app.state);
+        adapter_notice_window(app, ctx);
     }
 
     fn tick(&self, app: &mut HammerProApp, ctx: &egui::Context) {
         publish_render_display(RenderDisplay::from_settings(&app.state.settings, &app.state.runtime.render));
         app.pkg.render.bg.tick(&mut app.state);
-        let r = &app.state.settings.render;
         let focused = ctx.input(|i| {
             i.viewport().focused.unwrap_or(true) || i.raw.viewports.values().any(|v| v.focused == Some(true))
         });
-        let cap = if focused { r.max_fps } else { r.unfocused_fps };
         let now = Instant::now();
+        let refresh = app.pkg.render.refresh_now(now);
+        let r = &app.state.settings.render;
+        let cap = r.frame_cap(focused, r.vsync, refresh);
+        app.pkg.render.frame_cap = cap;
+        check_adapter_notice(app);
         if let Some(wait) = frame_wait(app.pkg.render.last_frame, now, cap) {
             std::thread::sleep(wait);
         }
@@ -197,6 +227,76 @@ impl Package for Render {
 
     fn translations(&self) -> TrTable {
         TR
+    }
+}
+
+fn check_adapter_notice(app: &mut HammerProApp) {
+    if std::mem::replace(&mut app.pkg.render.adapter_notice_checked, true) {
+        return;
+    }
+    let Some(choice) = hp_app::runtime::adapter::choice() else { return };
+    if let Some(from) = &choice.fallback_from {
+        let text = tf!("gpu.fallback", from, choice.chosen.backend);
+        log::warn!("{text}");
+        app.state.notify(Severity::Warning, text);
+        if let Some(used) = hp_app::settings::GraphicsBackend::parse(&choice.chosen.backend)
+            && !app.is_automated()
+        {
+            app.state.settings.render.graphics_backend = used;
+            app.state.settings_dirty = true;
+        }
+    }
+    if let Some(wanted) = choice.wanted.as_deref().filter(|_| !choice.wanted_found) {
+        app.state.notify(Severity::Warning, tf!("gpu.wanted_missing", wanted, choice.chosen.name));
+    }
+    let Some(key) = choice.notice_key() else { return };
+    let text = match &choice.notice {
+        Some(hp_app::runtime::adapter::AdapterNotice::Software) => tf!("gpu.notice_software", choice.chosen.name),
+        Some(hp_app::runtime::adapter::AdapterNotice::Integrated { dedicated }) => {
+            tf!("gpu.notice_integrated", choice.chosen.name, dedicated)
+        }
+        None => return,
+    };
+    log::warn!("graphics: {text}");
+    if app.state.settings.render.adapter_notice_seen == key || app.is_automated() {
+        return;
+    }
+    app.pkg.render.adapter_notice = Some(AdapterNoticeWindow { key, text });
+}
+
+fn adapter_notice_window(app: &mut HammerProApp, ctx: &egui::Context) {
+    let Some(notice) = &app.pkg.render.adapter_notice else { return };
+    let mut open = true;
+    let mut done = false;
+    let mut settings = false;
+    egui::Window::new(t!("gpu.notice_title"))
+        .id(egui::Id::unique("hp_adapter_notice"))
+        .collapsible(false)
+        .resizable(false)
+        .open(&mut open)
+        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+        .show(ctx, |ui| {
+            ui.set_max_width(460.0);
+            ui.label(&notice.text);
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.button(t!("gpu.notice_settings")).clicked() {
+                    settings = true;
+                    done = true;
+                }
+                if ui.button(t!("common.ok")).clicked() {
+                    done = true;
+                }
+            });
+        });
+    if !open || done {
+        let key = notice.key.clone();
+        app.pkg.render.adapter_notice = None;
+        app.state.settings.render.adapter_notice_seen = key;
+        app.state.settings_dirty = true;
+        if settings {
+            app.state.ui.show_settings = true;
+        }
     }
 }
 
@@ -380,6 +480,28 @@ fn tools_menu(ui: &mut egui::Ui, state: &mut AppState) {
 }
 
 const TR: TrTable = &[
+    ("gpu.notice_title", "Graphics card", "Carte graphique"),
+    ("gpu.notice_settings", "Open the settings", "Ouvrir les réglages"),
+    (
+        "gpu.notice_software",
+        "Hammer Pro is drawing with {0}, a software renderer that runs on the processor: the editor is slow and uses a lot of CPU. Install or update the driver of your graphics card (from the NVIDIA, AMD or Intel website), then start Hammer Pro again. If the card is installed, pick it in Settings, Rendering, Graphics card.",
+        "Hammer Pro dessine avec {0}, un rendu logiciel qui tourne sur le processeur : l'éditeur est lent et utilise beaucoup le CPU. Installez ou mettez à jour le pilote de votre carte graphique (sur le site de NVIDIA, AMD ou Intel), puis relancez Hammer Pro. Si la carte est installée, choisissez-la dans Réglages, Rendu, Carte graphique.",
+    ),
+    (
+        "gpu.notice_integrated",
+        "Hammer Pro is drawing with the integrated graphics {0} while this computer also has {1}. Pick {1} in Settings, Rendering, Graphics card, then start Hammer Pro again. On a laptop you can also set Hammer Pro to High performance in Windows Settings, System, Display, Graphics.",
+        "Hammer Pro dessine avec la puce graphique intégrée {0} alors que cet ordinateur a aussi {1}. Choisissez {1} dans Réglages, Rendu, Carte graphique, puis relancez Hammer Pro. Sur un portable, vous pouvez aussi régler Hammer Pro sur Performances élevées dans Paramètres Windows, Système, Écran, Graphiques.",
+    ),
+    (
+        "gpu.fallback",
+        "{0} could not start on this graphics card: Hammer Pro uses {1} from now on (Settings, Rendering, Graphics API)",
+        "{0} n'a pas pu démarrer sur cette carte graphique : Hammer Pro utilise {1} désormais (Réglages, Rendu, API graphique)",
+    ),
+    (
+        "gpu.wanted_missing",
+        "The graphics card \"{0}\" chosen in the settings was not found, {1} is used",
+        "La carte graphique \"{0}\" choisie dans les réglages est introuvable, {1} est utilisée",
+    ),
     ("render.draw_distance", "Draw distance: {0} units", "Distance d'affichage : {0} unités"),
     ("render.skybox_3d_on", "3D skybox shown", "Skybox 3D affichée"),
     (

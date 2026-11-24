@@ -430,6 +430,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Documentation | `open_docs` |  |  |  |
 | Report an issue | `report_issue` |  |  |  |
 | Check for updates... | `check_for_updates` |  |  |  |
+| Copy the performance report | `copy_performance_report` |  |  |  |
 | Entity help | `entity_help` |  |  |  |
 | About Hammer Pro | `about` |  |  |  |
 

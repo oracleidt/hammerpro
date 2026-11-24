@@ -11,8 +11,10 @@ const SAVE_WAIT: Duration = Duration::from_secs(10);
 const MAX_FRAMES: usize = 64;
 const BLACKBOX_PREFIX: &str = "blackbox-";
 const BLACKBOX_EVERY: Duration = Duration::from_secs(5);
-const WATCH_EVERY: Duration = Duration::from_millis(50);
 const ANSWER_EVERY: Duration = Duration::from_millis(250);
+const IDLE_ANSWER_EVERY: Duration = Duration::from_secs(2);
+const IDLE_AFTER_MS: u64 = 3000;
+const SAMPLER_IDLE_WAIT: Duration = Duration::from_secs(3600);
 const SLOW_FRAME_MS: u64 = 250;
 const SLOW_FRAME_LOG_GAP: Duration = Duration::from_secs(2);
 const HANG_CAPTURES_MS: [u64; 3] = [2_000, 10_000, 30_000];
@@ -30,6 +32,8 @@ static STARTED: OnceLock<Instant> = OnceLock::new();
 static FRAME: AtomicU64 = AtomicU64::new(0);
 static FRAME_AT_MS: AtomicU64 = AtomicU64::new(0);
 static FRAME_BUSY: AtomicBool = AtomicBool::new(false);
+static SAMPLER_WAITING: AtomicBool = AtomicBool::new(false);
+static SAMPLER: std::sync::OnceLock<std::thread::Thread> = std::sync::OnceLock::new();
 static VRAM_USAGE: AtomicU64 = AtomicU64::new(0);
 static VRAM_BUDGET: AtomicU64 = AtomicU64::new(0);
 static LONGEST_FREEZE_MS: AtomicU64 = AtomicU64::new(0);
@@ -142,6 +146,11 @@ pub fn frame_started(frame: u64) {
     FRAME.store(frame, Ordering::Relaxed);
     FRAME_AT_MS.store(now_ms(), Ordering::Relaxed);
     FRAME_BUSY.store(true, Ordering::Release);
+    if SAMPLER_WAITING.swap(false, Ordering::AcqRel)
+        && let Some(sampler) = SAMPLER.get()
+    {
+        sampler.unpark();
+    }
 }
 
 pub fn frame_finished() {
@@ -417,22 +426,35 @@ fn frame_sampler() {
     let forced = std::env::var("HAMMERPRO_SLOW_FRAME_MS").ok().and_then(|v| v.trim().parse::<u64>().ok());
     let threshold = forced.unwrap_or(SLOW_FRAME_MS).max(20);
     let gap = if forced.is_some() { Duration::ZERO } else { SLOW_FRAME_LOG_GAP };
-    let poll = if forced.is_some() { Duration::from_millis(10) } else { WATCH_EVERY };
+    let _ = SAMPLER.set(std::thread::current());
     let mut slow_frame = u64::MAX;
     let mut next_sample_ms = threshold;
     let mut slow_logged_at = Instant::now() - SLOW_FRAME_LOG_GAP;
     loop {
-        std::thread::sleep(poll);
+        if !FRAME_BUSY.load(Ordering::Acquire) {
+            SAMPLER_WAITING.store(true, Ordering::Release);
+            if !FRAME_BUSY.load(Ordering::Acquire) {
+                std::thread::park_timeout(SAMPLER_IDLE_WAIT);
+            }
+            SAMPLER_WAITING.store(false, Ordering::Release);
+            continue;
+        }
         let frame = FRAME.load(Ordering::Relaxed);
         if frame != slow_frame {
-            if slow_logged_at.elapsed() < gap {
+            let wait = gap.saturating_sub(slow_logged_at.elapsed());
+            if !wait.is_zero() {
+                std::thread::sleep(wait);
                 continue;
             }
             slow_frame = frame;
             next_sample_ms = threshold;
         }
         let running = now_ms().saturating_sub(FRAME_AT_MS.load(Ordering::Relaxed));
-        if !FRAME_BUSY.load(Ordering::Acquire) || running < next_sample_ms {
+        if running < next_sample_ms {
+            std::thread::sleep(Duration::from_millis(next_sample_ms - running));
+            continue;
+        }
+        if !FRAME_BUSY.load(Ordering::Acquire) || FRAME.load(Ordering::Relaxed) != frame {
             continue;
         }
         next_sample_ms = next_sample_ms.saturating_mul(2);
@@ -449,17 +471,24 @@ fn frame_sampler() {
     }
 }
 
+pub fn freeze_line(frozen_ms: u64, inside: &str) -> String {
+    let inside = inside.lines().next().unwrap_or("").trim();
+    let inside = if inside.is_empty() { "(no span)" } else { inside };
+    format!("The window did not answer for {:.1} s while: {inside}", frozen_ms as f64 / 1000.0)
+}
+
+fn answer_every(busy: bool, idle_for_ms: u64) -> Duration {
+    if busy || idle_for_ms < IDLE_AFTER_MS { ANSWER_EVERY } else { IDLE_ANSWER_EVERY }
+}
+
 fn watchdog() {
     let mut last_blackbox = Instant::now() - BLACKBOX_EVERY;
     let mut answered = Instant::now();
     let mut captures = 0usize;
-    let mut last_answer_check = Instant::now();
+    let mut blackbox_frame = u64::MAX;
     loop {
-        std::thread::sleep(WATCH_EVERY);
-        if last_answer_check.elapsed() < ANSWER_EVERY {
-            continue;
-        }
-        last_answer_check = Instant::now();
+        let idle_for = now_ms().saturating_sub(FRAME_AT_MS.load(Ordering::Relaxed));
+        std::thread::sleep(answer_every(FRAME_BUSY.load(Ordering::Acquire) || captures > 0, idle_for));
         #[cfg(windows)]
         windows::keep_filter();
         match main_window_answers() {
@@ -482,19 +511,22 @@ fn watchdog() {
                     captures += 1;
                     let frames = main_thread_stack();
                     let spans = hp_app::runtime::main_spans();
+                    let inside = if spans.is_empty() { "(no span)".to_owned() } else { spans.join(" > ") };
                     let text = format!(
-                        "  window frozen for {frozen} ms, main thread inside: {}\n{}",
-                        if spans.is_empty() { "(no span)".to_owned() } else { spans.join(" > ") },
+                        "  window frozen for {frozen} ms, main thread inside: {inside}\n{}",
                         frames_text(&frames)
                     );
                     replace(&LAST_FREEZE, &text);
                     write_blackbox();
                     last_blackbox = Instant::now();
-                    log::warn!("the window has not answered for {frozen} ms, main thread stack:\n{text}");
+                    log::warn!("{}", freeze_line(frozen, &inside));
+                    log::info!("main thread stack of the freeze:\n{text}");
                 }
             }
         }
-        if last_blackbox.elapsed() >= BLACKBOX_EVERY {
+        let frame = FRAME.load(Ordering::Relaxed);
+        if last_blackbox.elapsed() >= BLACKBOX_EVERY && frame != blackbox_frame {
+            blackbox_frame = frame;
             write_blackbox();
             last_blackbox = Instant::now();
         }
@@ -511,7 +543,7 @@ pub fn previous_run_text(dir: &Path, pid: u32) -> String {
                 .ok()
                 .and_then(|t| t.elapsed().ok())
                 .map(|d| d.as_secs());
-            out.push_str("\nstate of that run (saved every 5 s");
+            out.push_str("\nstate of that run (saved every 5 s while the window draws");
             if let Some(age) = age {
                 out.push_str(&format!(", last saved {age} s ago"));
             }
@@ -1141,6 +1173,14 @@ mod windows {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_freeze_is_logged_as_one_readable_line() {
+        let line = freeze_line(2350, "render_3d > assets");
+        assert_eq!(line, "The window did not answer for 2.4 s while: render_3d > assets");
+        assert!(!freeze_line(800, "a \n hammerpro.exe+0x12").contains('\n'), "the stack never reaches the log panel");
+        assert!(freeze_line(5000, "").ends_with("while: (no span)"));
+    }
 
     #[test]
     fn a_refused_allocation_uses_the_reserve_then_fails_without_aborting() {

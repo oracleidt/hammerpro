@@ -453,6 +453,20 @@ impl CasterCull<'_> {
 
 impl Renderer {
     pub(crate) fn scene_bounds(&self) -> (Vec3, Vec3) {
+        let stamp = self.scene_stamp();
+        let key = (stamp.content, stamp.epoch);
+        let mut kept = self.bounds_cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some((k, bounds)) = *kept
+            && k == key
+        {
+            return bounds;
+        }
+        let bounds = self.measure_scene_bounds();
+        *kept = Some((key, bounds));
+        bounds
+    }
+
+    fn measure_scene_bounds(&self) -> (Vec3, Vec3) {
         let (mut lo, mut hi) = self.instance_bounds.unwrap_or((Vec3::INFINITY, Vec3::NEG_INFINITY));
         for ch in self.scene.chunks.iter().flatten() {
             if !ch.is_edge() && ch.used_i > 0 {

@@ -8,6 +8,7 @@ mod cubemaps;
 mod detail_sprites;
 mod extra_passes;
 mod fog_volume;
+mod frame_cache;
 mod gamewire;
 mod gpu;
 pub mod hdr;
@@ -112,6 +113,7 @@ use overlay::{Chunk, OverlayLayout};
 use pipelines::{COLOR_FORMAT, DEPTH_FORMAT, DISPLAY_FORMAT, LDR_FORMAT, MESH_PASSES, MeshPass, PipelineSet, Shared};
 use scene::{ARENA_ELEM, ArenaKind, NULL_SLOT, Scene};
 use textures::TexEntry;
+use wgpu::util::RenderEncoder;
 
 const SLOW_VIEW_MS: f32 = 150.0;
 const UNKNOWN_MODEL_HALF: f32 = 8.0;
@@ -218,9 +220,16 @@ struct ViewState {
     cull: Option<light_cull::CullView>,
     outline: Option<outline::OutlineTarget>,
     animated: bool,
+    frame: Option<frame_cache::FrameLists>,
+    bundle_2d: Option<frame_cache::Bundle2d>,
+    uniform_cache: Option<Box<ViewUniform>>,
+    packed: Option<frame_cache::PackCache>,
+    overlay_hash: u64,
 }
 
-#[derive(Default)]
+type BoundsCache = std::sync::Mutex<Option<((u64, u64), (Vec3, Vec3))>>;
+
+#[derive(Default, Clone, Copy)]
 struct FrameCounter {
     draws: u32,
     triangles: u64,
@@ -250,6 +259,25 @@ impl FrameCounter {
 
     fn material(&mut self) {
         self.counts.material_changes += 1;
+    }
+
+    fn absorb(&mut self, o: &FrameCounter) {
+        self.draws += o.draws;
+        self.triangles += o.triangles;
+        self.chunks_seen += o.chunks_seen;
+        self.chunks_skipped += o.chunks_skipped;
+        let (a, b) = (&mut self.counts, &o.counts);
+        a.draw_calls += b.draw_calls;
+        a.triangles += b.triangles;
+        a.world_draws += b.world_draws;
+        a.world_triangles += b.world_triangles;
+        a.model_draws += b.model_draws;
+        a.model_triangles += b.model_triangles;
+        a.model_instances += b.model_instances;
+        a.sprites += b.sprites;
+        a.material_changes += b.material_changes;
+        a.chunks_in_frustum += b.chunks_in_frustum;
+        a.chunks_occluded += b.chunks_occluded;
     }
 
     fn view_counts(&self) -> ViewCounts {
@@ -343,6 +371,11 @@ pub struct Renderer {
     instance_pool: instance_cull::InstancePool,
     instances_dirty: bool,
     content_gen: u64,
+    draw_epoch: u64,
+    state_only_bumps: u64,
+    bounds_cache: BoundsCache,
+    frame_caching: bool,
+    world_args_serial: std::sync::atomic::AtomicU64,
     content_gen_3d: u64,
     content_gen_tex: u64,
     model_anim_gen: u64,
@@ -1131,6 +1164,11 @@ impl Renderer {
             instance_pool: instance_cull::InstancePool::new(&device),
             instances_dirty: false,
             content_gen: 1,
+            draw_epoch: 0,
+            state_only_bumps: 0,
+            bounds_cache: std::sync::Mutex::new(None),
+            frame_caching: !profile::baseline("framecache"),
+            world_args_serial: std::sync::atomic::AtomicU64::new(0),
             content_gen_3d: 0,
             content_gen_tex: 0,
             model_anim_gen: 0,
@@ -1275,9 +1313,12 @@ impl Renderer {
     }
 
     pub fn set_view_options(&mut self, view_id: u32, options: ViewOptions) {
-        if self.view_options.get(&view_id) != Some(&options) {
+        let old = self.view_options.get(&view_id).copied();
+        if old != Some(options) {
+            if old.map(frame_cache::scene_options) != Some(frame_cache::scene_options(options)) {
+                self.content_gen += 1;
+            }
             self.view_options.insert(view_id, options);
-            self.content_gen += 1;
         }
     }
 
@@ -1749,6 +1790,9 @@ impl Renderer {
         if self.scene.flags(id) != Some(flags) {
             self.content_gen += 1;
             let old = self.scene.flags(id).unwrap_or_default();
+            if self.scene.flags(id).is_some() && (old.0 ^ flags.0) & !ObjectFlags::HOVERED.0 == 0 {
+                self.state_only_bumps += 1;
+            }
             let seen = ObjectFlags::HIDDEN | ObjectFlags::NO_3D;
             if (old.0 ^ flags.0) & seen.0 != 0 && !flags.contains(ObjectFlags::COMPILED_LIGHT) {
                 self.cubes.epoch += 1;
@@ -1828,6 +1872,9 @@ impl Renderer {
             self.pack_instances();
         }
         let mut out = self.scene.flush_deferred(parallel);
+        if !out.rebuilt.is_empty() || !out.writes.is_empty() {
+            self.draw_epoch += 1;
+        }
         let rebuilt = std::mem::take(&mut out.rebuilt);
         let geometry =
             if profile::baseline("casters") { !out.writes.is_empty() || !rebuilt.is_empty() } else { out.casters };
@@ -1837,8 +1884,10 @@ impl Renderer {
         self.sync_materials();
         for ((buf, alloc), elem) in self.arenas.iter_mut().zip(&self.scene.arenas).zip(ARENA_ELEM) {
             let need = u64::from(alloc.end()) * elem;
-            if buf.ensure(&self.device, &self.queue, need, self.max_buffer, true) == Grow::TooLarge {
-                self.upload_failed = true;
+            match buf.ensure(&self.device, &self.queue, need, self.max_buffer, true) {
+                Grow::TooLarge => self.upload_failed = true,
+                Grow::Grown => self.draw_epoch += 1,
+                Grow::Fits => {}
             }
         }
         for batch in rebuilt.chunks(scene::ASSEMBLE_BATCH) {
@@ -1852,7 +1901,10 @@ impl Renderer {
         let state_size = size_of::<ObjState>() as u64;
         let need = u64::from(out.states_len) * state_size;
         match self.states.ensure(&self.device, &self.queue, need, self.max_storage, true) {
-            Grow::Grown => self.scene_gen += 1,
+            Grow::Grown => {
+                self.scene_gen += 1;
+                self.draw_epoch += 1;
+            }
             Grow::TooLarge => {
                 self.upload_failed = true;
                 log::error!("hp-render: the object state buffer cannot grow")
@@ -2631,6 +2683,11 @@ impl Renderer {
             cull: None,
             outline: None,
             animated: false,
+            frame: None,
+            bundle_2d: None,
+            uniform_cache: None,
+            packed: None,
+            overlay_hash: 0,
         };
         self.views.insert(id, view);
         self.prune_shared_targets();
@@ -2998,14 +3055,27 @@ impl Renderer {
             return OverlayLayout::default();
         };
         let Some(view) = self.views.get_mut(&id) else { return OverlayLayout::default() };
-        if view.overlay.ensure(&self.device, &self.queue, total, self.max_buffer, false) == Grow::TooLarge {
-            log::warn!("hp-render: overlay too large, skipped");
-            return OverlayLayout::default();
+        match view.overlay.ensure(&self.device, &self.queue, total, self.max_buffer, false) {
+            Grow::TooLarge => {
+                log::warn!("hp-render: overlay too large, skipped");
+                return OverlayLayout::default();
+            }
+            Grow::Grown => view.overlay_hash = 0,
+            Grow::Fits => {}
         }
         let bytes = &mut self.overlay_bytes;
         bytes.clear();
         overlay::encode(overlay, &mut self.overlay_scratch, usize::MAX, &mut |b| bytes.extend_from_slice(b));
-        self.queue.write_buffer(&view.overlay.buffer, 0, bytes);
+        let hash = {
+            use std::hash::{BuildHasher, Hasher};
+            let mut h = ahash::RandomState::with_seeds(1, 2, 3, 4).build_hasher();
+            h.write(bytes);
+            h.finish() | 1
+        };
+        if view.overlay_hash != hash {
+            self.queue.write_buffer(&view.overlay.buffer, 0, bytes);
+            view.overlay_hash = hash;
+        }
         layout
     }
 
@@ -3078,6 +3148,7 @@ impl Renderer {
         let flushing = std::time::Instant::now();
         self.flush();
         let flush_ms = flushing.elapsed().as_secs_f32() * 1000.0;
+        self.drop_stale_bundles();
         self.write_cube_info();
         let mut params = *params;
         params.size = [params.size[0].clamp(1, self.max_tex_dim), params.size[1].clamp(1, self.max_tex_dim)];
@@ -3254,7 +3325,7 @@ impl Renderer {
         let mut hooks = std::mem::take(&mut self.hooks);
         let mut animated = false;
         let packed = if shaded_3d && params.show_models && !self.probing {
-            self.pack_view_instances(&cam, opts.model_lods)
+            self.pack_view_cached(view_id, &cam, opts.model_lods)
         } else {
             None
         };
@@ -3322,13 +3393,29 @@ impl Renderer {
             && !crate::profile::baseline("multidraw");
         if world_multi {
             let needed = (self.scene.chunks.len() as u64).max(1) * occlusion::ARGS_BYTES;
-            let _ = self.world_args.ensure(&self.device, &self.queue, needed, self.max_buffer, false);
+            if self.world_args.ensure(&self.device, &self.queue, needed, self.max_buffer, false) == Grow::Grown {
+                *self.world_args_serial.get_mut() = 0;
+            }
         }
+        let cached_frame = if cam.is_ortho { None } else { self.views.get_mut(&view_id).and_then(|v| v.frame.take()) };
+        let cached_2d = if cam.is_ortho { self.views.get_mut(&view_id).and_then(|v| v.bundle_2d.take()) } else { None };
+        let uniform_dirty = self.views.get_mut(&view_id).is_none_or(|v| {
+            let same =
+                v.uniform_cache.as_deref().is_some_and(|u| bytemuck::bytes_of(u) == bytemuck::bytes_of(&uniform));
+            if !same {
+                v.uniform_cache = Some(Box::new(uniform));
+            }
+            !same
+        });
+        let mut kept_frame: Option<frame_cache::FrameLists> = None;
+        let mut kept_2d: Option<frame_cache::Bundle2d> = None;
         let mut main_marked = false;
         if let (Some(view), Some(ps)) = (self.views.get(&view_id), self.pipelines[pi].as_ref())
             && let Some(bind_group) = view.bind_group.as_ref()
         {
-            self.queue.write_buffer(&view.uniform, 0, bytemuck::bytes_of(&uniform));
+            if uniform_dirty {
+                self.queue.write_buffer(&view.uniform, 0, bytemuck::bytes_of(&uniform));
+            }
             let sky_bind = match (&sky_uniform, &view.sky_pass) {
                 (Some(u), Some((buffer, bg, _))) => {
                     self.queue.write_buffer(buffer, 0, bytemuck::bytes_of(u));
@@ -3385,6 +3472,7 @@ impl Renderer {
                 water: water_frame.as_ref(),
                 packed: packed.as_ref(),
                 world_args: None,
+                frame: None,
             };
             let depth = || {
                 Some(wgpu::RenderPassDepthStencilAttachment {
@@ -3393,18 +3481,27 @@ impl Renderer {
                     stencil_ops: None,
                 })
             };
-            let lists = if cam.is_ortho { Default::default() } else { ctx.collect_chunks(&mut counter) };
-            let ctx = DrawCtx { world_args: world_multi.then(|| self.write_world_args(&lists)).flatten(), ..ctx };
-            animated =
-                !cam.is_ortho && (self.shows_animation(&lists) || water_frame.as_ref().is_some_and(|w| w.animated));
-            let mut cands: Vec<ChunkDraw> = Vec::new();
+            let frame = (!cam.is_ortho).then(|| ctx.frame_lists(if self.frame_caching { cached_frame } else { None }));
+            let no_lists: [Vec<ChunkDraw>; MESH_PASSES] = Default::default();
+            let lists = frame.as_ref().map_or(&no_lists, |f| &f.lists);
+            if let Some(f) = frame.as_ref() {
+                counter.absorb(&f.counted);
+            }
+            let ctx = DrawCtx {
+                frame: frame.as_ref(),
+                world_args: frame.as_ref().filter(|_| world_multi).and_then(|f| self.write_world_args(f)),
+                ..ctx
+            };
+            animated = !cam.is_ortho
+                && (frame.as_ref().is_some_and(|f| f.animated) || water_frame.as_ref().is_some_and(|w| w.animated));
+            let mut cands: &[ChunkDraw] = &[];
             let mut occ_args: Option<wgpu::Buffer> = None;
-            if let (Some(o), Some(pipes)) = (occ.as_mut(), self.occ_pipes.as_ref()) {
-                cands = lists[0].iter().chain(&lists[1]).copied().collect();
-                let gpu: Vec<occlusion::CandidateGpu> = cands.iter().map(ChunkDraw::candidate).collect();
+            if let (Some(o), Some(pipes), Some(f)) = (occ.as_mut(), self.occ_pipes.as_ref(), frame.as_ref()) {
+                let (draws, gpu) = f.candidates();
+                cands = draws;
                 let vp = cam.view_proj.to_cols_array_2d();
                 let slots = self.scene.chunks.len();
-                if o.prepare(&self.device, &self.queue, pipes, &mut enc, vp, &gpu, slots, self.max_storage) {
+                if o.prepare(&self.device, &self.queue, pipes, &mut enc, vp, gpu, slots, self.max_storage) {
                     occ_args = Some(o.args.buffer.clone());
                 }
             }
@@ -3427,7 +3524,8 @@ impl Renderer {
                 pass.set_bind_group(0, bind_group, &[]);
                 ctx.draw_sky_background(&mut pass, sky_bg.as_ref(), &mut counter);
                 pass.set_bind_group(0, sky_bind, &[]);
-                DrawCtx { cam: sc, water: None, packed: None, ..ctx }.record_sky_3d(&mut pass, &mut counter);
+                DrawCtx { cam: sc, water: None, packed: None, frame: None, ..ctx }
+                    .record_sky_3d(&mut pass, &mut counter);
                 color_load = wgpu::LoadOp::Load;
                 sky_drawn = true;
             }
@@ -3462,17 +3560,17 @@ impl Renderer {
                 });
                 pass.set_bind_group(0, bind_group, &[]);
                 if cam.is_ortho {
-                    ctx.record_2d(&mut pass, &mut counter);
+                    kept_2d = ctx.record_2d_cached(&mut pass, cached_2d, self.scene_gen, &mut counter);
                 } else {
                     if !sky_drawn {
                         ctx.draw_sky_background(&mut pass, sky_bg.as_ref(), &mut counter);
                     }
-                    let first = occ_args.as_ref().map(|a| (&cands[..], a));
-                    ctx.record_3d_opaque(&mut pass, &lists, first, &mut counter);
+                    let first = occ_args.as_ref().map(|a| (cands, a));
+                    ctx.record_3d_opaque(&mut pass, lists, first, &mut counter);
                     if !two_phase && split {
-                        ctx.record_3d_rest_solid(&mut pass, &lists, None, &mut counter);
+                        ctx.record_3d_rest_solid(&mut pass, lists, None, &mut counter);
                     } else if !two_phase {
-                        ctx.record_3d_rest(&mut pass, &lists, None, &mut counter);
+                        ctx.record_3d_rest(&mut pass, lists, None, &mut counter);
                     }
                 }
             }
@@ -3507,9 +3605,9 @@ impl Renderer {
                 });
                 pass.set_bind_group(0, bind_group, &[]);
                 if split {
-                    ctx.record_3d_rest_solid(&mut pass, &lists, Some((&cands[..], args)), &mut counter);
+                    ctx.record_3d_rest_solid(&mut pass, lists, Some((cands, args)), &mut counter);
                 } else {
-                    ctx.record_3d_rest(&mut pass, &lists, Some((&cands[..], args)), &mut counter);
+                    ctx.record_3d_rest(&mut pass, lists, Some((cands, args)), &mut counter);
                 }
             }
             if let Some(p) = self.profiler.as_ref() {
@@ -3518,7 +3616,7 @@ impl Renderer {
             main_marked = true;
             if split {
                 let keep = fog_frame.is_some() || sun_frame.is_some() || particle_refraction;
-                ctx.record_water(&mut enc, water_frame.as_ref(), view_id, &lists, keep, &mut counter);
+                ctx.record_water(&mut enc, water_frame.as_ref(), view_id, lists, keep, &mut counter);
             }
             if let Some(frame) = fog_frame.as_ref().filter(|_| split) {
                 ctx.record_fog_volumes(&mut enc, frame, view_id, &mut counter);
@@ -3529,8 +3627,13 @@ impl Renderer {
             for h in hooks.iter_mut() {
                 h.finish(&hook_cx, &mut enc);
             }
+            kept_frame = frame;
         }
         self.hooks = hooks;
+        if let Some(v) = self.views.get_mut(&view_id) {
+            v.frame = kept_frame;
+            v.bundle_2d = kept_2d;
+        }
         if !main_marked && let Some(p) = self.profiler.as_ref() {
             p.mark(&mut enc, 4);
         }
@@ -3764,22 +3867,28 @@ impl Renderer {
         }
     }
 
-    fn write_world_args(&self, lists: &[Vec<ChunkDraw>; MESH_PASSES]) -> Option<&wgpu::Buffer> {
-        let draws = lists[0].iter().chain(&lists[1]);
-        let bytes: Vec<u8> = draws
-            .flat_map(|d| {
-                let words: [u32; 5] = [d.count, 1, d.first, 0, 0];
-                bytemuck::cast::<[u32; 5], [u8; 20]>(words)
-            })
-            .collect();
+    fn write_world_args(&self, frame: &frame_cache::FrameLists) -> Option<&wgpu::Buffer> {
+        let bytes = frame.world_args();
         if bytes.is_empty() {
             return Some(&self.world_args.buffer);
         }
         if bytes.len() as u64 > self.world_args.size {
             return None;
         }
-        self.queue.write_buffer(&self.world_args.buffer, 0, &bytes);
+        let serial = std::sync::atomic::Ordering::Relaxed;
+        if self.world_args_serial.swap(frame.serial, serial) != frame.serial {
+            self.queue.write_buffer(&self.world_args.buffer, 0, bytes);
+        }
         Some(&self.world_args.buffer)
+    }
+
+    fn drop_stale_bundles(&mut self) {
+        let stamp = self.scene_stamp();
+        for v in self.views.values_mut() {
+            if v.bundle_2d.as_ref().is_some_and(|b| b.key.stamp != stamp) {
+                v.bundle_2d = None;
+            }
+        }
     }
 
     fn update_selected_chunks(&mut self) {
@@ -4118,6 +4227,7 @@ struct SharedTargets {
 #[derive(Clone, Copy)]
 struct DrawCtx<'a> {
     world_args: Option<&'a wgpu::Buffer>,
+    frame: Option<&'a frame_cache::FrameLists>,
     r: &'a Renderer,
     ps: &'a PipelineSet,
     cam: &'a Camera,
@@ -4166,7 +4276,7 @@ enum BoxSet {
     Missing,
 }
 
-impl DrawCtx<'_> {
+impl<'a> DrawCtx<'a> {
     fn chunk_visible(&self, ch: &scene::Chunk, n: &mut FrameCounter) -> bool {
         if !self.cam.aabb_visible(ch.aabb_min, ch.aabb_max) {
             return false;
@@ -4184,11 +4294,7 @@ impl DrawCtx<'_> {
         true
     }
 
-    fn visible_edge_chunks(&self, n: &mut FrameCounter) -> Vec<(u32, u32)> {
-        self.visible_vertex_chunks(&self.r.scene.edge_chunks, n)
-    }
-
-    fn selected_edge_chunks(&self) -> Vec<(u32, u32)> {
+    fn selected_edge_list(&self) -> Vec<(u32, u32)> {
         if self.r.scene.selected.is_empty() {
             return Vec::new();
         }
@@ -4205,13 +4311,6 @@ impl DrawCtx<'_> {
             })
             .collect();
         self.visible_vertex_chunks(&list, &mut skip)
-    }
-
-    fn visible_mark_chunks(&self, n: &mut FrameCounter) -> Vec<(u32, u32)> {
-        if !self.opts.walk_marks || self.r.scene.mark_chunks.is_empty() {
-            return Vec::new();
-        }
-        self.visible_vertex_chunks(&self.r.scene.mark_chunks, n)
     }
 
     fn visible_vertex_chunks(&self, list: &[u32], n: &mut FrameCounter) -> Vec<(u32, u32)> {
@@ -4235,59 +4334,64 @@ impl DrawCtx<'_> {
         merged
     }
 
-    fn draw_marks(&self, pass: &mut wgpu::RenderPass<'_>, pipeline: usize, n: &mut FrameCounter) {
-        let list = self.visible_mark_chunks(n);
-        let Some(pipeline) = self.ps.marks.get(pipeline).filter(|_| !list.is_empty()) else { return };
+    fn draw_marks<E: RenderEncoder<'a>>(&self, pass: &mut E, pipeline: usize, n: &mut FrameCounter) {
+        let list = self.mark_ranges(n);
+        let ps: &'a PipelineSet = self.ps;
+        let Some(pipeline) = ps.marks.get(pipeline).filter(|_| !list.is_empty()) else { return };
+        let r: &'a Renderer = self.r;
         pass.set_pipeline(pipeline);
-        pass.set_vertex_buffer(0, self.r.arenas[ArenaKind::EdgeVerts as usize].buffer.slice(..));
-        for (first, count) in list {
+        pass.set_vertex_buffer(0, Some(r.arenas[ArenaKind::EdgeVerts as usize].buffer.slice(..)));
+        for &(first, count) in list.iter() {
             pass.draw(first..first + count, 0..1);
             n.add(u64::from(count / 3));
         }
     }
 
-    fn draw_edges(
+    fn draw_edges<E: RenderEncoder<'a>>(
         &self,
-        pass: &mut wgpu::RenderPass<'_>,
-        pipeline: &wgpu::RenderPipeline,
+        pass: &mut E,
+        pipeline: &'a wgpu::RenderPipeline,
         list: &[(u32, u32)],
         n: &mut FrameCounter,
     ) {
         if list.is_empty() {
             return;
         }
+        let r: &'a Renderer = self.r;
         pass.set_pipeline(pipeline);
-        pass.set_vertex_buffer(0, self.r.arenas[ArenaKind::EdgeVerts as usize].buffer.slice(..));
+        pass.set_vertex_buffer(0, Some(r.arenas[ArenaKind::EdgeVerts as usize].buffer.slice(..)));
         for &(first, count) in list {
             pass.draw(first..first + count, 0..1);
             n.add(0);
         }
     }
 
-    fn draw_dots(&self, pass: &mut wgpu::RenderPass<'_>, list: &[(u32, u32)], n: &mut FrameCounter) {
+    fn draw_dots<E: RenderEncoder<'a>>(&self, pass: &mut E, list: &[(u32, u32)], n: &mut FrameCounter) {
         if list.is_empty() {
             return;
         }
-        pass.set_pipeline(&self.ps.dots);
-        pass.set_vertex_buffer(0, self.r.arenas[ArenaKind::EdgeVerts as usize].buffer.slice(..));
+        let (r, ps): (&'a Renderer, &'a PipelineSet) = (self.r, self.ps);
+        pass.set_pipeline(&ps.dots);
+        pass.set_vertex_buffer(0, Some(r.arenas[ArenaKind::EdgeVerts as usize].buffer.slice(..)));
         for &(first, count) in list {
             pass.draw(0..6, first..first + count);
             n.add(u64::from(count) * 2);
         }
     }
 
-    fn draw_boxes(
+    fn draw_boxes<E: RenderEncoder<'a>>(
         &self,
-        pass: &mut wgpu::RenderPass<'_>,
-        pipeline: &wgpu::RenderPipeline,
+        pass: &mut E,
+        pipeline: &'a wgpu::RenderPipeline,
         set: BoxSet,
         n: &mut FrameCounter,
     ) {
         if !self.params.show_models || self.r.instance_count == 0 || self.game_wire() > 0 {
             return;
         }
+        let r: &'a Renderer = self.r;
         pass.set_pipeline(pipeline);
-        pass.set_vertex_buffer(0, self.r.instances.buffer.slice(..));
+        pass.set_vertex_buffer(0, Some(r.instances.buffer.slice(..)));
         match set {
             BoxSet::Missing => {
                 let need_edges = self.cam.is_ortho;
@@ -4313,20 +4417,26 @@ impl DrawCtx<'_> {
         }
     }
 
-    fn draw_model_edges(&self, pass: &mut wgpu::RenderPass<'_>, pipeline: &wgpu::RenderPipeline, n: &mut FrameCounter) {
-        if !self.params.show_models || self.r.instance_count == 0 {
+    fn draw_model_edges<E: RenderEncoder<'a>>(
+        &self,
+        pass: &mut E,
+        pipeline: &'a wgpu::RenderPipeline,
+        n: &mut FrameCounter,
+    ) {
+        let r: &'a Renderer = self.r;
+        if !self.params.show_models || r.instance_count == 0 {
             return;
         }
         let mut bound = false;
-        for g in &self.r.instance_groups {
-            let Some(model) = self.r.models.get(&g.key) else { continue };
+        for g in &r.instance_groups {
+            let Some(model) = r.models.get(&g.key) else { continue };
             let Some((edges, count)) = &model.edges else { continue };
             if !bound {
                 pass.set_pipeline(pipeline);
-                pass.set_vertex_buffer(1, self.r.instances.buffer.slice(..));
+                pass.set_vertex_buffer(1, Some(r.instances.buffer.slice(..)));
                 bound = true;
             }
-            pass.set_vertex_buffer(0, model.vbuf.slice(..));
+            pass.set_vertex_buffer(0, Some(model.vbuf.slice(..)));
             pass.set_index_buffer(edges.slice(..), wgpu::IndexFormat::Uint32);
             pass.draw_indexed(0..*count, 0, g.start..g.start + g.count);
             n.add(0);
@@ -4389,8 +4499,8 @@ impl DrawCtx<'_> {
         }
     }
 
-    fn draw_models_2d(&self, pass: &mut wgpu::RenderPass<'_>, selected: bool, n: &mut FrameCounter) {
-        let ps = self.ps;
+    fn draw_models_2d<E: RenderEncoder<'a>>(&self, pass: &mut E, selected: bool, n: &mut FrameCounter) {
+        let ps: &'a PipelineSet = self.ps;
         let boxes = if selected { &ps.box_selected } else { &ps.box_unselected };
         let wire = match self.opts.models_2d {
             Models2d::Boxes => false,
@@ -4405,9 +4515,10 @@ impl DrawCtx<'_> {
         }
     }
 
-    fn draw_static_lines(&self, pass: &mut wgpu::RenderPass<'_>, on_top: bool, n: &mut FrameCounter) {
+    fn draw_static_lines<E: RenderEncoder<'a>>(&self, pass: &mut E, on_top: bool, n: &mut FrameCounter) {
+        let (r, ps): (&'a Renderer, &'a PipelineSet) = (self.r, self.ps);
         let mut ranges = Vec::new();
-        for layer in self.r.static_lines.values() {
+        for layer in r.static_lines.values() {
             let s = layer.style;
             let shown = if self.cam.is_ortho { s.in_2d } else { s.in_3d };
             if !s.visible || !shown || s.on_top != on_top || layer.count == 0 {
@@ -4417,16 +4528,16 @@ impl DrawCtx<'_> {
             if ranges.is_empty() {
                 continue;
             }
-            pass.set_vertex_buffer(0, layer.buffer.slice(..));
+            pass.set_vertex_buffer(0, Some(layer.buffer.slice(..)));
             if s.width_px <= 1.5 {
-                pass.set_pipeline(&self.ps.overlay_lines[usize::from(on_top)]);
+                pass.set_pipeline(&ps.overlay_lines[usize::from(on_top)]);
                 for &(first, count) in &ranges {
                     pass.draw(first..first + count, 0..1);
                     n.add(0);
                 }
             } else {
-                pass.set_pipeline(&self.ps.wide_lines[usize::from(on_top)]);
-                pass.set_bind_group(1, &layer.width_bind, &[]);
+                pass.set_pipeline(&ps.wide_lines[usize::from(on_top)]);
+                pass.set_bind_group(1, Some(&layer.width_bind), &[]);
                 for &(first, count) in &ranges {
                     pass.draw(0..6, first / 2..(first + count) / 2);
                     n.add(u64::from(count));
@@ -4495,11 +4606,12 @@ impl DrawCtx<'_> {
         }
     }
 
-    fn draw_fill(&self, pass: &mut wgpu::RenderPass<'_>, n: &mut FrameCounter) {
-        let scene = &self.r.scene;
-        let Some(any_material) = self.r.mat_gpu.first() else { return };
+    fn draw_fill<E: RenderEncoder<'a>>(&self, pass: &mut E, n: &mut FrameCounter) {
+        let r: &'a Renderer = self.r;
+        let scene = &r.scene;
+        let Some(any_material) = r.mat_gpu.first() else { return };
         let mut ranges: Vec<(u32, u32)> = Vec::new();
-        for &c in &self.r.sel_chunks.1 {
+        for &c in &r.sel_chunks.1 {
             let Some(Some(ch)) = scene.chunks.get(c as usize) else { continue };
             if ch.is_edge() || ch.used_i == 0 || ch.idx.len == 0 || !self.cam.aabb_visible(ch.aabb_min, ch.aabb_max) {
                 continue;
@@ -4509,37 +4621,40 @@ impl DrawCtx<'_> {
         if ranges.is_empty() {
             return;
         }
-        pass.set_pipeline(&self.ps.fill);
-        pass.set_bind_group(1, &any_material.bind_group, &[]);
-        pass.set_vertex_buffer(0, self.r.arenas[ArenaKind::MeshVerts as usize].buffer.slice(..));
-        pass.set_index_buffer(self.r.arenas[ArenaKind::Indices as usize].buffer.slice(..), wgpu::IndexFormat::Uint32);
+        let ps: &'a PipelineSet = self.ps;
+        pass.set_pipeline(&ps.fill);
+        pass.set_bind_group(1, Some(&any_material.bind_group), &[]);
+        pass.set_vertex_buffer(0, Some(r.arenas[ArenaKind::MeshVerts as usize].buffer.slice(..)));
+        pass.set_index_buffer(r.arenas[ArenaKind::Indices as usize].buffer.slice(..), wgpu::IndexFormat::Uint32);
         for (first, count) in ranges {
             pass.draw_indexed(first..first + count, 0, 0..1);
             n.add(u64::from(count / 3));
         }
     }
 
-    fn draw_background_images(&self, pass: &mut wgpu::RenderPass<'_>, n: &mut FrameCounter) {
+    fn draw_background_images<E: RenderEncoder<'a>>(&self, pass: &mut E, n: &mut FrameCounter) {
         let ViewKind::Ortho { axis, .. } = self.params.kind else { return };
+        let r: &'a Renderer = self.r;
         let i = usize::from(self.view.samples > 1);
-        let Some(pipeline) = self.r.bg_pipes.as_ref().and_then(|p| p.pipelines[i].as_ref()) else { return };
+        let Some(pipeline) = r.bg_pipes.as_ref().and_then(|p| p.pipelines[i].as_ref()) else { return };
         let mut bound = false;
-        for img in self.r.bg_images.iter().filter(|img| img.axis == axis) {
+        for img in r.bg_images.iter().filter(|img| img.axis == axis) {
             if !bound {
                 pass.set_pipeline(pipeline);
                 bound = true;
             }
-            pass.set_bind_group(1, &img.bind, &[]);
-            pass.set_vertex_buffer(0, img.buffer.slice(..));
+            pass.set_bind_group(1, Some(&img.bind), &[]);
+            pass.set_vertex_buffer(0, Some(img.buffer.slice(..)));
             pass.draw(0..6, 0..1);
             n.add(2);
         }
     }
 
-    fn record_2d(&self, pass: &mut wgpu::RenderPass<'_>, n: &mut FrameCounter) {
+    fn record_2d_static<E: RenderEncoder<'a>>(&self, pass: &mut E, n: &mut FrameCounter) {
+        let ps: &'a PipelineSet = self.ps;
         self.draw_background_images(pass, n);
         if self.params.grid.is_some() {
-            pass.set_pipeline(&self.ps.grid);
+            pass.set_pipeline(&ps.grid);
             pass.draw(0..3, 0..1);
             n.add(1);
         }
@@ -4547,10 +4662,10 @@ impl DrawCtx<'_> {
             self.draw_fill(pass, n);
         }
         self.draw_marks(pass, 1, n);
-        let edges = self.visible_edge_chunks(n);
-        self.draw_edges(pass, &self.ps.edge_unselected, &edges, n);
+        let edges = self.edge_ranges(n);
+        self.draw_edges(pass, &ps.edge_unselected, &edges, n);
         self.draw_models_2d(pass, false, n);
-        self.draw_edges(pass, &self.ps.edge_selected, &self.selected_edge_chunks(), n);
+        self.draw_edges(pass, &ps.edge_selected, &self.selected_ranges(), n);
         self.draw_models_2d(pass, true, n);
         if self.opts.sprites_2d_px > 0.0 {
             self.draw_sprites(pass, n);
@@ -4560,12 +4675,42 @@ impl DrawCtx<'_> {
             self.draw_dots(pass, &edges, n);
         }
         if self.r.scene.invalid > 0 {
-            self.draw_edges(pass, &self.ps.edge_invalid, &edges, n);
+            self.draw_edges(pass, &ps.edge_invalid, &edges, n);
         }
         self.draw_static_lines(pass, false, n);
+    }
+
+    fn record_2d(&self, pass: &mut wgpu::RenderPass<'a>, n: &mut FrameCounter) {
+        self.record_2d_static(pass, n);
         self.draw_overlay(pass, false, n);
         self.draw_static_lines(pass, true, n);
         self.draw_overlay(pass, true, n);
+    }
+
+    fn record_2d_cached(
+        &self,
+        pass: &mut wgpu::RenderPass<'a>,
+        cached: Option<frame_cache::Bundle2d>,
+        scene_gen: u64,
+        n: &mut FrameCounter,
+    ) -> Option<frame_cache::Bundle2d> {
+        let Some(key) = self.key_2d(scene_gen).filter(|_| self.r.frame_caching) else {
+            self.record_2d(pass, n);
+            return None;
+        };
+        let bundle = match cached {
+            Some(b) if b.reusable(&key, self.cam) => b,
+            _ => self.build_bundle_2d(key),
+        };
+        pass.execute_bundles(std::iter::once(&bundle.below));
+        n.absorb(&bundle.counted);
+        pass.set_bind_group(0, self.bind_group, &[]);
+        self.draw_overlay(pass, false, n);
+        pass.execute_bundles(std::iter::once(&bundle.above));
+        n.absorb(&bundle.counted_above);
+        pass.set_bind_group(0, self.bind_group, &[]);
+        self.draw_overlay(pass, true, n);
+        Some(bundle)
     }
 
     fn collect_chunks(&self, n: &mut FrameCounter) -> [Vec<ChunkDraw>; MESH_PASSES] {
@@ -4998,8 +5143,8 @@ impl DrawCtx<'_> {
         }
     }
 
-    fn draw_sprites(&self, pass: &mut wgpu::RenderPass<'_>, n: &mut FrameCounter) {
-        let r = self.r;
+    fn draw_sprites<E: RenderEncoder<'a>>(&self, pass: &mut E, n: &mut FrameCounter) {
+        let (r, ps): (&'a Renderer, &'a PipelineSet) = (self.r, self.ps);
         if !self.params.show_sprites {
             return;
         }
@@ -5011,13 +5156,13 @@ impl DrawCtx<'_> {
                 continue;
             }
             if !bound {
-                pass.set_pipeline(&self.ps.sprite);
+                pass.set_pipeline(&ps.sprite);
                 bound = true;
             }
-            pass.set_vertex_buffer(0, buffer.buffer.slice(..));
+            pass.set_vertex_buffer(0, Some(buffer.buffer.slice(..)));
             for g in groups {
                 if let Some(mg) = r.mat_gpu.get(g.key as usize) {
-                    pass.set_bind_group(1, &mg.bind_group, &[]);
+                    pass.set_bind_group(1, Some(&mg.bind_group), &[]);
                     pass.draw(0..6, g.start..g.start + g.count);
                     n.add(u64::from(g.count) * 2);
                     n.counts.sprites += g.count;
@@ -5104,7 +5249,7 @@ impl DrawCtx<'_> {
 
     fn record_3d_rest(
         &self,
-        pass: &mut wgpu::RenderPass<'_>,
+        pass: &mut wgpu::RenderPass<'a>,
         lists: &[Vec<ChunkDraw>; MESH_PASSES],
         indirect: Option<(&[ChunkDraw], &wgpu::Buffer)>,
         n: &mut FrameCounter,
@@ -5115,7 +5260,7 @@ impl DrawCtx<'_> {
 
     fn record_3d_rest_solid(
         &self,
-        pass: &mut wgpu::RenderPass<'_>,
+        pass: &mut wgpu::RenderPass<'a>,
         _lists: &[Vec<ChunkDraw>; MESH_PASSES],
         indirect: Option<(&[ChunkDraw], &wgpu::Buffer)>,
         n: &mut FrameCounter,
@@ -5128,52 +5273,50 @@ impl DrawCtx<'_> {
             self.run_hooks(pass, false);
             return;
         }
-        let edges = self.visible_edge_chunks(&mut FrameCounter::default());
+        let ps: &'a PipelineSet = self.ps;
+        let edges = || self.edge_ranges(&mut FrameCounter::default());
         if mode == RenderMode::Wireframe {
             self.draw_marks(pass, 2, n);
         }
         if mode == RenderMode::Wireframe {
-            self.draw_edges(pass, &self.ps.edge_unselected, &edges, n);
-            self.draw_boxes(pass, &self.ps.box_unselected, BoxSet::All, n);
+            self.draw_edges(pass, &ps.edge_unselected, &edges(), n);
+            self.draw_boxes(pass, &ps.box_unselected, BoxSet::All, n);
             self.run_hooks(pass, false);
         } else {
             if let Some((cands, args)) = indirect {
                 self.draw_chunks_indirect(pass, cands, args, n);
             }
-            self.draw_boxes(pass, &self.ps.box_depth, BoxSet::Missing, n);
+            self.draw_boxes(pass, &ps.box_depth, BoxSet::Missing, n);
             if self.opts.model_distance > 0.0 {
-                self.draw_boxes(pass, &self.ps.box_far, BoxSet::All, n);
+                self.draw_boxes(pass, &ps.box_far, BoxSet::All, n);
             }
             self.run_hooks(pass, false);
             self.draw_marks(pass, 0, n);
             if mode == RenderMode::TexturedWire {
-                self.draw_edges(pass, &self.ps.edge_depth, &edges, n);
+                self.draw_edges(pass, &ps.edge_depth, &edges(), n);
             }
             if self.r.scene.always_edges > 0 {
-                self.draw_edges(pass, &self.ps.edge_always, &edges, n);
+                self.draw_edges(pass, &ps.edge_always, &edges(), n);
             }
         }
     }
 
     fn record_3d_rest_blended(
         &self,
-        pass: &mut wgpu::RenderPass<'_>,
+        pass: &mut wgpu::RenderPass<'a>,
         lists: &[Vec<ChunkDraw>; MESH_PASSES],
         n: &mut FrameCounter,
     ) {
         let mode = self.params.mode;
-        let edges = self.visible_edge_chunks(&mut FrameCounter::default());
+        let ps: &'a PipelineSet = self.ps;
         if mode != RenderMode::Wireframe {
-            self.draw_chunks(pass, &self.faded_chunks(), true, n);
+            self.draw_chunks(pass, &self.faded_list(), true, n);
             if self.r.translucent_instances {
                 self.draw_models(pass, &[MeshPass::Opaque, MeshPass::AlphaTest], true, n);
             }
             self.draw_chunks(pass, &lists[MeshPass::Modulate as usize], false, n);
             self.draw_models(pass, &[MeshPass::Modulate], false, n);
-            let mut sorted: Vec<ChunkDraw> = lists[2].clone();
-            sorted.extend_from_slice(&lists[3]);
-            sorted.sort_by(|a, b| b.dist.total_cmp(&a.dist));
-            self.draw_chunks(pass, &sorted, false, n);
+            self.draw_chunks(pass, &self.blended_list(lists), false, n);
             self.draw_models(pass, &[MeshPass::Translucent, MeshPass::Additive], false, n);
             if self.game_wire() == 0 {
                 self.r.draw_detail_sprites(pass, self.view.samples, false, n);
@@ -5214,10 +5357,10 @@ impl DrawCtx<'_> {
         self.draw_collision(pass, n);
         self.draw_overlay(pass, false, n);
         self.draw_static_lines(pass, false, n);
-        self.draw_edges(pass, &self.ps.edge_selected, &self.selected_edge_chunks(), n);
-        self.draw_boxes(pass, &self.ps.box_selected, BoxSet::All, n);
+        self.draw_edges(pass, &ps.edge_selected, &self.selected_ranges(), n);
+        self.draw_boxes(pass, &ps.box_selected, BoxSet::All, n);
         if self.r.scene.invalid > 0 {
-            self.draw_edges(pass, &self.ps.edge_invalid, &edges, n);
+            self.draw_edges(pass, &ps.edge_invalid, &self.edge_ranges(&mut FrameCounter::default()), n);
         }
         self.draw_static_lines(pass, true, n);
         self.draw_overlay(pass, true, n);

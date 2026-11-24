@@ -30,14 +30,15 @@ La fenêtre affiche d'abord le chemin du fichier et un résumé : triangles, mat
 
 | Option | Effet | Défaut |
 |---|---|---|
-| **Nom** | `models/hammerpro/<nom>.mdl`. Nettoyé en lettres minuscules, chiffres et `_` (48 caractères au plus). Un avertissement signale qu'un modèle de ce nom existe : il est remplacé. | Le nom du fichier |
+| **$modelname** | Chemin et nom du modèle comme dans un QC : `models/<dossier>/<nom>.mdl` (le préfixe `models/` et l'extension `.mdl` sont ajoutés si vous les omettez). Lettres, chiffres, `_`, `-`, `.` et `/` seulement, ni `..` ni espaces : un chemin invalide grise **Importer** avec un message. Un avertissement signale qu'un modèle de ce nom existe : il est remplacé. | `models/hammerpro/<nom du fichier>.mdl` |
+| **$cdmaterials** | Dossier des textures sous `materials/`, comme dans un QC. Suit **$modelname** (`models/<dossier>/<nom>`) tant que vous ne le changez pas. | `models/hammerpro/<nom du fichier>` |
 | **Type** | **prop_static**, ou **Prop physique** (`prop_physics`). | prop_static |
 | **Échelle** | Échelle supplémentaire après la conversion d'unités (0,001 à 1000). | 1 |
 | **Convertir les unités** | Les mètres du fichier deviennent des unités Source (pouces) : 1 m = 39,37 unités. Désactivé : une unité du fichier vaut une unité Source. | Activé |
 | **Axe vertical** | **Celui du fichier**, **Y** ou **Z**. Les modèles en Y vertical sont tournés pour que Z soit vertical, l'avant restant devant. | Celui du fichier |
 | **Origine** - **En bas au centre** | Met l'origine du modèle au centre de sa base. | Activé |
 | **Propriété de surface** | Matériau physique et sonore : `default`, `concrete`, `metal`, `solidmetal`, `metal_box`, `metalpanel`, `wood`, `wood_crate`, `wood_furniture`, `plastic`, `plastic_barrel`, `glass`, `rock`, `dirt`, `grass`, `gravel`, `brick`, `tile`, `carpet`, `cardboard`, `paper`, `rubber`, `flesh`, `ice`, `porcelain`, `computer`, `pottery`. | default |
-| **Collision** | **Morceaux** : chaque morceau séparé du modèle reçoit une enveloppe convexe. **Boîte** : la boîte du modèle. **Aucune** : pas de modèle de collision. | Morceaux |
+| **Collision** | **Morceaux** : chaque morceau séparé du modèle reçoit une enveloppe convexe. **Une enveloppe convexe** : un seul morceau convexe autour de tout le modèle. **Décomposition convexe** : plusieurs morceaux convexes qui suivent la forme du modèle (façon VHACD), pour qu'une chaise, une arche ou un mur en L reçoive une collision qui lui correspond sans boucher ses trous. **Boîte** : la boîte du modèle. **Aucune** : pas de modèle de collision. Avec l'enveloppe et la décomposition, **Morceaux max** (1 à 40, décomposition seulement) et **Sommets max par morceau** (8 à 128) gardent chaque morceau sous les limites de vphysics. **Utiliser la collision du modèle quand elle existe** : les objets du fichier nommés `UCX_`, `UBX_`, `UCP_`, `USP_`, `*_col`, `*_phys`, `collision`... deviennent le modèle physique (un morceau convexe chacun, fusionnés jusqu'à Morceaux max s'il y en a plus) et ne sont pas dessinés ; sans eux, le mode choisi est utilisé. Tout est enregistré (`lab.model_collision`, `lab.collision_max_pieces`, `lab.collision_max_hull_vertices`, `lab.model_own_collision`). | Morceaux, 16 morceaux, 32 sommets, collision du modèle activée |
 | **Masse** (prop physique seulement) | 0,1 à 50000 kg. | 20 kg |
 | **Niveaux de détail (LOD)** | Versions simplifiées du modèle que le jeu affiche de loin. Partagé avec [Propper](propper.md) et enregistré (`[lab.model_lod]`). | Activé |
 | **Niveaux** | Niveaux sous le modèle complet, de 3 à 6 (les gros modèles en ont un ou deux de plus). | 4 |
@@ -47,19 +48,23 @@ La fenêtre affiche d'abord le chemin du fichier et un résumé : triangles, mat
 
 Un prop physique sans collision affiche un avertissement : il ne peut pas bouger en jeu.
 
+### Aperçu de la collision
+
+Sous les options, un aperçu 3D montre le modèle avec la collision qui sera compilée dessinée par-dessus, chaque morceau convexe dans sa couleur, et le nombre de morceaux (« 16 morceaux convexes », ou « Collision du fichier : 3 morceaux convexes »). **Afficher la collision** masque le calque. Le glisser gauche ou droit tourne le modèle, la molette zoome. Les morceaux sont calculés en arrière-plan avec le même code que l'import : ce que vous voyez est ce que reçoit le `.phy`.
+
 **Matériaux** liste les matériaux utilisés par le modèle avec leur texture : le nom du fichier, « texture dans le fichier » (intégrée), ou « pas de texture (sa couleur) ».
 
-Les options autres que le nom et les réglages de LOD restent comme vous les avez laissées jusqu'à la fermeture de Hammer Pro. **Importer** est grisé tant que le nom est vide.
+Les options autres que les chemins, la collision et les réglages de LOD restent comme vous les avez laissées jusqu'à la fermeture de Hammer Pro. **Importer** est grisé tant que **$modelname** ou **$cdmaterials** n'est pas un chemin valide.
 
 ## Ce qui est écrit
 
 Le modèle va dans le dossier du jeu du contenu monté, ses textures à côté :
 
-- `materials/models/hammerpro/<nom>/` : un VTF (avec mipmaps) et un VMT `VertexLitGeneric` par matériau utilisé. Un matériau sans texture (ou dont la texture est illisible) reçoit une petite texture de sa couleur, avec un avertissement dans la console. Les matériaux double face reçoivent `$nocull` ; l'alpha devient `$alphatest` ou `$translucent` (selon le mode d'alpha du matériau, ou selon l'alpha de la texture quand le fichier ne le précise pas) ; un matériau texturé teinté reçoit `$color2`, une couleur transparente `$alpha`.
+- `materials/<$cdmaterials>/` (par défaut `materials/models/hammerpro/<nom>/`) : un VTF (avec mipmaps) et un VMT `VertexLitGeneric` par matériau utilisé. Un matériau sans texture (ou dont la texture est illisible) reçoit une petite texture de sa couleur, avec un avertissement dans la console. Les matériaux double face reçoivent `$nocull` ; l'alpha devient `$alphatest` ou `$translucent` (selon le mode d'alpha du matériau, ou selon l'alpha de la texture quand le fichier ne le précise pas) ; un matériau texturé teinté reçoit `$color2`, une couleur transparente `$alpha`.
 - Avec **Garder les paramètres des matériaux** : les fichiers et clés en plus décrits dans « Paramètres des matériaux » plus bas.
-- `models/hammerpro/<nom>.mdl` avec ses `.vvd`, `.dx90.vtx` et `.phy` (pas de `.phy` avec la collision **Aucune**). Les anciens fichiers `.dx80.vtx`, `.sw.vtx`, `.vtx` et `.ani` du même nom sont supprimés. Le MDL est écrit en dernier, pour que le jeu ne voie jamais un modèle à moitié écrit.
+- `models/<$modelname>` (par défaut `models/hammerpro/<nom>.mdl`) avec ses `.vvd`, `.dx90.vtx` et `.phy` (pas de `.phy` avec la collision **Aucune**). Les anciens fichiers `.dx80.vtx`, `.sw.vtx`, `.vtx` et `.ani` du même nom sont supprimés. Le MDL est écrit en dernier, pour que le jeu ne voie jamais un modèle à moitié écrit.
 
-Le compilateur intégré produit ce que studiomdl fait d'un prop statique : un os, une séquence idle, un maillage par matériau, les niveaux de détail, et un LOD d'ombre pour les props physiques. Un modèle de plus de 65536 sommets est découpé en plusieurs parties (la console indique combien). Les enveloppes de collision sont réduites de la marge de collision comme celles de studiomdl ; les morceaux plats sont épaissis à une unité.
+Le compilateur intégré produit ce que studiomdl fait d'un prop statique : un os, une séquence idle, un maillage par matériau, les niveaux de détail, et un LOD d'ombre pour les props physiques. Un modèle de plus de 65536 sommets est découpé en plusieurs parties (la console indique combien). Les enveloppes de collision sont réduites de la marge de collision comme celles de studiomdl ; les morceaux plats sont épaissis à une unité. Une collision de plus d'un morceau est marquée concave comme le `$concave` de studiomdl ; une seule enveloppe convexe ne l'est pas.
 
 **Construire et enregistrer en contenu** embarque ces fichiers avec la map (voir [Construire et publier le contenu](build-content-release.md)).
 
@@ -90,7 +95,7 @@ La console liste, pour chaque matériau, ce qui a été converti et ce qui a ét
 1. **Ajouter des fichiers...** choisit plusieurs fichiers de modèle, **Ajouter un dossier...** choisit des dossiers. **Inclure les sous-dossiers** les parcourt (24 niveaux au plus), et les cases **Formats** (OBJ, FBX, glTF / GLB) filtrent ce qui est pris dans les dossiers. Les fichiers choisis à la main sont gardés quel que soit leur format coché tant que l'extension est prise en charge. 5000 fichiers au plus sont pris, par ordre alphabétique, sans doublons.
 2. Le **tableau d'aperçu** lit chaque fichier en arrière-plan et liste ses triangles, sa taille en unités, le nom de modèle qu'il recevra et ses avertissements (modèle lourd, trop petit ou trop grand, prop physique sans collision, fichier illisible en rouge). Un nom en orange signifie qu'un modèle de ce nom existe déjà. **Aperçu** relit les fichiers après un changement d'échelle, d'unités ou d'axe.
 3. **Modèle de nom** construit chaque nom de modèle : `{name}` est le nom de fichier nettoyé, `{folder}` le nom de son dossier, `{index}` son numéro (001, 002...). Le **Préfixe** est placé devant. Le résultat est nettoyé comme le nom d'un import seul (lettres minuscules, chiffres et `_`, 48 caractères au plus) ; deux fichiers qui donnent le même nom reçoivent `_2`, `_3`... pour qu'aucun n'écrase un autre.
-4. Les options sont celles de l'import seul : type (`prop_static` ou prop physique avec sa masse), échelle, **Convertir les unités**, axe vertical, origine en bas au centre, propriété de surface, collision, plus les réglages enregistrés **Niveaux de détail (LOD)** et **Garder les paramètres des matériaux**.
+4. Les options sont celles de l'import seul : type (`prop_static` ou prop physique avec sa masse), échelle, **Convertir les unités**, axe vertical, origine en bas au centre, propriété de surface, collision (avec ses limites et la collision du modèle), plus les réglages enregistrés **Niveaux de détail (LOD)** et **Garder les paramètres des matériaux**.
 5. **Remplacer les modèles qui existent** est désactivé par défaut : un modèle dont le nom existe dans `models/hammerpro` est ignoré et signalé. **Conversions en parallèle** fixe le nombre de fichiers convertis en même temps (1 à 16 ; par défaut la moitié des threads du processeur, entre 1 et 4, car les textures et maillages prennent de la mémoire).
 6. **Placer un prop par modèle dans une grille** met un prop (`prop_static` ou `prop_physics`) par modèle converti devant la caméra 3D : la grille commence là où la caméra regarde, a le nombre de **Colonnes** choisi, et l'**Écart** entre les cases (chaque case est aussi grande que le plus grand modèle). Les props reposent sur le niveau du sol de ce point et sont sélectionnés, en une seule étape d'annulation (« Import de modèles »).
 7. **Convertir N modèles** lance l'exécution. Une barre de progression montre les fichiers faits ; **Annuler** s'arrête après les fichiers en cours de conversion (le reste est signalé comme non traité). La colonne **Résultat** et la console listent chaque fichier : OK, Avertissement, Erreur ou Ignoré avec la raison, puis une ligne de synthèse : fichiers, ok, avec avertissements, erreurs, ignorés, non traités, et la durée.
@@ -103,7 +108,7 @@ Un fichier illisible ou impossible à compiler est une erreur pour ce fichier se
 hammerpro --import-models FICHIER_OU_DOSSIER... --out DOSSIER [options]
 ```
 
-Il n'a besoin ni de fenêtre ni de jeu : les modèles vont dans `DOSSIER/models/hammerpro/` et les textures dans `DOSSIER/materials/models/hammerpro/<nom>/`, un dossier que vous pouvez copier dans le jeu ou embarquer. Voir [Ligne de commande](../reference/command-line.md) pour toutes les options. Par MCP l'outil est `import_models_batch`.
+Il n'a besoin ni de fenêtre ni de jeu : les modèles vont dans `DOSSIER/models/hammerpro/` et les textures dans `DOSSIER/materials/models/hammerpro/<nom>/`, un dossier que vous pouvez copier dans le jeu ou embarquer. Voir [Ligne de commande](../reference/command-line.md) pour toutes les options. Par MCP l'outil est `import_models_batch` (ses arguments `collision`, `max_pieces`, `max_hull_vertices`, `own_collision` et `folder` correspondent aux options ci-dessus) ; `preview_collision` renvoie les morceaux qu'un fichier ou des brushes recevraient, avec un dessin.
 
 ## Astuces
 

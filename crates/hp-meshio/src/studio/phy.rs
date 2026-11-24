@@ -34,8 +34,11 @@ pub(crate) struct Collision {
     pub pieces: usize,
 }
 
-pub(crate) fn build(model: &Model, kind: Kind) -> Option<Collision> {
-    let groups: Vec<Vec<DVec3>> = match kind {
+fn groups(model: &Model, kind: Kind, given: Option<&[Vec<DVec3>]>) -> Option<Vec<Vec<DVec3>>> {
+    if let Some(given) = given {
+        return Some(given.to_vec());
+    }
+    Some(match kind {
         Kind::None => return None,
         Kind::Box => {
             let (lo, hi) = model.bounds()?;
@@ -43,7 +46,24 @@ pub(crate) fn build(model: &Model, kind: Kind) -> Option<Collision> {
             vec![(0..8).map(|i| corner(lo, hi, i)).collect()]
         }
         Kind::Pieces => pieces(model),
-    };
+        Kind::Hull | Kind::Decompose => {
+            crate::collision::generated(model, kind, crate::collision::CollisionLimits::default())?
+        }
+    })
+}
+
+pub(crate) fn preview(model: &Model, kind: Kind, given: Option<&[Vec<DVec3>]>) -> Vec<Vec<DVec3>> {
+    groups(model, kind, given)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|g| piece_hull(g))
+        .map(|h| h.verts)
+        .filter(|v| v.len() >= 4)
+        .collect()
+}
+
+pub(crate) fn build(model: &Model, kind: Kind, given: Option<&[Vec<DVec3>]>) -> Option<Collision> {
+    let groups = groups(model, kind, given)?;
     let mut hulls: Vec<Hull> = groups.iter().filter_map(|g| piece_hull(g)).map(|h| shrink(&h)).collect();
     if hulls.is_empty() {
         let (lo, hi) = model.bounds()?;

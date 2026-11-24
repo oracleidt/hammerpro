@@ -76,6 +76,8 @@ pub(crate) const RANGES: &[(&str, f64, f64)] = &[
     ("lab.model_lod.levels", 3.0, 6.0),
     ("lab.model_lod.reduction", 0.2, 0.9),
     ("lab.propper_mass", 0.1, 50_000.0),
+    ("lab.collision_max_pieces", 1.0, 40.0),
+    ("lab.collision_max_hull_vertices", 8.0, 128.0),
     ("lab.combine_max_pieces", 1.0, 128.0),
     ("lab.soundscape.volume", 0.0, 1.0),
     ("compile.finish_sound_volume", 0.0, 1.0),

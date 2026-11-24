@@ -72,7 +72,11 @@ Doit être le **premier** argument. Chaque fichier ou dossier est converti en `D
 | `--kind static\|physics` | `prop_static` ou `prop_physics`. | `static` |
 | `--surface NOM` | Propriété de surface. | `default` |
 | `--mass KG` | Masse des props physiques, 0,1 à 50000. | `20` |
-| `--collision pieces\|box\|none` | Modèle de collision. | `pieces` |
+| `--collision pieces\|hull\|decompose\|box\|none` | Modèle de collision : une enveloppe par partie connexe, une enveloppe convexe, une décomposition convexe (plusieurs morceaux), la boîte, ou aucun. | `lab.model_collision` (`pieces`) |
+| `--max-pieces N` | Nombre maximal de morceaux convexes de `decompose`, de 1 à 40. | `lab.collision_max_pieces` (16) |
+| `--max-hull-vertices N` | Nombre maximal de sommets par morceau convexe de `hull` et `decompose`, de 8 à 128. | `lab.collision_max_hull_vertices` (32) |
+| `--own-collision`, `--no-own-collision` | Utiliser les maillages de collision des fichiers (`UCX_`, `*_col`...) quand ils existent. | `lab.model_own_collision` (activé) |
+| `--folder F` | Dossier sous `models/` des modèles (les matériaux vont dans `materials/models/F/<nom>/`). | `hammerpro` |
 | `--no-lod`, `--lod-levels N`, `--lod-keep PCT` | Niveaux de détail : désactivés, 3 à 6 niveaux, 20 à 90 % gardés par niveau. | réglages enregistrés |
 | `--no-material-params` | Couleur, alpha et double face seulement dans les VMT. | réglage enregistré |
 | `--overwrite` | Remplace les modèles qui existent (ignorés par défaut). | désactivé |

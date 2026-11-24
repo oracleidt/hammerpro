@@ -55,6 +55,7 @@ pub(crate) struct State {
     pcf_map: Option<((u64, u64), Vec<String>)>,
     pcf_report_key: Option<(u64, usize)>,
     particles_shown: bool,
+    particles_drawn: Option<ParticlesDrawn>,
     nav_gen: Option<Receiver<NavGenAnswer>>,
     prop_job: Option<PropJob>,
     combine_job: Option<super::combine::CombineJob>,
@@ -1268,6 +1269,18 @@ fn particles_draw(app: &mut HammerProApp) {
     {
         return;
     }
+    let drawn_key = |renderer: &hp_render::Renderer, generation: u64| {
+        (
+            shared.sprites_serial,
+            eye.map(f32::to_bits),
+            generation,
+            renderer.particle_count(),
+            renderer.particle_model_count(),
+        )
+    };
+    if lab.particles_drawn == Some(drawn_key(&gfx.renderer, assets.generation())) {
+        return;
+    }
     let draws = hp_ui_lab::particles::scene_draws_of(&shared, eye, &mut **assets, &mut gfx.renderer);
     lab.particles_shown = !draws.sprites.is_empty() || !draws.models.is_empty();
     if draws.batches.is_empty() {
@@ -1277,7 +1290,10 @@ fn particles_draw(app: &mut HammerProApp) {
     }
     gfx.renderer.set_particle_models(&draws.models);
     gfx.renderer.set_particle_draw_batches(&draws.batches);
+    lab.particles_drawn = Some(drawn_key(&gfx.renderer, assets.generation()));
 }
+
+type ParticlesDrawn = (u64, [u32; 3], u64, u32, u32);
 
 pub(crate) fn particle_stats(app: &HammerProApp) -> String {
     let lab = &app.pkg.lab;

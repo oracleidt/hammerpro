@@ -60,7 +60,10 @@ struct FogLayer {
     on: bool,
     entries: Vec<Entry>,
     global_warning: Option<String>,
+    warning_key: Option<WarningKey>,
 }
+
+type WarningKey = (u64, bool, Option<Id>, hp_app::i18n::Lang);
 
 fn color32(c: [f32; 3]) -> Color32 {
     let b = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
@@ -214,7 +217,16 @@ impl OverlayLayer for FogLayer {
 
     fn prepare(&mut self, state: &AppState) {
         self.on = state.settings.render.fog_volume_preview;
-        self.global_warning = global_warning(state);
+        let warning_key = (
+            state.doc.scene_revision(),
+            state.settings.render.fog_preview,
+            state.runtime.render.fog_controller,
+            hp_app::i18n::lang(),
+        );
+        if self.warning_key != Some(warning_key) {
+            self.global_warning = global_warning(state);
+            self.warning_key = Some(warning_key);
+        }
         if !self.on {
             self.entries.clear();
             self.stamp = None;

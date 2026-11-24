@@ -27,6 +27,7 @@ const BOUNDS_REFRESH_SECS: f64 = 1.0;
 pub struct StatusCache {
     key: Option<(u64, u64)>,
     computed_at: f64,
+    computed_busy: bool,
     bounds: Option<Aabb>,
     desc_key: Option<(u64, usize)>,
     desc_at: f64,
@@ -50,8 +51,11 @@ impl StatusCache {
     pub fn selection_bounds(&mut self, state: &AppState) -> Option<Aabb> {
         let key = (state.doc.revision(), state.assets.generation());
         let now = state.frame.time;
-        let stale = self.key != Some(key) || (now - self.computed_at).abs() > BOUNDS_REFRESH_SECS;
+        let busy = state.assets.busy();
+        let loading = busy || self.computed_busy;
+        let stale = self.key != Some(key) || (loading && (now - self.computed_at).abs() > BOUNDS_REFRESH_SECS);
         if stale {
+            self.computed_busy = busy;
             self.bounds = if state.doc.selection().is_empty() {
                 None
             } else {

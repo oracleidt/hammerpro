@@ -289,6 +289,9 @@ impl Hover {
 #[derive(Clone, Copy, Debug)]
 struct SelCache {
     revision: u64,
+    generation: u64,
+    busy: bool,
+    elements: bool,
     frame: u64,
     bounds: Option<Aabb>,
     brushes: bool,
@@ -298,6 +301,22 @@ struct SelCache {
 
 const SLOW_SELECTION_BOUNDS: std::time::Duration = std::time::Duration::from_millis(1);
 const SLOW_BOUNDS_REFRESH: std::time::Duration = std::time::Duration::from_secs(2);
+const LOADING_BOUNDS_REFRESH: std::time::Duration = std::time::Duration::from_millis(250);
+
+fn sel_cache_valid(c: &SelCache, key: (u64, u64, bool, bool), frame: u64) -> bool {
+    let (revision, generation, busy, elements) = key;
+    if c.revision != revision || c.elements != elements {
+        return false;
+    }
+    if c.frame == frame {
+        return true;
+    }
+    if elements {
+        return c.slow && (!busy || c.at.elapsed() < SLOW_BOUNDS_REFRESH);
+    }
+    let refresh = if c.slow { SLOW_BOUNDS_REFRESH } else { LOADING_BOUNDS_REFRESH };
+    c.generation == generation && (!c.busy || (busy && c.at.elapsed() < refresh))
+}
 
 pub struct SelectTool {
     handle_mode: HandleMode,
@@ -550,22 +569,27 @@ impl SelectTool {
 
     fn selection_info(&self, state: &AppState) -> Option<SelCache> {
         let (revision, frame) = (state.doc.revision(), state.frame.index);
+        let (generation, busy) = (state.assets.generation(), state.assets.busy());
+        let elements = element::has_picks(state);
         if let Some(c) = self.sel_cache.get()
-            && c.revision == revision
-            && (c.frame == frame || (c.slow && (!state.assets.busy() || c.at.elapsed() < SLOW_BOUNDS_REFRESH)))
+            && sel_cache_valid(&c, (revision, generation, busy, elements), frame)
         {
             return Some(c);
         }
         let started = std::time::Instant::now();
-        if let Some(bounds) = element::picked_bounds(state) {
-            let info = SelCache {
-                revision,
-                frame,
-                bounds: Some(bounds),
-                brushes: false,
-                slow: started.elapsed() > SLOW_SELECTION_BOUNDS,
-                at: started,
-            };
+        let info = |bounds: Option<Aabb>, brushes: bool| SelCache {
+            revision,
+            generation,
+            busy,
+            elements,
+            frame,
+            bounds,
+            brushes,
+            slow: started.elapsed() > SLOW_SELECTION_BOUNDS,
+            at: started,
+        };
+        if elements && let Some(bounds) = element::picked_bounds(state) {
+            let info = info(Some(bounds), false);
             self.sel_cache.set(Some(info));
             return Some(info);
         }
@@ -585,9 +609,7 @@ impl SelectTool {
                     ObjRef::Entity(id) => scene.is_brush_entity(id),
                 };
         }
-        let bounds = (!b.is_empty()).then_some(b);
-        let info =
-            SelCache { revision, frame, bounds, brushes, slow: started.elapsed() > SLOW_SELECTION_BOUNDS, at: started };
+        let info = info((!b.is_empty()).then_some(b), brushes);
         self.sel_cache.set(Some(info));
         Some(info)
     }
@@ -2346,5 +2368,45 @@ impl SelectTool {
     pub(crate) fn begin_modal(&mut self, state: &mut AppState, view: &ViewInfo, kind: ModalKind, pos: Pos2) {
         self.note_view(view);
         self.start_modal(state, view, kind, pos);
+    }
+}
+
+#[cfg(test)]
+mod sel_cache_tests {
+    use super::*;
+
+    fn cache(busy: bool, elements: bool, slow: bool) -> SelCache {
+        SelCache {
+            revision: 7,
+            generation: 3,
+            busy,
+            elements,
+            frame: 10,
+            bounds: None,
+            brushes: false,
+            slow,
+            at: std::time::Instant::now(),
+        }
+    }
+
+    #[test]
+    fn selection_bounds_are_kept_across_frames_until_something_changes() {
+        let idle = cache(false, false, false);
+        assert!(sel_cache_valid(&idle, (7, 3, false, false), 10), "the same frame");
+        assert!(sel_cache_valid(&idle, (7, 3, false, false), 11), "the next frame reuses the bounds");
+        assert!(sel_cache_valid(&idle, (7, 3, false, false), 5000), "idle frames never recompute");
+        assert!(!sel_cache_valid(&idle, (8, 3, false, false), 11), "an edit or a new selection");
+        assert!(!sel_cache_valid(&idle, (7, 4, false, false), 11), "new content mounted");
+        assert!(!sel_cache_valid(&idle, (7, 3, false, true), 11), "edges or vertices were picked");
+        let loading = cache(true, false, false);
+        assert!(sel_cache_valid(&loading, (7, 3, true, false), 11), "models still loading, just computed");
+        let mut old = loading;
+        old.at = std::time::Instant::now() - LOADING_BOUNDS_REFRESH * 2;
+        assert!(!sel_cache_valid(&old, (7, 3, true, false), 11), "model bounds catch up while loading");
+        assert!(!sel_cache_valid(&loading, (7, 3, false, false), 11), "once loading ends the bounds are final");
+        let picks = cache(false, true, false);
+        assert!(sel_cache_valid(&picks, (7, 3, false, true), 10));
+        assert!(!sel_cache_valid(&picks, (7, 3, false, true), 11), "element picks are measured every frame");
+        assert!(sel_cache_valid(&cache(false, true, true), (7, 3, false, true), 11), "unless slow to measure");
     }
 }

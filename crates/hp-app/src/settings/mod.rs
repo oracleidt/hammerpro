@@ -62,7 +62,9 @@ pub use hp_sniffer::{
 };
 pub use input::{InputSettings, TRACKPAD_SPEED_MAX, TRACKPAD_SPEED_MIN, TrackpadMode, TrackpadScroll3d};
 pub use instances::{InstanceDisplay, InstancesSettings};
-pub use lab::{CombineOrigin, LabSettings, ModelLodSettings, SoundscapeSettings, UnpropShape};
+pub use lab::{
+    CombineOrigin, LabSettings, ModelCollision, ModelLodSettings, PropperCollisionMode, SoundscapeSettings, UnpropShape,
+};
 pub use launch::{LaunchSettings, LaunchTiming};
 pub use lighting::{BakePriority, LightingQuality, LightingSettings};
 pub use livelink::LiveLinkSettings;

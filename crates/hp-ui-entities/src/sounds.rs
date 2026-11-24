@@ -220,7 +220,7 @@ mod player {
     use std::io::Cursor;
     use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
     use std::sync::{Mutex, OnceLock};
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     enum Cmd {
         Play { fs: hp_fs::GameFs, path: String, play: u64, volume: f32 },
@@ -260,11 +260,38 @@ mod player {
         }
     }
 
+    const END_CHECK: Duration = Duration::from_millis(100);
+    const RELEASE_DEVICE_AFTER: Duration = Duration::from_secs(10);
+
+    pub(super) fn wait_for(playing: bool, idle: Option<Duration>) -> Option<Duration> {
+        if playing {
+            return Some(END_CHECK);
+        }
+        idle.map(|idle| RELEASE_DEVICE_AFTER.saturating_sub(idle))
+    }
+
     fn run(rx: Receiver<Cmd>) {
         let mut output: Option<rodio::MixerDeviceSink> = None;
         let mut sink: Option<(rodio::Player, u64)> = None;
+        let mut idle_since: Option<Instant> = None;
         loop {
-            match rx.recv_timeout(Duration::from_millis(100)) {
+            let idle = output.as_ref().map(|_| idle_since.get_or_insert_with(Instant::now).elapsed());
+            let received = match wait_for(sink.is_some(), idle) {
+                None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
+                Some(wait) => rx.recv_timeout(wait),
+            };
+            if matches!(received, Err(RecvTimeoutError::Timeout))
+                && sink.is_none()
+                && idle_since.is_some_and(|t| t.elapsed() >= RELEASE_DEVICE_AFTER)
+            {
+                output = None;
+                idle_since = None;
+                continue;
+            }
+            if received.is_ok() {
+                idle_since = None;
+            }
+            match received {
                 Ok(Cmd::Play { fs, path, play, volume }) => {
                     if let Some((s, _)) = sink.take() {
                         s.stop();
@@ -326,6 +353,7 @@ mod player {
             {
                 super::finished(*play);
                 sink = None;
+                idle_since = Some(Instant::now());
             }
         }
     }
@@ -345,6 +373,16 @@ mod player {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn preview_thread_blocks_while_nothing_plays() {
+        use std::time::Duration;
+        assert_eq!(player::wait_for(false, None), None, "no device open: wait for the next command");
+        assert!(player::wait_for(true, Some(Duration::ZERO)).is_some_and(|w| w <= Duration::from_millis(100)));
+        assert_eq!(player::wait_for(false, Some(Duration::from_secs(30))), Some(Duration::ZERO), "release the device");
+        assert_eq!(player::wait_for(false, Some(Duration::from_secs(4))), Some(Duration::from_secs(6)));
+    }
 
     const MANIFEST_TEXT: &str = r#"
         game_sounds_manifest

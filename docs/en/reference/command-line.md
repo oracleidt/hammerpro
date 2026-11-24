@@ -72,7 +72,11 @@ Must be the **first** argument. Each file or folder is converted to `DIR/models/
 | `--kind static\|physics` | `prop_static` or `prop_physics`. | `static` |
 | `--surface NAME` | Surface property. | `default` |
 | `--mass KG` | Mass of physics props, 0.1 to 50000. | `20` |
-| `--collision pieces\|box\|none` | Collision model. | `pieces` |
+| `--collision pieces\|hull\|decompose\|box\|none` | Collision model: one hull per connected part, one convex hull, a convex decomposition (several pieces), the box, or none. | `lab.model_collision` (`pieces`) |
+| `--max-pieces N` | Most convex pieces of `decompose`, 1 to 40. | `lab.collision_max_pieces` (16) |
+| `--max-hull-vertices N` | Most vertices per convex piece of `hull` and `decompose`, 8 to 128. | `lab.collision_max_hull_vertices` (32) |
+| `--own-collision`, `--no-own-collision` | Use the collision meshes of the files (`UCX_`, `*_col`...) when present. | `lab.model_own_collision` (on) |
+| `--folder F` | Folder under `models/` for the models (materials go to `materials/models/F/<name>/`). | `hammerpro` |
 | `--no-lod`, `--lod-levels N`, `--lod-keep PCT` | Levels of detail: off, 3 to 6 levels, 20 to 90 % kept per level. | saved settings |
 | `--no-material-params` | Color, alpha and double sided only in the VMTs. | saved setting |
 | `--overwrite` | Replace models that exist (they are skipped by default). | off |

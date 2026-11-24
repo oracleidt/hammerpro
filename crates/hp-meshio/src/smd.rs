@@ -1,6 +1,7 @@
 use glam::DVec3;
 
 use crate::Model;
+use crate::collision::CollisionLimits;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Collision {
@@ -8,6 +9,27 @@ pub enum Collision {
     Pieces,
     Box,
     None,
+    Hull,
+    Decompose,
+}
+
+impl Collision {
+    pub const ALL: [Collision; 5] =
+        [Collision::Pieces, Collision::Hull, Collision::Decompose, Collision::Box, Collision::None];
+
+    pub fn id(self) -> &'static str {
+        match self {
+            Collision::Pieces => "pieces",
+            Collision::Box => "box",
+            Collision::None => "none",
+            Collision::Hull => "hull",
+            Collision::Decompose => "decompose",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|c| c.id().eq_ignore_ascii_case(id.trim()))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -18,6 +40,7 @@ pub struct QcOptions {
     pub surface_prop: String,
     pub mass: f64,
     pub collision: Collision,
+    pub limits: CollisionLimits,
 }
 
 pub fn material_file_name(name: &str, index: usize) -> String {
@@ -61,9 +84,38 @@ pub fn reference_smd(model: &Model, names: &[String]) -> String {
     s
 }
 
+pub fn pieces_smd(pieces: &[Vec<DVec3>]) -> String {
+    let mut s = header();
+    for piece in pieces {
+        for t in hp_geom::hull_triangles(piece) {
+            let n = (t[1] - t[0]).cross(t[2] - t[0]).normalize_or_zero();
+            s.push_str(
+                "phys
+",
+            );
+            for p in t {
+                vertex(&mut s, p, n, 0.0, 0.0);
+            }
+        }
+    }
+    s.push_str(
+        "end
+",
+    );
+    s
+}
+
 pub fn collision_smd(model: &Model, kind: Collision) -> Option<String> {
+    collision_smd_with(model, kind, CollisionLimits::default())
+}
+
+pub fn collision_smd_with(model: &Model, kind: Collision, limits: CollisionLimits) -> Option<String> {
     match kind {
         Collision::None => None,
+        Collision::Hull | Collision::Decompose => {
+            let pieces = crate::collision::generated(model, kind, limits)?;
+            (!pieces.is_empty()).then(|| pieces_smd(&pieces))
+        }
         Collision::Pieces => {
             let mut s = header();
             for t in &model.triangles {
@@ -107,7 +159,7 @@ pub fn collision_smd(model: &Model, kind: Collision) -> Option<String> {
     }
 }
 
-pub fn qc(opts: &QcOptions, stem: &str, has_collision: bool) -> String {
+pub fn qc(opts: &QcOptions, stem: &str, pieces: Option<usize>) -> String {
     let mut s = String::new();
     s.push_str(&format!("$modelname \"{}.mdl\"\n", opts.model.trim_matches('/')));
     if opts.static_prop {
@@ -118,10 +170,12 @@ pub fn qc(opts: &QcOptions, stem: &str, has_collision: bool) -> String {
     s.push_str(&format!("$cdmaterials \"{}/\"\n", opts.cdmaterials.trim_matches('/')));
     s.push_str(&format!("$body \"body\" \"{stem}_ref.smd\"\n"));
     s.push_str(&format!("$sequence \"idle\" \"{stem}_ref.smd\" fps 30\n"));
-    if has_collision {
+    if let Some(count) = pieces {
         s.push_str(&format!("$collisionmodel \"{stem}_phys.smd\"\n{{\n"));
         if opts.collision == Collision::Pieces {
             s.push_str("\t$concave\n\t$maxconvexpieces 40\n");
+        } else if count > 1 {
+            s.push_str(&format!("\t$concave\n\t$maxconvexpieces {count}\n"));
         }
         let mass = if opts.mass.is_finite() && opts.mass > 0.0 { opts.mass } else { 10.0 };
         s.push_str(&format!("\t$mass {mass:.2}\n}}\n"));
@@ -171,13 +225,31 @@ mod tests {
             surface_prop: "wood".to_owned(),
             mass: 20.0,
             collision: Collision::Pieces,
+            limits: CollisionLimits::default(),
         };
-        let q = qc(&opts, "chair", true);
+        let q = qc(&opts, "chair", Some(3));
         assert!(q.contains("$modelname \"hammerpro/chair.mdl\""));
         assert!(q.contains("$staticprop"));
         assert!(q.contains("$cdmaterials \"models/hammerpro/chair/\""));
         assert!(q.contains("$collisionmodel \"chair_phys.smd\"") && q.contains("$concave"));
-        let physics = qc(&QcOptions { static_prop: false, ..opts }, "chair", false);
+        let physics = qc(&QcOptions { static_prop: false, ..opts.clone() }, "chair", None);
         assert!(!physics.contains("$staticprop") && !physics.contains("$collisionmodel"));
+        let hull = qc(&QcOptions { collision: Collision::Hull, ..opts.clone() }, "chair", Some(1));
+        assert!(hull.contains("$collisionmodel") && !hull.contains("$concave"), "one convex piece is not concave");
+        let parts = qc(&QcOptions { collision: Collision::Decompose, ..opts }, "chair", Some(5));
+        assert!(parts.contains("$concave") && parts.contains("$maxconvexpieces 5"), "{parts}");
+        let hull_smd = collision_smd(&m, Collision::Hull).expect("hull");
+        assert!(
+            hull_smd
+                .matches(
+                    "phys
+"
+                )
+                .count()
+                >= 4
+        );
+        for c in Collision::ALL {
+            assert_eq!(Collision::from_id(c.id()), Some(c));
+        }
     }
 }

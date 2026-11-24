@@ -8,6 +8,7 @@ mod boolean;
 mod brush;
 mod coverage;
 mod csg;
+mod decompose;
 mod disp;
 mod disp_cut;
 mod edge_net;
@@ -54,6 +55,10 @@ pub use coverage::{CoverageSolid, HiddenFace, hidden_faces};
 pub use csg::{
     ClipPiece, MIN_CLIP_PIECE, carve, carve_many, carve_traced, clip_solid, clip_solid_traced, hollow, hollow_traced,
     merge_convex, merge_exact, offset_side, plane_splits, union_volume,
+};
+pub use decompose::{
+    DecomposeOptions, FLAT_THICKNESS, MAX_COLLISION_PIECES, MAX_HULL_VERTICES, MIN_HULL_VERTICES, decompose,
+    hull_triangles, limited_hull,
 };
 pub use disp::{
     DISP_FLAG_NO_HULL, DISP_FLAG_NO_PHYSICS, DISP_FLAG_NO_RAY, DISP_TAG_BUILDABLE, DISP_TAG_FORCE_BUILDABLE_BIT,

@@ -10,6 +10,12 @@ use crate::protocol::{
 
 pub const POLL: Duration = Duration::from_millis(30);
 pub const BEAT: Duration = Duration::from_millis(1000);
+pub const QUIET_POLL: Duration = Duration::from_millis(250);
+const QUIET_AFTER: Duration = Duration::from_secs(2);
+
+pub fn poll_interval(quiet_for: Duration, pending: usize) -> Duration {
+    if pending > 0 || quiet_for < QUIET_AFTER { POLL } else { QUIET_POLL }
+}
 pub const MAX_QUEUE: usize = 4096;
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -246,7 +252,8 @@ impl Worker {
         true
     }
 
-    fn poll_game(&mut self) {
+    fn poll_game(&mut self) -> bool {
+        let mut seen = false;
         let path = self.dir.join(GAME_FILE);
         let now = stamp(&path);
         if now.is_some() && now != self.game_stamp {
@@ -260,6 +267,7 @@ impl Worker {
                 let pending = self.queue.len();
                 let _ = self.out.send(FromWorker::Report { report, latency, pending });
                 (self.wake)();
+                seen = true;
             }
         }
         let path = self.dir.join(ENTITIES_FILE);
@@ -269,16 +277,20 @@ impl Worker {
             if let Some(ents) = read_small(&path).and_then(|b| parse_entities(&b, &self.token)) {
                 let _ = self.out.send(FromWorker::Entities(ents));
                 (self.wake)();
+                seen = true;
             }
         }
+        seen
     }
 
     fn run(mut self, rx: Receiver<ToWorker>) {
         self.write_session();
         self.write_commands();
+        let mut active = Instant::now();
         loop {
-            match rx.recv_timeout(POLL) {
+            match rx.recv_timeout(poll_interval(active.elapsed(), self.queue.len())) {
                 Ok(msg) => {
+                    active = Instant::now();
                     if !self.take(msg) {
                         break;
                     }
@@ -302,7 +314,9 @@ impl Worker {
             if self.last_beat.is_none_or(|t| t.elapsed() >= BEAT) {
                 self.write_session();
             }
-            self.poll_game();
+            if self.poll_game() {
+                active = Instant::now();
+            }
         }
         self.finish();
     }
@@ -397,6 +411,14 @@ impl Drop for Exchange {
 mod tests {
     use super::*;
     use crate::protocol::Target;
+
+    #[test]
+    fn polling_slows_down_while_nothing_moves() {
+        assert_eq!(poll_interval(Duration::ZERO, 0), POLL);
+        assert_eq!(poll_interval(Duration::from_secs(5), 0), QUIET_POLL);
+        assert_eq!(poll_interval(Duration::from_secs(5), 3), POLL, "edits waiting for the game keep the fast pace");
+        assert!(QUIET_POLL < BEAT);
+    }
 
     fn set(key: u32, k: &str, v: &str) -> Op {
         let mut kv = BTreeMap::new();

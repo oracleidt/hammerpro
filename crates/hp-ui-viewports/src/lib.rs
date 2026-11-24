@@ -267,6 +267,9 @@ pub struct Viewports {
     logical_rects: [Option<Rect>; 4],
     logical: Option<Box<dyn LogicalContent>>,
     header_rects: [Rect; 4],
+    header_texts: [Option<HeaderText>; 4],
+    info_galley: Option<(InfoKey, std::sync::Arc<egui::Galley>)>,
+    fps_text: std::cell::RefCell<Option<(u32, hp_app::i18n::Lang, String)>>,
     info_rects: [Rect; 4],
     perf_rects: [Rect; 4],
     stats: Option<(f64, RenderStats)>,
@@ -349,6 +352,9 @@ impl Viewports {
             logical_rects: [None; 4],
             logical: None,
             header_rects: [Rect::NOTHING; 4],
+            header_texts: [None, None, None, None],
+            info_galley: None,
+            fps_text: std::cell::RefCell::new(None),
             info_rects: [Rect::NOTHING; 4],
             perf_rects: [Rect::NOTHING; 4],
             stats: None,
@@ -1939,12 +1945,20 @@ impl Viewports {
         if stale && let Some(gfx) = state.gfx.as_ref() {
             self.stats = Some((now, gfx.renderer.stats()));
         }
-        let mut lines = workflow::info_lines(state.frame.fps, &view.cam3d, self.stats.as_ref().map(|(_, s)| s));
-        if let Some((_, s)) = &self.stats {
-            lines.push(layers::render::culling_line(s));
-        }
         let painter = ui.painter_at(slot.rect);
-        let galley = painter.layout_no_wrap(lines.join("\n"), egui::FontId::monospace(11.0), paint::TEXT);
+        let key = info_key(state.frame.fps, &view.cam3d, self.stats.as_ref().map(|(at, _)| *at));
+        let galley = match &self.info_galley {
+            Some((cached, galley)) if *cached == key => galley.clone(),
+            _ => {
+                let mut lines = workflow::info_lines(state.frame.fps, &view.cam3d, self.stats.as_ref().map(|(_, s)| s));
+                if let Some((_, s)) = &self.stats {
+                    lines.push(layers::render::culling_line(s));
+                }
+                let galley = painter.layout_no_wrap(lines.join("\n"), egui::FontId::monospace(11.0), paint::TEXT);
+                self.info_galley = Some((key, galley.clone()));
+                galley
+            }
+        };
         let top = slot.rect.top() + HEADER_HEIGHT + 10.0;
         let rect =
             Align2::RIGHT_TOP.anchor_size(Pos2::new(slot.rect.right() - 6.0, top), galley.size() + vec2(10.0, 6.0));
@@ -2036,13 +2050,13 @@ impl Viewports {
             paint::walk_legend(painter, rect.right_bottom() + vec2(-6.0, -6.0), r.disp_walk_mode, r.disp_walk_angle);
         }
         if !view.is_2d() && state.settings.view.show_fps && !state.settings.workflow.show_view_info {
-            paint::text_pill(
-                painter,
-                rect.right_top() + vec2(-6.0, 6.0),
-                Align2::RIGHT_TOP,
-                tf!("status.fps", format!("{:.0}", state.frame.fps)),
-                paint::TEXT,
-            );
+            let fps = state.frame.fps.to_bits();
+            let mut cached = self.fps_text.borrow_mut();
+            if cached.as_ref().is_none_or(|(at, lang, _)| *at != fps || *lang != hp_app::i18n::lang()) {
+                *cached = Some((fps, hp_app::i18n::lang(), tf!("status.fps", format!("{:.0}", state.frame.fps))));
+            }
+            let text = cached.as_ref().map(|(_, _, t)| t.clone()).unwrap_or_default();
+            paint::text_pill(painter, rect.right_top() + vec2(-6.0, 6.0), Align2::RIGHT_TOP, text, paint::TEXT);
         }
         for layer in &self.layers {
             layer.paint(state, view, painter);
@@ -2136,16 +2150,7 @@ impl Viewports {
                         }
                     }
                 });
-                if view.is_2d() {
-                    let zoom = tf!("viewport.zoom", format_zoom_percent(view.cam2d.zoom));
-                    let text = if state.settings.grid.mode == hp_app::settings::GridMode::PerView {
-                        format!("{}   {zoom}", tf!("status.grid", fmt_coord(view.grid)))
-                    } else {
-                        zoom
-                    };
-                    ui.label(egui::RichText::new(text).size(11.0).color(paint::TEXT_WEAK));
-                } else if state.settings.grid.mode == hp_app::settings::GridMode::PerView {
-                    let text = tf!("status.grid", fmt_coord(view.grid));
+                if let Some(text) = header_text(&mut self.header_texts[i], state, view) {
                     ui.label(egui::RichText::new(text).size(11.0).color(paint::TEXT_WEAK));
                 }
                 logical::maximize_button(ui, state, i, maximized);
@@ -2541,6 +2546,53 @@ impl Viewports {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HeaderKey {
+    pub flat: bool,
+    pub per_view: bool,
+    pub zoom: u64,
+    pub grid: u64,
+    pub lang: hp_app::i18n::Lang,
+}
+
+pub type HeaderText = (HeaderKey, Option<String>);
+
+pub type InfoKey = (u32, [i64; 5], Option<u64>, hp_app::i18n::Lang);
+
+pub fn info_key(fps: f32, cam: &hp_app::view::Camera3d, stats_at: Option<f64>) -> InfoKey {
+    let fps = fps.to_bits();
+    let a = workflow::source_angles(cam);
+    let r = |v: f64| if v.is_finite() { v.round() as i64 } else { i64::MIN };
+    (fps, [r(cam.pos.x), r(cam.pos.y), r(cam.pos.z), r(a.x), r(a.y)], stats_at.map(f64::to_bits), hp_app::i18n::lang())
+}
+
+pub fn header_key(state: &AppState, view: &ViewInfo) -> HeaderKey {
+    HeaderKey {
+        flat: view.is_2d(),
+        per_view: state.settings.grid.mode == hp_app::settings::GridMode::PerView,
+        zoom: if view.is_2d() { view.cam2d.zoom.to_bits() } else { 0 },
+        grid: view.grid.to_bits(),
+        lang: hp_app::i18n::lang(),
+    }
+}
+
+pub fn header_text(slot: &mut Option<HeaderText>, state: &AppState, view: &ViewInfo) -> Option<String> {
+    let key = header_key(state, view);
+    if let Some((cached, text)) = slot.as_ref()
+        && *cached == key
+    {
+        return text.clone();
+    }
+    let text = if key.flat {
+        let zoom = tf!("viewport.zoom", format_zoom_percent(view.cam2d.zoom));
+        Some(if key.per_view { format!("{}   {zoom}", tf!("status.grid", fmt_coord(view.grid))) } else { zoom })
+    } else {
+        key.per_view.then(|| tf!("status.grid", fmt_coord(view.grid)))
+    };
+    *slot = Some((key, text.clone()));
+    text
+}
+
 fn menu_context(state: &AppState, menu: &OpenMenu) -> MenuContext {
     MenuContext {
         has_point: menu.point.is_some(),
@@ -2881,6 +2933,8 @@ fn collision_legend(ui: &egui::Ui, rect: Rect) {
 mod tests;
 #[cfg(test)]
 mod tests_autopan;
+#[cfg(test)]
+mod tests_dirty;
 #[cfg(test)]
 mod tests_hooks;
 #[cfg(test)]

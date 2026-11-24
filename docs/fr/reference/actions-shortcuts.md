@@ -430,6 +430,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Documentation | `open_docs` |  |  |  |
 | Signaler un problème | `report_issue` |  |  |  |
 | Rechercher des mises à jour... | `check_for_updates` |  |  |  |
+| Copier le rapport de performances | `copy_performance_report` |  |  |  |
 | Aide de l'entité | `entity_help` |  |  |  |
 | À propos de Hammer Pro | `about` |  |  |  |
 

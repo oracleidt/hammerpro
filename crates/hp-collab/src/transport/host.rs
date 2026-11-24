@@ -13,7 +13,7 @@ use zeroize::Zeroizing;
 use super::frame::{FAST, Frame, MapTransfer};
 use super::handshake::{Gate, PEER_FRAME_LIMIT, accept_loop, lock};
 use super::queue::{Body, Kind, Outgoing, PeerQueue, Pushed};
-use super::{APPROVAL_DEADLINE, Command, Commands, DEADLINE, Editor, Event, HostOptions, event};
+use super::{APPROVAL_DEADLINE, Command, Commands, DEADLINE, Editor, Event, HostOptions, Seen, event};
 use crate::document::{Change, ID_STRIDE, OutsideRange, Snapshot, ValidatedSnapshot, expand_changes, patch_changes};
 use crate::moderation::{AccessPolicy, AccessState, MAX_BAN_SECONDS, PendingRow, Window};
 use crate::protocol::{
@@ -151,6 +151,18 @@ pub(crate) struct HostCore {
     sent: u64,
     received: u64,
     last_traffic: Option<Instant>,
+    seen_traffic: Seen<(u64, u64)>,
+    seen_bans: Seen<Vec<crate::moderation::BanRow>>,
+    seen_privacy: Seen<(bool, usize, usize)>,
+    seen_access: Seen<AccessState>,
+}
+
+const HOST_TICK: Duration = Duration::from_millis(250);
+const LATENCY_STEP_MS: u64 = 5;
+
+pub(crate) fn steady_latency(shown: u64, measured: u64) -> u64 {
+    let step = LATENCY_STEP_MS.max(shown / 5);
+    if shown == 0 || measured.abs_diff(shown) >= step { measured } else { shown }
 }
 
 pub(crate) fn range_start(map: &ValidatedSnapshot) -> Result<u32> {
@@ -203,6 +215,10 @@ impl HostCore {
             sent: 0,
             received: 0,
             last_traffic: None,
+            seen_traffic: Seen::default(),
+            seen_bans: Seen::default(),
+            seen_privacy: Seen::default(),
+            seen_access: Seen::default(),
         })
     }
 
@@ -745,7 +761,8 @@ impl HostCore {
 
     pub(crate) fn tick(&mut self, now: Instant, published_ips: usize) -> Result<()> {
         for peer in self.peers.values_mut() {
-            peer.participant.latency_ms = peer.joining.link.latency_ms().min(protocol::MAX_LATENCY_MS);
+            let measured = peer.joining.link.latency_ms().min(protocol::MAX_LATENCY_MS);
+            peer.participant.latency_ms = steady_latency(peer.participant.latency_ms, measured);
         }
         let direct_path_count: usize = self.peers.values().map(|peer| peer.joining.link.direct_paths()).sum();
         if self.mode == ConnectionMode::Relay {
@@ -768,18 +785,24 @@ impl HostCore {
         }
         self.share_participants()?;
         if self.last_traffic.is_none_or(|last| now.saturating_duration_since(last) >= Duration::from_secs(1)) {
-            event(&self.editor, Event::Traffic { sent: self.sent, received: self.received })?;
+            if self.seen_traffic.changed((self.sent, self.received)) {
+                event(&self.editor, Event::Traffic { sent: self.sent, received: self.received })?;
+            }
             let bans = lock(&self.gate)?.bans.rows(now);
-            event(&self.editor, Event::Bans(bans))?;
-            event(
-                &self.editor,
-                Event::NetworkPrivacy {
-                    relay_only: self.mode == ConnectionMode::Relay,
-                    published_ip_count: published_ips,
-                    direct_path_count,
-                },
-            )?;
-            event(&self.editor, Event::Access(self.access_state(now)?))?;
+            if self.seen_bans.changed(bans.clone()) {
+                event(&self.editor, Event::Bans(bans))?;
+            }
+            let relay_only = self.mode == ConnectionMode::Relay;
+            if self.seen_privacy.changed((relay_only, published_ips, direct_path_count)) {
+                event(
+                    &self.editor,
+                    Event::NetworkPrivacy { relay_only, published_ip_count: published_ips, direct_path_count },
+                )?;
+            }
+            let access = self.access_state(now)?;
+            if self.seen_access.changed(access.clone()) {
+                event(&self.editor, Event::Access(access))?;
+            }
             self.last_traffic = Some(now);
         }
         Ok(())
@@ -922,7 +945,7 @@ pub(crate) async fn run(
             direct_addresses: endpoint.addr().ip_addrs().copied().collect(),
         },
     )?;
-    let mut tick = tokio::time::interval(Duration::from_millis(100));
+    let mut tick = tokio::time::interval(HOST_TICK);
     let result = async {
         loop {
             tokio::select! {

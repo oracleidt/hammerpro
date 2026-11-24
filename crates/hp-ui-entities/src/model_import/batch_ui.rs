@@ -7,7 +7,6 @@ use egui::{RichText, Ui};
 use glam::DVec3;
 use hp_app::{AppState, Severity, t, tf, theme};
 use hp_meshio::UpAxis;
-use hp_meshio::smd::Collision;
 
 use super::batch::{
     BatchEntry, BatchOptions, FileResult, Formats, GridOptions, MAX_THREADS, Status, Summary, collect_files, names_for,
@@ -120,6 +119,9 @@ impl ModelBatchDialog {
         };
         self.opts.convert.lod = lod_options(state.settings.lab.model_lod);
         self.opts.convert.keep_params = state.settings.lab.model_keep_params;
+        self.opts.convert.collision = super::collision_kind(state.settings.lab.model_collision);
+        self.opts.convert.limits = super::collision_limits(&state.settings.lab);
+        self.opts.convert.own_collision = state.settings.lab.model_own_collision;
         self.opts.threads = self.opts.threads.clamp(1, MAX_THREADS);
     }
 
@@ -414,11 +416,9 @@ impl ModelBatchDialog {
                 });
             ui.end_row();
             ui.label(t!("entities.mi_collision"));
-            ui.horizontal(|ui| {
-                ui.radio_value(&mut self.opts.convert.collision, Collision::Pieces, t!("entities.mi_coll_pieces"));
-                ui.radio_value(&mut self.opts.convert.collision, Collision::Box, t!("entities.mi_coll_box"));
-                ui.radio_value(&mut self.opts.convert.collision, Collision::None, t!("entities.mi_coll_none"));
-            });
+            if super::collision_ui(ui, &mut state.settings.lab, None) {
+                state.settings_dirty = true;
+            }
             ui.end_row();
             if !self.opts.convert.static_prop {
                 ui.label(t!("entities.mass"));

@@ -47,8 +47,12 @@ pub struct InstanceLayer {
     key: Option<(u64, u64, Option<std::path::PathBuf>)>,
     broken: Vec<Broken>,
     selected: Vec<(Aabb, String)>,
+    selected_key: Option<SelectedKey>,
     context: Option<String>,
+    context_key: Option<(Option<hp_app::runtime::instances::InstanceContext>, hp_app::i18n::Lang)>,
 }
+
+type SelectedKey = (u64, u64, u64, bool);
 
 impl InstanceLayer {
     fn refresh_broken(&mut self, state: &AppState, cache: &InstanceCache) {
@@ -90,11 +94,24 @@ impl OverlayLayer for InstanceLayer {
     fn prepare(&mut self, state: &AppState) {
         let cache = InstanceCache::shared();
         self.refresh_broken(state, &cache);
-        self.context = hp_app::runtime::instances::context()
-            .filter(|_| state.settings.instances.show_context)
-            .and_then(|c| c.parent.file_name().map(|n| short(&n.to_string_lossy()).to_owned()));
+        let context = hp_app::runtime::instances::context().filter(|_| state.settings.instances.show_context);
+        let context_key = (context, hp_app::i18n::lang());
+        if self.context_key.as_ref() != Some(&context_key) {
+            self.context = context_key
+                .0
+                .as_ref()
+                .and_then(|c| c.parent.file_name().map(|n| short(&n.to_string_lossy()).to_owned()))
+                .map(|parent| tf!("viewport.instance_context", parent));
+            self.context_key = Some(context_key);
+        }
+        let outline = state.settings.instances.outline_selected;
+        let key = (state.doc.revision(), cache.generation(), state.assets.generation(), outline);
+        if self.selected_key == Some(key) {
+            return;
+        }
+        self.selected_key = Some(key);
         self.selected.clear();
-        if !state.settings.instances.outline_selected {
+        if !outline {
             return;
         }
         let main = state.doc.path();
@@ -117,12 +134,11 @@ impl OverlayLayer for InstanceLayer {
     }
 
     fn paint(&self, _state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
-        if let Some(parent) = &self.context
+        if let Some(text) = &self.context
             && !view.is_2d()
         {
             let pos = egui::pos2(view.rect.center().x, view.rect.top() + 8.0);
-            let text = tf!("viewport.instance_context", parent);
-            text_pill(painter, pos, Align2::CENTER_TOP, text, overlay_color(INSTANCE_COLOR));
+            text_pill(painter, pos, Align2::CENTER_TOP, text.clone(), overlay_color(INSTANCE_COLOR));
         }
         for (b, file) in &self.selected {
             if file.is_empty() {

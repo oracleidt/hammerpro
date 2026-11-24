@@ -1,7 +1,23 @@
 use glam::DVec3;
 use hp_render::ShadowControl;
 
+thread_local! {
+    static PREVIEW: std::cell::Cell<Option<(u64, Option<ShadowControl>)>> = const { std::cell::Cell::new(None) };
+}
+
 pub fn preview(state: &crate::AppState) -> Option<ShadowControl> {
+    let revision = state.doc.scene_revision();
+    if let Some((at, control)) = PREVIEW.with(std::cell::Cell::get)
+        && at == revision
+    {
+        return control;
+    }
+    let control = compute(state);
+    PREVIEW.with(|c| c.set(Some((revision, control))));
+    control
+}
+
+fn compute(state: &crate::AppState) -> Option<ShadowControl> {
     let options = state.doc.light_plus();
     let (_, node) = state
         .doc

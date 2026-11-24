@@ -23,6 +23,8 @@ fn round_trip(m: &Model, static_prop: bool) -> (hp_mdl::Model, hp_meshio::studio
         surface_prop: "metal".to_owned(),
         mass: 15.0,
         collision: Collision::Pieces,
+        limits: hp_meshio::collision::CollisionLimits::default(),
+        own_collision: false,
         lod: hp_meshio::lod::LodOptions::default(),
     };
     let files = compile(m, &names, &opts).expect("compile");

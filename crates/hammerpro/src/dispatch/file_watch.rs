@@ -6,10 +6,13 @@ use std::time::Duration;
 
 use hp_app::runtime::{FileStamp, file_stamp};
 
+const SAFETY_CHECK: Duration = Duration::from_secs(60);
+
 pub(crate) struct FileWatch {
     paths: Vec<PathBuf>,
     stop: Arc<AtomicBool>,
     changed: Arc<AtomicBool>,
+    wake: Option<Arc<hp_fs::WakeEvent>>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -17,19 +20,41 @@ fn stamps(paths: &[PathBuf]) -> Vec<FileStamp> {
     paths.iter().map(|p| file_stamp(p)).collect()
 }
 
+fn folders(paths: &[PathBuf]) -> Option<Vec<PathBuf>> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    for path in paths {
+        let folder = path.parent().filter(|d| d.is_dir())?;
+        if !out.iter().any(|f| f == folder) {
+            out.push(folder.to_path_buf());
+        }
+    }
+    Some(out)
+}
+
 impl FileWatch {
     pub(crate) fn start(paths: Vec<PathBuf>, every: Duration, wake: impl Fn() + Send + 'static) -> Option<Self> {
         let stop = Arc::new(AtomicBool::new(false));
         let changed = Arc::new(AtomicBool::new(false));
+        let event = hp_fs::WakeEvent::new().map(Arc::new);
+        let gate = event.as_ref().and(folders(&paths)).and_then(|f| hp_fs::ChangeGate::watch_folders(&f));
         let watched = paths.clone();
         let (stop2, changed2) = (stop.clone(), changed.clone());
+        let thread_event = event.clone();
         let thread = std::thread::Builder::new()
             .name("hp-file-watch".into())
             .stack_size(64 * 1024)
             .spawn(move || {
                 let mut last = stamps(&watched);
+                let mut gate = gate;
                 loop {
-                    std::thread::park_timeout(every);
+                    match (gate.as_mut(), thread_event.as_deref()) {
+                        (Some(g), Some(e)) => {
+                            if g.wait(e, Some(SAFETY_CHECK)) == hp_fs::GateWait::Failed {
+                                gate = None;
+                            }
+                        }
+                        _ => std::thread::park_timeout(every),
+                    }
                     if stop2.load(Ordering::Acquire) {
                         return;
                     }
@@ -42,7 +67,7 @@ impl FileWatch {
                 }
             })
             .ok()?;
-        Some(Self { paths, stop, changed, thread: Some(thread) })
+        Some(Self { paths, stop, changed, wake: event, thread: Some(thread) })
     }
 
     pub(crate) fn paths(&self) -> &[PathBuf] {
@@ -61,6 +86,9 @@ impl FileWatch {
 impl Drop for FileWatch {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
+        if let Some(wake) = &self.wake {
+            wake.set();
+        }
         if let Some(thread) = self.thread.take() {
             thread.thread().unpark();
         }

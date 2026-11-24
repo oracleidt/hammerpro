@@ -224,6 +224,15 @@ pub(crate) fn picked_ghost(state: &AppState) -> (Vec<[DVec3; 2]>, Vec<DVec3>) {
     (lines, points)
 }
 
+pub(crate) fn has_picks(state: &AppState) -> bool {
+    if state.settings.selection.element == SelectElement::Object {
+        return false;
+    }
+    let rev = state.doc.revision();
+    let sel = &state.runtime.selection;
+    !sel.fresh_edges(rev).is_empty() || !sel.fresh_vertices(rev).is_empty() || !state.doc.selection().faces.is_empty()
+}
+
 pub(crate) fn picked_bounds(state: &AppState) -> Option<Aabb> {
     let mut b = Aabb::EMPTY;
     for (_, pts) in picked_points(state) {
