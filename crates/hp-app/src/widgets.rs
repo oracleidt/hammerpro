@@ -176,16 +176,11 @@ pub fn slider_row<R>(
     let galley = label.into().into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Body);
     let needed = galley.size().x + 2.0 * ui.spacing().item_spacing.x + ui.spacing().slider_width + 64.0;
     let text = galley.text().to_owned();
-    let layout = if needed > ui.available_width() {
-        egui::Layout::top_down(egui::Align::Min)
-    } else {
-        egui::Layout::left_to_right(egui::Align::Center)
-    };
-    ui.with_layout(layout, |ui| {
+    let row = |ui: &mut Ui| {
         let r = ui.label(text);
         (r, add(ui))
-    })
-    .inner
+    };
+    if needed > ui.available_width() { ui.vertical(row).inner } else { ui.horizontal(row).inner }
 }
 
 pub fn open_all_sections_id() -> egui::Id {
@@ -623,6 +618,30 @@ mod tests {
             delay = out.viewport_output.values().map(|v| v.repaint_delay).min().unwrap_or(std::time::Duration::MAX);
         }
         delay
+    }
+
+    #[test]
+    fn a_slider_row_keeps_its_own_height_in_a_tall_panel() {
+        let ctx = egui::Context::default();
+        for width in [800.0, 120.0] {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(width, 2000.0))),
+                ..Default::default()
+            };
+            let mut heights = (0.0, 0.0);
+            let _ = ctx.run_ui(input, |ui| {
+                egui::CentralPanel::default().show(ui, |ui| {
+                    let top = ui.cursor().top();
+                    let (label, _) = slider_row(ui, "Selection opacity", |ui| {
+                        let mut v = 30.0;
+                        ui.add(egui::Slider::new(&mut v, 0.0..=100.0));
+                    });
+                    heights = (ui.cursor().top() - top, label.rect.top() - top);
+                });
+            });
+            assert!(heights.0 < 120.0, "width {width}: the row took {} points", heights.0);
+            assert!(heights.1 < 40.0, "width {width}: the label sits {} points down", heights.1);
+        }
     }
 
     #[test]

@@ -247,6 +247,7 @@ mod tests {
         "bsp_sniffer",
         "live_link_camera_to_game",
         "live_link_camera_from_game",
+        "copy_performance_report",
     ];
 
     #[test]
